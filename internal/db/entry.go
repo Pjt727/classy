@@ -6,6 +6,13 @@ import (
 
 type SeasonEnum string
 
+const (
+	Spring SeasonEnum = "Spring"
+	Summer SeasonEnum = "Summer"
+	Fall   SeasonEnum = "Fall"
+	Winter SeasonEnum = "Winter"
+)
+
 type FacultyMember struct {
 	ID           string         `db:"id"`
 	Name         string         `db:"name"`
@@ -52,5 +59,15 @@ type MeetingTime struct {
 	IsSunday     bool           `db:"is_sunday"`
 }
 
-func addClassesFlat() {
+/** All data need exist in the list or already be in the database **/
+func upsertClassesFlat(
+	courses []Course,
+	sections []Section,
+	meetingTimes []MeetingTime,
+	facultyMember []FacultyMember,
+	schoolId string,
+	term_year int,
+	term_season SeasonEnum,
+) {
+
 }
