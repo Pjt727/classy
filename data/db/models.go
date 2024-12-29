@@ -2,7 +2,7 @@
 // versions:
 //   sqlc v1.27.0
 
-package classy_queries
+package db
 
 import (
 	"database/sql/driver"
@@ -81,12 +81,12 @@ type MeetingTime struct {
 	TermSeason   SeasonEnum
 	TermYear     int32
 	CourseID     string
-	SchoolID     pgtype.Text
+	SchoolID     string
 	StartDate    pgtype.Timestamp
 	EndDate      pgtype.Timestamp
 	MeetingType  pgtype.Text
-	StartMinutes pgtype.Int4
-	EndMinutes   pgtype.Int4
+	StartMinutes pgtype.Time
+	EndMinutes   pgtype.Time
 	IsMonday     bool
 	IsTuesday    bool
 	IsWednesday  bool

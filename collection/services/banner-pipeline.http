@@ -1,0 +1,39 @@
+# This is a minimal pipeline to be able to fetch banner courses
+
+
+@hostname=ssb1-reg.banner.marist.edu
+@term=202520
+# get a banner cookie
+# @name REQUEST_SEARCH_PAGE
+GET https://{{hostname}}/StudentRegistrationSsb/ssb/term/termSelection?mode=search
+
+###
+
+# associate that cookie with a term the term query parameter on searches
+#    is a in my testing only matters for the first request and they must match
+# YEARSEASON
+# winter = 10
+# spring = 20
+# summer = 30
+# fall = 40
+# ex: 202510
+#     this is year 2025 winter term
+POST https://{{hostname}}/StudentRegistrationSsb/ssb/term/search?mode=search
+Content-Type: application/x-www-form-urlencoded
+Accept: application/json
+Cookie: JSESSIONID={{REQUEST_SEARCH_PAGE.response.cookies.JSESSIONID.value}}
+
+term={{term}}&
+studyPath=&
+studyPathText=&
+startDatepicker=&
+endDatepicker=
+
+###
+
+# endpoint for getting sections
+# note that the pageOffset is the section count and not the page count of offset
+
+# GET https://ssb1-reg.banner.marist.edu/StudentRegistrationSsb/ssb/searchResults/searchResults?txt_term={{term}}&startDatepicker=&endDatepicker=&uniqueSessionId=rvboz1735403153035&pageOffset=10&pageMaxSize=10&sortColumn=subjectDescription&sortDirection=asc
+GET https://ssb1-reg.banner.marist.edu/StudentRegistrationSsb/ssb/searchResults/searchResults?txt_term={{term}}&pageOffset=0&pageMaxSize=1
+Cookie: JSESSIONID={{REQUEST_SEARCH_PAGE.response.cookies.JSESSIONID.value}}

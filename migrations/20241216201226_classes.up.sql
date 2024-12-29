@@ -68,8 +68,8 @@ CREATE TABLE meeting_times (
     start_date TIMESTAMP,
     end_date TIMESTAMP,
     meeting_type TEXT,
-    start_minutes INTEGER,
-    end_minutes INTEGER,
+    start_minutes TIME,
+    end_minutes TIME,
     is_monday BOOLEAN NOT NULL,
     is_tuesday BOOLEAN NOT NULL,
     is_wednesday BOOLEAN NOT NULL,
@@ -78,5 +78,5 @@ CREATE TABLE meeting_times (
     is_saturday BOOLEAN NOT NULL,
     is_sunday BOOLEAN NOT NULL,
     FOREIGN KEY (section_id, term_season, term_year, course_id, school_id) REFERENCES sections(id, term_season, term_year, course_id, school_id),
-    PRIMARY KEY (id, section_id, term_season, term_year, course_id)
+    PRIMARY KEY (id, section_id, term_season, term_year, course_id, school_id)
 );
