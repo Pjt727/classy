@@ -44,15 +44,119 @@ func (q *Queries) ListCourses(ctx context.Context) ([]Course, error) {
 	return items, nil
 }
 
-type UpsertSectionsParams struct {
-	ID                string
+type StageMeetingTimesParams struct {
+	ID           pgtype.Int4
+	Sectionid    pgtype.Text
+	Termseason   NullSeasonEnum
+	Termyear     pgtype.Int4
+	Courseid     pgtype.Text
+	Schoolid     pgtype.Text
+	Startdate    pgtype.Timestamp
+	Enddate      pgtype.Timestamp
+	Meetingtype  pgtype.Text
+	Startminutes pgtype.Time
+	Endminutes   pgtype.Time
+	Ismonday     bool
+	Istuesday    bool
+	Iswednesday  bool
+	Isfriday     bool
+	Issaturday   bool
+	Issunday     bool
+}
+
+type StageSectionsParams struct {
+	ID                pgtype.Text
 	Campus            pgtype.Text
-	CourseID          string
-	SchoolID          string
-	TermYear          int32
-	TermSeason        SeasonEnum
+	CourseID          pgtype.Text
+	Schoolid          pgtype.Text
+	Termyear          pgtype.Int4
+	Termseason        NullSeasonEnum
 	Enrollment        pgtype.Int4
-	MaxEnrollment     pgtype.Int4
-	InstructionMethod pgtype.Text
-	PrimaryFacultyID  pgtype.Text
+	Maxenrollment     pgtype.Int4
+	Instructionmethod pgtype.Text
+	Primaryfacultyid  pgtype.Text
+}
+
+const truncateStagingMeetingTimes = `-- name: TruncateStagingMeetingTimes :exec
+TRUNCATE TABLE staging_meeting_times
+`
+
+func (q *Queries) TruncateStagingMeetingTimes(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, truncateStagingMeetingTimes)
+	return err
+}
+
+const truncateStagingSections = `-- name: TruncateStagingSections :exec
+TRUNCATE TABLE staging_sections
+`
+
+func (q *Queries) TruncateStagingSections(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, truncateStagingSections)
+	return err
+}
+
+const upsertCourses = `-- name: UpsertCourses :exec
+INSERT INTO courses
+    ( id, school_id, subject_code,
+        number, subject_description, title,
+        description, credit_hours)
+VALUES 
+    ( $1, $2, $3,
+        $4, $5, $6,
+        $7, $8)
+`
+
+type UpsertCoursesParams struct {
+	ID                 string
+	Schoolid           string
+	Subjectcode        pgtype.Text
+	Number             pgtype.Text
+	Subjectdescription pgtype.Text
+	Title              pgtype.Text
+	Description        pgtype.Text
+	Credithours        int32
+}
+
+func (q *Queries) UpsertCourses(ctx context.Context, arg UpsertCoursesParams) error {
+	_, err := q.db.Exec(ctx, upsertCourses,
+		arg.ID,
+		arg.Schoolid,
+		arg.Subjectcode,
+		arg.Number,
+		arg.Subjectdescription,
+		arg.Title,
+		arg.Description,
+		arg.Credithours,
+	)
+	return err
+}
+
+const upsertFaculty = `-- name: UpsertFaculty :exec
+INSERT INTO faculty_members
+    (id, school_id, name,
+        email_address, first_name, last_name)
+VALUES
+    ($1, $2, $3,
+        $4, $5, $6)
+`
+
+type UpsertFacultyParams struct {
+	ID           string
+	Schoolid     string
+	Name         string
+	Emailaddress pgtype.Text
+	Firstname    pgtype.Text
+	Lastname     pgtype.Text
+}
+
+func (q *Queries) UpsertFaculty(ctx context.Context, arg UpsertFacultyParams) error {
+	_, err := q.db.Exec(ctx, upsertFaculty,
+		arg.ID,
+		arg.Schoolid,
+		arg.Name,
+		arg.Emailaddress,
+		arg.Firstname,
+		arg.Lastname,
+	)
+	return err
 }

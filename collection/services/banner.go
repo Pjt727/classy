@@ -17,32 +17,31 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func termConversion(year int, season db.SeasonEnum) string {
+func termConversion(term db.Term) string {
 	var seasonString string
-	if season == db.SeasonEnumWinter {
+	if term.Season == db.SeasonEnumWinter {
 		seasonString = "10"
-	} else if season == db.SeasonEnumSpring {
+	} else if term.Season == db.SeasonEnumSpring {
 		seasonString = "20"
-	} else if season == db.SeasonEnumSummer {
+	} else if term.Season == db.SeasonEnumSummer {
 		seasonString = "30"
-	} else if season == db.SeasonEnumFall {
+	} else if term.Season == db.SeasonEnumFall {
 		seasonString = "40"
 	} else {
 		panic("Invalid year / season")
 	}
-	return strconv.Itoa(year) + seasonString
+	return strconv.Itoa(int(term.Year)) + seasonString
 }
 
 func getSections(
 	logger *log.Entry,
 	schoolId string,
 	hostname string,
-	year int,
-	season db.SeasonEnum,
+	term db.Term,
 ) error {
 	const MAX_PAGE_SIZE = 200 // the max this value can do is 500 more
 	logger.Info("Starting full section")
-	term := termConversion(year, season)
+	termStr := termConversion(term)
 	// Get a banner cookie
 	req, err := http.NewRequest(
 		"GET",
@@ -64,7 +63,7 @@ func getSections(
 	cookie := resp.Cookies()[0]
 	// Associate the cookie with a term
 	formData := url.Values{
-		"term":            {term},
+		"term":            {termStr},
 		"studyPath":       {""},
 		"studyPathText":   {""},
 		"startDatepicker": {""},
@@ -99,7 +98,7 @@ func getSections(
 		return err
 	}
 	req.AddCookie(cookie)
-	req.URL.Query().Set("txt_term", term)
+	req.URL.Query().Set("txt_term", termStr)
 	req.URL.Query().Set("pageOffSet", "0")
 	// get amount of sections for the term
 	req.URL.Query().Set("pageMaxSize", "1")
@@ -134,7 +133,7 @@ func getSections(
 		workersReq.URL.Query().Set("pageMaxSize", strconv.Itoa(MAX_PAGE_SIZE))
 		go func(req http.Request) {
 			defer wg.Done()
-			err := insertGroupOfSections(workerLog, workersReq, schoolId, season, year)
+			err := insertGroupOfSections(workerLog, workersReq, schoolId, term)
 			if err != nil {
 				errCh <- err
 			}
@@ -234,8 +233,7 @@ func insertGroupOfSections(
 	logger *log.Entry,
 	req *http.Request,
 	schoolId string,
-	season db.SeasonEnum,
-	year int,
+	term db.Term,
 ) error {
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -317,8 +315,8 @@ func insertGroupOfSections(
 			}
 			dbMeetingTime := db.MeetingTime{
 				SectionID:    sectionId,
-				TermSeason:   season,
-				TermYear:     int32(year),
+				TermSeason:   term.Season,
+				TermYear:     term.Year,
 				CourseID:     courseId,
 				SchoolID:     schoolId,
 				StartDate:    startDate,
@@ -339,8 +337,8 @@ func insertGroupOfSections(
 		}
 		dbSection := db.Section{
 			ID:                sectionId,
-			TermSeason:        season,
-			TermYear:          int32(year),
+			TermSeason:        term.Season,
+			TermYear:          term.Year,
 			CourseID:          courseId,
 			SchoolID:          schoolId,
 			MaxEnrollment:     pgtype.Int4{Int32: section.MaximumEnrollment, Valid: true},

@@ -114,6 +114,40 @@ type Section struct {
 	PrimaryFacultyID  pgtype.Text
 }
 
+type StagingMeetingTime struct {
+	ID           pgtype.Int4
+	SectionID    pgtype.Text
+	TermSeason   NullSeasonEnum
+	TermYear     pgtype.Int4
+	CourseID     pgtype.Text
+	SchoolID     pgtype.Text
+	StartDate    pgtype.Timestamp
+	EndDate      pgtype.Timestamp
+	MeetingType  pgtype.Text
+	StartMinutes pgtype.Time
+	EndMinutes   pgtype.Time
+	IsMonday     bool
+	IsTuesday    bool
+	IsWednesday  bool
+	IsThursday   bool
+	IsFriday     bool
+	IsSaturday   bool
+	IsSunday     bool
+}
+
+type StagingSection struct {
+	ID                pgtype.Text
+	TermSeason        NullSeasonEnum
+	TermYear          pgtype.Int4
+	CourseID          pgtype.Text
+	SchoolID          pgtype.Text
+	MaxEnrollment     pgtype.Int4
+	InstructionMethod pgtype.Text
+	Campus            pgtype.Text
+	Enrollment        pgtype.Int4
+	PrimaryFacultyID  pgtype.Text
+}
+
 type Term struct {
 	Year   int32
 	Season SeasonEnum

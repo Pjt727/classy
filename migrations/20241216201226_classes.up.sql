@@ -1,3 +1,4 @@
+-- can't use temp tables with sqlc so i use staging tables here
 DROP TYPE IF EXISTS season_enum;
 CREATE TYPE season_enum AS ENUM ('Spring', 'Fall', 'Winter', 'Summer');
 
@@ -57,6 +58,20 @@ CREATE TABLE sections (
     PRIMARY KEY (id, term_season, term_year, course_id, school_id)
 );
 
+CREATE TABLE staging_sections (
+    id TEXT,
+    term_season season_enum,
+    term_year INT,
+    course_id TEXT,
+    school_id TEXT,
+
+    max_enrollment INTEGER,
+    instruction_method TEXT,
+    campus TEXT,
+    enrollment INTEGER,
+    primary_faculty_id TEXT
+);
+
 CREATE TABLE meeting_times (
     id SERIAL,
     section_id TEXT,
@@ -77,6 +92,29 @@ CREATE TABLE meeting_times (
     is_friday BOOLEAN NOT NULL,
     is_saturday BOOLEAN NOT NULL,
     is_sunday BOOLEAN NOT NULL,
-    FOREIGN KEY (section_id, term_season, term_year, course_id, school_id) REFERENCES sections(id, term_season, term_year, course_id, school_id),
+    FOREIGN KEY (section_id, term_season, term_year, course_id, school_id) 
+        REFERENCES sections(id, term_season, term_year, course_id, school_id) ON DELETE CASCADE,
     PRIMARY KEY (id, section_id, term_season, term_year, course_id, school_id)
+);
+
+CREATE TABLE staging_meeting_times (
+    id SERIAL,
+    section_id TEXT,
+    term_season season_enum,
+    term_year INT,
+    course_id TEXT,
+    school_id TEXT,
+
+    start_date TIMESTAMP,
+    end_date TIMESTAMP,
+    meeting_type TEXT,
+    start_minutes TIME,
+    end_minutes TIME,
+    is_monday BOOLEAN NOT NULL,
+    is_tuesday BOOLEAN NOT NULL,
+    is_wednesday BOOLEAN NOT NULL,
+    is_thursday BOOLEAN NOT NULL,
+    is_friday BOOLEAN NOT NULL,
+    is_saturday BOOLEAN NOT NULL,
+    is_sunday BOOLEAN NOT NULL
 );

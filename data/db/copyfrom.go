@@ -9,13 +9,13 @@ import (
 	"context"
 )
 
-// iteratorForUpsertSections implements pgx.CopyFromSource.
-type iteratorForUpsertSections struct {
-	rows                 []UpsertSectionsParams
+// iteratorForStageMeetingTimes implements pgx.CopyFromSource.
+type iteratorForStageMeetingTimes struct {
+	rows                 []StageMeetingTimesParams
 	skippedFirstNextCall bool
 }
 
-func (r *iteratorForUpsertSections) Next() bool {
+func (r *iteratorForStageMeetingTimes) Next() bool {
 	if len(r.rows) == 0 {
 		return false
 	}
@@ -27,45 +27,73 @@ func (r *iteratorForUpsertSections) Next() bool {
 	return len(r.rows) > 0
 }
 
-func (r iteratorForUpsertSections) Values() ([]interface{}, error) {
+func (r iteratorForStageMeetingTimes) Values() ([]interface{}, error) {
+	return []interface{}{
+		r.rows[0].ID,
+		r.rows[0].Sectionid,
+		r.rows[0].Termseason,
+		r.rows[0].Termyear,
+		r.rows[0].Courseid,
+		r.rows[0].Schoolid,
+		r.rows[0].Startdate,
+		r.rows[0].Enddate,
+		r.rows[0].Meetingtype,
+		r.rows[0].Startminutes,
+		r.rows[0].Endminutes,
+		r.rows[0].Ismonday,
+		r.rows[0].Istuesday,
+		r.rows[0].Iswednesday,
+		r.rows[0].Isfriday,
+		r.rows[0].Issaturday,
+		r.rows[0].Issunday,
+	}, nil
+}
+
+func (r iteratorForStageMeetingTimes) Err() error {
+	return nil
+}
+
+func (q *Queries) StageMeetingTimes(ctx context.Context, arg []StageMeetingTimesParams) (int64, error) {
+	return q.db.CopyFrom(ctx, []string{"staging_meeting_times"}, []string{"id", "section_id", "term_season", "term_year", "course_id", "school_id", "start_date", "end_date", "meeting_type", "start_minutes", "end_minutes", "is_monday", "is_tuesday", "is_wednesday", "is_friday", "is_saturday", "is_sunday"}, &iteratorForStageMeetingTimes{rows: arg})
+}
+
+// iteratorForStageSections implements pgx.CopyFromSource.
+type iteratorForStageSections struct {
+	rows                 []StageSectionsParams
+	skippedFirstNextCall bool
+}
+
+func (r *iteratorForStageSections) Next() bool {
+	if len(r.rows) == 0 {
+		return false
+	}
+	if !r.skippedFirstNextCall {
+		r.skippedFirstNextCall = true
+		return true
+	}
+	r.rows = r.rows[1:]
+	return len(r.rows) > 0
+}
+
+func (r iteratorForStageSections) Values() ([]interface{}, error) {
 	return []interface{}{
 		r.rows[0].ID,
 		r.rows[0].Campus,
 		r.rows[0].CourseID,
-		r.rows[0].SchoolID,
-		r.rows[0].TermYear,
-		r.rows[0].TermSeason,
+		r.rows[0].Schoolid,
+		r.rows[0].Termyear,
+		r.rows[0].Termseason,
 		r.rows[0].Enrollment,
-		r.rows[0].MaxEnrollment,
-		r.rows[0].InstructionMethod,
-		r.rows[0].PrimaryFacultyID,
+		r.rows[0].Maxenrollment,
+		r.rows[0].Instructionmethod,
+		r.rows[0].Primaryfacultyid,
 	}, nil
 }
 
-func (r iteratorForUpsertSections) Err() error {
+func (r iteratorForStageSections) Err() error {
 	return nil
 }
 
-// INSERT INTO sections
-//
-//	(sections.id, sections.campus, sections.course_id,
-//	    sections.school_id, sections.term_year, sections.term_season,
-//	    sections.enrollment, sections.max_enrollment, sections.instruction_method,
-//	    sections.primary_faculty_id, sections.campus)
-//
-// VALUES
-//
-//	(@id, @campus, @course_id,
-//	    @school_id, @term_year, @term_season,
-//	    @enrollment, @max_enrollment, @instruction_method,
-//	    @primary_faculty_id, @campus)
-//
-// ON CONFLICT (sections.id, sections.term_year, sections.term_season, sections.course_id, sections.school_id)
-// DO UPDATE SET
-//
-//	sections.enrollment = @enrollment,
-//	sections.max_enrollment = @max_enrollment,
-//	sections.primary_faculty_id = @primary_faculty_id
-func (q *Queries) UpsertSections(ctx context.Context, arg []UpsertSectionsParams) (int64, error) {
-	return q.db.CopyFrom(ctx, []string{"sections"}, []string{"id", "campus", "course_id", "school_id", "term_year", "term_season", "enrollment", "max_enrollment", "instruction_method", "primary_faculty_id"}, &iteratorForUpsertSections{rows: arg})
+func (q *Queries) StageSections(ctx context.Context, arg []StageSectionsParams) (int64, error) {
+	return q.db.CopyFrom(ctx, []string{"staging_sections"}, []string{"id", "campus", "course_id", "school_id", "term_year", "term_season", "enrollment", "max_enrollment", "instruction_method", "primary_faculty_id"}, &iteratorForStageSections{rows: arg})
 }

@@ -1,31 +1,56 @@
 -- name: ListCourses :many
 SELECT * FROM courses;
 
--- name: UpsertSections :copyfrom
--- INSERT INTO sections 
---     (sections.id, sections.campus, sections.course_id, 
---         sections.school_id, sections.term_year, sections.term_season, 
---         sections.enrollment, sections.max_enrollment, sections.instruction_method,
---         sections.primary_faculty_id, sections.campus)
--- VALUES
---     (@id, @campus, @course_id,
---         @school_id, @term_year, @term_season,
---         @enrollment, @max_enrollment, @instruction_method,
---         @primary_faculty_id, @campus)
--- ON CONFLICT (sections.id, sections.term_year, sections.term_season, sections.course_id, sections.school_id)
--- DO UPDATE SET 
---     sections.enrollment = @enrollment,
---     sections.max_enrollment = @max_enrollment,
---     sections.primary_faculty_id = @primary_faculty_id
+-- name: TruncateStagingSections :exec
+TRUNCATE TABLE staging_sections;
 
--- name: UpsertSections :copyfrom
-INSERT INTO sections 
+-- name: TruncateStagingMeetingTimes :exec
+TRUNCATE TABLE staging_meeting_times;
+
+-- name: StageSections :copyfrom
+INSERT INTO staging_sections 
     (id, campus, course_id, 
         school_id, term_year, term_season, 
         enrollment, max_enrollment, instruction_method,
-        primary_faculty_id)
+        primary_faculty_id, campus)
 VALUES
-    ($1, $2, $3,
-        $4, $5, $6,
-        $7, $8, $9,
-        $10);
+    (@id, @campus, @course_id,
+        @schoolId, @termYear, @termSeason,
+        @enrollment, @maxEnrollment, @instructionMethod,
+        @primaryFacultyId, @campus);
+
+-- name: StageMeetingTimes :copyfrom
+INSERT INTO staging_meeting_times 
+    ( section_id, term_season, 
+        term_year, course_id, school_id, 
+        start_date, end_date, meeting_type,
+        start_minutes, end_minutes, is_monday,
+        is_tuesday, is_wednesday, is_friday,
+        is_saturday, is_sunday)
+VALUES
+    ( @sectionId, @termSeason, 
+        @termYear, @courseId, @schoolId, 
+        @startDate, @endDate, @meetingType,
+        @startMinutes, @endMinutes, @isMonday,
+        @isTuesday, @isWednesday, @isFriday,
+        @isSaturday, @isSunday);
+
+-- name: UpsertFaculty :exec
+INSERT INTO faculty_members
+    (id, school_id, name,
+        email_address, first_name, last_name)
+VALUES
+    (@id, @schoolId, @name,
+        @emailAddress, @firstName, @lastName)
+ON CONFLICT DO NOTHING;
+
+-- name: UpsertCourses :exec
+INSERT INTO courses
+    ( id, school_id, subject_code,
+        number, subject_description, title,
+        description, credit_hours)
+VALUES 
+    ( @id, @schoolId, @subjectCode,
+        @number, @subjectDescription, @title,
+        @description, @creditHours)
+ON CONFLICT DO NOTHING;
