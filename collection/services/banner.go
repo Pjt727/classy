@@ -248,10 +248,10 @@ func insertGroupOfSections(
 		return err
 	}
 
-	var dbSections []db.Section
-	var meetingTimes []db.MeetingTime
-	facultyMembers := make(map[string]db.FacultyMember)
-	courses := make(map[string]db.Course)
+	var dbSections []db.StageSectionsParams
+	var meetingTimes []db.StageMeetingTimesParams
+	facultyMembers := make(map[string]db.UpsertFacultyParams)
+	courses := make(map[string]db.UpsertCoursesParams)
 	for _, section := range sections.Sections {
 		primaryFac := pgtype.Text{String: "", Valid: false}
 		// add all fac regardless of whether they are the main teacher
@@ -279,13 +279,13 @@ func insertGroupOfSections(
 				lastName.Valid = true
 			}
 
-			facultyMember := db.FacultyMember{
+			facultyMember := db.UpsertFacultyParams{
 				ID:           facID,
-				SchoolID:     schoolId,
+				Schoolid:     schoolId,
 				Name:         fac.DisplayName,
-				EmailAddress: pgtype.Text{String: fac.EmailAddress, Valid: true},
-				FirstName:    firstName,
-				LastName:     lastName,
+				Emailaddress: pgtype.Text{String: fac.EmailAddress, Valid: true},
+				Firstname:    firstName,
+				Lastname:     lastName,
 			}
 			facultyMembers[facID] = facultyMember
 		}
@@ -313,9 +313,9 @@ func insertGroupOfSections(
 				endDate.Time = endDateTime
 				endDate.Valid = true
 			}
-			dbMeetingTime := db.MeetingTime{
-				SectionID:    sectionId,
-				TermSeason:   term.Season,
+			dbMeetingTime := db.StageMeetingTimesParams{
+				Sectionid:    sectionId,
+				Termseason:   term.Season,
 				TermYear:     term.Year,
 				CourseID:     courseId,
 				SchoolID:     schoolId,
@@ -324,13 +324,13 @@ func insertGroupOfSections(
 				MeetingType:  pgtype.Text{String: meetingTime.MeetingType, Valid: false},
 				StartMinutes: toBannerTime(meetingTime.StartTime),
 				EndMinutes:   toBannerTime(meetingTime.EndTime),
-				IsMonday:     meetingTime.Monday,
-				IsTuesday:    meetingTime.Tuesday,
-				IsWednesday:  meetingTime.Wednesday,
-				IsThursday:   meetingTime.Thursday,
-				IsFriday:     meetingTime.Friday,
-				IsSaturday:   meetingTime.Saturday,
-				IsSunday:     meetingTime.Sunday,
+				Ismonday:     meetingTime.Monday,
+				Istuesday:    meetingTime.Tuesday,
+				Iswednesday:  meetingTime.Wednesday,
+				Isthursday:   meetingTime.Thursday,
+				Isfriday:     meetingTime.Friday,
+				Issaturday:   meetingTime.Saturday,
+				Issunday:     meetingTime.Sunday,
 			}
 			meetingTimes = append(meetingTimes, dbMeetingTime)
 

@@ -45,7 +45,6 @@ func (q *Queries) ListCourses(ctx context.Context) ([]Course, error) {
 }
 
 type StageMeetingTimesParams struct {
-	ID           pgtype.Int4
 	Sectionid    pgtype.Text
 	Termseason   NullSeasonEnum
 	Termyear     pgtype.Int4
@@ -59,6 +58,7 @@ type StageMeetingTimesParams struct {
 	Ismonday     bool
 	Istuesday    bool
 	Iswednesday  bool
+	Isthursday   bool
 	Isfriday     bool
 	Issaturday   bool
 	Issunday     bool
@@ -97,13 +97,14 @@ func (q *Queries) TruncateStagingSections(ctx context.Context) error {
 
 const upsertCourses = `-- name: UpsertCourses :exec
 INSERT INTO courses
-    ( id, school_id, subject_code,
+    (id, school_id, subject_code,
         number, subject_description, title,
         description, credit_hours)
 VALUES 
-    ( $1, $2, $3,
+    ($1, $2, $3,
         $4, $5, $6,
         $7, $8)
+ON CONFLICT DO NOTHING
 `
 
 type UpsertCoursesParams struct {
@@ -138,6 +139,7 @@ INSERT INTO faculty_members
 VALUES
     ($1, $2, $3,
         $4, $5, $6)
+ON CONFLICT DO NOTHING
 `
 
 type UpsertFacultyParams struct {

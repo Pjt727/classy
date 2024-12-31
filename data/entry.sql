@@ -21,19 +21,19 @@ VALUES
 
 -- name: StageMeetingTimes :copyfrom
 INSERT INTO staging_meeting_times 
-    ( section_id, term_season, 
+    (section_id, term_season, 
         term_year, course_id, school_id, 
         start_date, end_date, meeting_type,
         start_minutes, end_minutes, is_monday,
-        is_tuesday, is_wednesday, is_friday,
-        is_saturday, is_sunday)
+        is_tuesday, is_wednesday, is_thursday,
+        is_friday, is_saturday, is_sunday)
 VALUES
-    ( @sectionId, @termSeason, 
+    (@sectionId, @termSeason, 
         @termYear, @courseId, @schoolId, 
         @startDate, @endDate, @meetingType,
         @startMinutes, @endMinutes, @isMonday,
-        @isTuesday, @isWednesday, @isFriday,
-        @isSaturday, @isSunday);
+        @isTuesday, @isWednesday, @isThursday,
+        @isFriday, @isSaturday, @isSunday);
 
 -- name: UpsertFaculty :exec
 INSERT INTO faculty_members
@@ -46,11 +46,11 @@ ON CONFLICT DO NOTHING;
 
 -- name: UpsertCourses :exec
 INSERT INTO courses
-    ( id, school_id, subject_code,
+    (id, school_id, subject_code,
         number, subject_description, title,
         description, credit_hours)
 VALUES 
-    ( @id, @schoolId, @subjectCode,
+    (@id, @schoolId, @subjectCode,
         @number, @subjectDescription, @title,
         @description, @creditHours)
 ON CONFLICT DO NOTHING;
