@@ -54,3 +54,8 @@ VALUES
         @number, @subjectDescription, @title,
         @description, @creditHours)
 ON CONFLICT DO NOTHING;
+
+-- name: UpdateSchools :exec
+INSERT INTO schools
+    ()
+;
