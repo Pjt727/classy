@@ -12,10 +12,8 @@ type Service interface {
 	// adds every section to database and returns the amount changed
 	GetAllSections(logger log.Entry, school db.School, term db.Term) int
 
-	// Is this term no longer getting updates and thus does not need be scraped
-	IsTermDone(logger log.Entry, school db.School, term db.Term) bool
-
-	UpdateTermsCollections(logger log.Entry, school db.School, term db.Term) []db.Ter
+	// update the terms that for this service
+	UpdateTermsCollections(logger log.Entry, school db.School, term db.Term) []db.TermCollection
 }
 
 func getTermLogger(school string, term db.Term) log.Entry {

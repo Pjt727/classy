@@ -37,3 +37,12 @@ endDatepicker=
 # GET https://ssb1-reg.banner.marist.edu/StudentRegistrationSsb/ssb/searchResults/searchResults?txt_term={{term}}&startDatepicker=&endDatepicker=&uniqueSessionId=rvboz1735403153035&pageOffset=10&pageMaxSize=10&sortColumn=subjectDescription&sortDirection=asc
 GET https://ssb1-reg.banner.marist.edu/StudentRegistrationSsb/ssb/searchResults/searchResults?txt_term={{term}}&pageOffset=0&pageMaxSize=1
 Cookie: JSESSIONID={{REQUEST_SEARCH_PAGE.response.cookies.JSESSIONID.value}}
+
+###
+
+# get the terms to see which ones need be scraped
+# if they have (View Only) in them then they shouldn't
+#     change that often
+GET https://ssb1-reg.banner.marist.edu/StudentRegistrationSsb/ssb/classSearch/getTerms?searchTerm=&offset=1&max=100
+
+
