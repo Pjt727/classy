@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Pjt727/classy/collection"
 	"github.com/Pjt727/classy/data/db"
 	"github.com/jackc/pgx/v5/pgtype"
 	log "github.com/sirupsen/logrus"
@@ -33,7 +34,7 @@ func termConversion(term db.Term) string {
 	return strconv.Itoa(int(term.Year)) + seasonString
 }
 
-func getSections(
+func (s *Banner) getSections(
 	logger *log.Entry,
 	schoolId string,
 	hostname string,
@@ -316,14 +317,14 @@ func insertGroupOfSections(
 			dbMeetingTime := db.StageMeetingTimesParams{
 				Sectionid:    sectionId,
 				Termseason:   term.Season,
-				TermYear:     term.Year,
-				CourseID:     courseId,
-				SchoolID:     schoolId,
-				StartDate:    startDate,
-				EndDate:      endDate,
-				MeetingType:  pgtype.Text{String: meetingTime.MeetingType, Valid: false},
-				StartMinutes: toBannerTime(meetingTime.StartTime),
-				EndMinutes:   toBannerTime(meetingTime.EndTime),
+				Termyear:     term.Year,
+				Courseid:     courseId,
+				Schoolid:     schoolId,
+				Startdate:    startDate,
+				Enddate:      endDate,
+				Meetingtype:  pgtype.Text{String: meetingTime.MeetingType, Valid: false},
+				Startminutes: toBannerTime(meetingTime.StartTime),
+				Endminutes:   toBannerTime(meetingTime.EndTime),
 				Ismonday:     meetingTime.Monday,
 				Istuesday:    meetingTime.Tuesday,
 				Iswednesday:  meetingTime.Wednesday,
@@ -363,4 +364,16 @@ func insertGroupOfSections(
 	}
 
 	return nil
+}
+
+type Banner struct{}
+
+var instance *Banner
+var once sync.Once
+
+func GetBanner() *Banner {
+	once.Do(func() {
+		instance = &Banner{}
+	})
+	return instance
 }

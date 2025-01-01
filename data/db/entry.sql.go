@@ -45,11 +45,11 @@ func (q *Queries) ListCourses(ctx context.Context) ([]Course, error) {
 }
 
 type StageMeetingTimesParams struct {
-	Sectionid    pgtype.Text
-	Termseason   NullSeasonEnum
-	Termyear     pgtype.Int4
-	Courseid     pgtype.Text
-	Schoolid     pgtype.Text
+	Sectionid    string
+	Termseason   SeasonEnum
+	Termyear     int32
+	Courseid     string
+	Schoolid     string
 	Startdate    pgtype.Timestamp
 	Enddate      pgtype.Timestamp
 	Meetingtype  pgtype.Text
@@ -65,12 +65,12 @@ type StageMeetingTimesParams struct {
 }
 
 type StageSectionsParams struct {
-	ID                pgtype.Text
+	ID                string
 	Campus            pgtype.Text
-	CourseID          pgtype.Text
-	Schoolid          pgtype.Text
-	Termyear          pgtype.Int4
-	Termseason        NullSeasonEnum
+	CourseID          string
+	Schoolid          string
+	Termyear          int32
+	Termseason        SeasonEnum
 	Enrollment        pgtype.Int4
 	Maxenrollment     pgtype.Int4
 	Instructionmethod pgtype.Text

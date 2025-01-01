@@ -96,6 +96,13 @@ type MeetingTime struct {
 	IsSunday     bool
 }
 
+type PreviousFullSectionCollection struct {
+	SchoolID       string
+	Year           int32
+	Season         SeasonEnum
+	TimeCollection pgtype.Timestamptz
+}
+
 type School struct {
 	ID   string
 	Name pgtype.Text
@@ -115,12 +122,12 @@ type Section struct {
 }
 
 type StagingMeetingTime struct {
-	ID           pgtype.Int4
-	SectionID    pgtype.Text
-	TermSeason   NullSeasonEnum
-	TermYear     pgtype.Int4
-	CourseID     pgtype.Text
-	SchoolID     pgtype.Text
+	ID           int32
+	SectionID    string
+	TermSeason   SeasonEnum
+	TermYear     int32
+	CourseID     string
+	SchoolID     string
 	StartDate    pgtype.Timestamp
 	EndDate      pgtype.Timestamp
 	MeetingType  pgtype.Text
@@ -136,11 +143,11 @@ type StagingMeetingTime struct {
 }
 
 type StagingSection struct {
-	ID                pgtype.Text
-	TermSeason        NullSeasonEnum
-	TermYear          pgtype.Int4
-	CourseID          pgtype.Text
-	SchoolID          pgtype.Text
+	ID                string
+	TermSeason        SeasonEnum
+	TermYear          int32
+	CourseID          string
+	SchoolID          string
 	MaxEnrollment     pgtype.Int4
 	InstructionMethod pgtype.Text
 	Campus            pgtype.Text
@@ -151,4 +158,11 @@ type StagingSection struct {
 type Term struct {
 	Year   int32
 	Season SeasonEnum
+}
+
+type TermCollection struct {
+	SchoolID        string
+	Year            int32
+	Season          SeasonEnum
+	StillCollecting pgtype.Bool
 }

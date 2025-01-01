@@ -14,6 +14,8 @@ type Service interface {
 
 	// Is this term no longer getting updates and thus does not need be scraped
 	IsTermDone(logger log.Entry, school db.School, term db.Term) bool
+
+	UpdateTermsCollections(logger log.Entry, school db.School, term db.Term) []db.Ter
 }
 
 func getTermLogger(school string, term db.Term) log.Entry {

@@ -14,6 +14,25 @@ CREATE TABLE terms (
     PRIMARY KEY (year, season)
 );
 
+CREATE TABLE term_collections (
+    school_id TEXT,
+    year INT,
+    season season_enum,
+
+    still_collecting BOOL,
+    FOREIGN KEY (school_id) REFERENCES schools(id),
+    FOREIGN KEY (year, season) REFERENCES terms(year, season),
+    PRIMARY KEY (school_id, year, season)
+);
+
+CREATE TABLE previous_full_section_collections (
+    school_id TEXT,
+    year INT,
+    season season_enum,
+    time_collection TIMESTAMP WITH TIME ZONE,
+    FOREIGN KEY (school_id, year, season) REFERENCES term_collections(school_id, year, season),
+    PRIMARY KEY (school_id, year, season, time_collection)
+);
 
 CREATE TABLE faculty_members (
     id TEXT,
@@ -23,6 +42,7 @@ CREATE TABLE faculty_members (
     email_address TEXT,
     first_name TEXT,
     last_name TEXT,
+    FOREIGN KEY (school_id) REFERENCES schools(id),
     PRIMARY KEY (id, school_id)
 );
 
@@ -59,11 +79,11 @@ CREATE TABLE sections (
 );
 
 CREATE TABLE staging_sections (
-    id TEXT,
-    term_season season_enum,
-    term_year INT,
-    course_id TEXT,
-    school_id TEXT,
+    id TEXT NOT NULL,
+    term_season season_enum NOT NULL,
+    term_year INT NOT NULL,
+    course_id TEXT NOT NULL,
+    school_id TEXT NOT NULL,
 
     max_enrollment INTEGER,
     instruction_method TEXT,
@@ -98,12 +118,12 @@ CREATE TABLE meeting_times (
 );
 
 CREATE TABLE staging_meeting_times (
-    id SERIAL,
-    section_id TEXT,
-    term_season season_enum,
-    term_year INT,
-    course_id TEXT,
-    school_id TEXT,
+    id SERIAL NOT NULL,
+    section_id TEXT NOT NULL,
+    term_season season_enum NOT NULL,
+    term_year INT NOT NULL,
+    course_id TEXT NOT NULL,
+    school_id TEXT NOT NULL,
 
     start_date TIMESTAMP,
     end_date TIMESTAMP,

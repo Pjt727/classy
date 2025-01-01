@@ -56,6 +56,6 @@ VALUES
 ON CONFLICT DO NOTHING;
 
 -- name: UpdateSchools :exec
-INSERT INTO schools
-    ()
-;
+-- INSERT INTO schools
+--     ()
+-- ;
