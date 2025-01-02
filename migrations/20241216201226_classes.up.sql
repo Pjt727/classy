@@ -4,7 +4,7 @@ CREATE TYPE season_enum AS ENUM ('Spring', 'Fall', 'Winter', 'Summer');
 
 CREATE TABLE schools (
     id TEXT PRIMARY KEY,
-    name TEXT
+    name TEXT NOT NULL
 );
 
 CREATE TABLE terms (

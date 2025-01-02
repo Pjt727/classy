@@ -2,8 +2,10 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"net/http"
 	"net/url"
@@ -12,37 +14,131 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Pjt727/classy/collection"
 	"github.com/Pjt727/classy/data/db"
 	"github.com/jackc/pgx/v5/pgtype"
 	log "github.com/sirupsen/logrus"
 )
 
-func termConversion(term db.Term) string {
-	var seasonString string
-	if term.Season == db.SeasonEnumWinter {
-		seasonString = "10"
-	} else if term.Season == db.SeasonEnumSpring {
-		seasonString = "20"
-	} else if term.Season == db.SeasonEnumSummer {
-		seasonString = "30"
-	} else if term.Season == db.SeasonEnumFall {
-		seasonString = "40"
-	} else {
-		panic("Invalid year / season")
-	}
-	return strconv.Itoa(int(term.Year)) + seasonString
+type bannerSchool struct {
+	school   db.School
+	hostname string
 }
 
-func (s *Banner) getSections(
-	logger *log.Entry,
-	schoolId string,
-	hostname string,
+type banner struct {
+	schools map[string]bannerSchool
+}
+
+var Banner *banner
+var once sync.Once
+
+func init() {
+	marist := db.School{ID: "marist", Name: "Marist University"}
+	schools := map[string]bannerSchool{
+		marist.ID: {school: marist, hostname: "ssb1-reg.banner.marist.edu"},
+	}
+	Banner = &banner{schools: schools}
+}
+
+func (b *banner) ListValidSchools(
+	logger log.Entry,
+	ctx context.Context,
+	q *db.Queries,
+) ([]db.School, error) {
+	schools := make([]db.School, len(b.schools))
+	for _, schoolEntry := range b.schools {
+		schools = append(schools, schoolEntry.school)
+	}
+	return schools, nil
+}
+
+type bannerTerm struct {
+	Code        string `json:"code"`
+	Description string `json:"description"`
+}
+
+func (b *banner) GetTermCollections(
+	logger log.Entry,
+	ctx context.Context,
+	q *db.Queries,
+	school db.School,
 	term db.Term,
-) error {
+) ([]db.TermCollection, error) {
+	const MAX_TERMS_COUNT = "100"
+	var termCollection []db.TermCollection
+
+	hostname, err := b.getHostname(school)
+	if err != nil {
+		logger.Error("Error getting school entry: ", err)
+		return termCollection, err
+	}
+	req, err := http.NewRequest(
+		"GET",
+		"https://"+hostname+"/StudentRegistrationSsb/ssb/classSearch/getTerms?searchTerm=&offset=1&max="+MAX_TERMS_COUNT,
+		nil,
+	)
+	if err != nil {
+		logger.Error("Error creating term request: ", err)
+		return termCollection, err
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		logger.Error("Error getting term response: ", err)
+		return termCollection, err
+	}
+	defer resp.Body.Close()
+	var terms []bannerTerm
+	if err := json.NewDecoder(resp.Body).Decode(&terms); err != nil {
+		logger.Error("Error decoding terms: ", err)
+		return termCollection, err
+	}
+
+	for _, term := range terms {
+		// example terms:
+		// {
+		//   "code": "202520",
+		//   "description": "Spring 2025"
+		// }
+		// {
+		//   "code": "202510",
+		//   "description": "Winter 2025 (View Only)"
+		// },
+		t, err := inverseTermConversion(term.Code)
+		if err != nil {
+			logger.Error("Error decoding term code: ", err)
+			return termCollection, err
+		}
+		// the View Only appears on all terms which probably wont update
+		stillCollecting := !strings.HasSuffix(term.Description, "(View Only)")
+
+		termCollection = append(termCollection, db.TermCollection{
+			SchoolID:        school.Name,
+			Year:            t.Year,
+			Season:          t.Season,
+			StillCollecting: pgtype.Bool{Bool: stillCollecting, Valid: true},
+		})
+	}
+
+	return termCollection, nil
+}
+
+func (b *banner) UpdateAllSections(
+	logger log.Entry,
+	ctx context.Context,
+	q *db.Queries,
+	school db.School,
+	term db.Term,
+) (int, error) {
 	const MAX_PAGE_SIZE = 200 // the max this value can do is 500 more
 	logger.Info("Starting full section")
 	termStr := termConversion(term)
+	hostname, err := b.getHostname(school)
+	if err != nil {
+		logger.Error("Error getting school entry: ", err)
+		return 0, err
+	}
+
 	// Get a banner cookie
 	req, err := http.NewRequest(
 		"GET",
@@ -51,13 +147,13 @@ func (s *Banner) getSections(
 	)
 	if err != nil {
 		logger.Error("Error creating cookie request: ", err)
-		return err
+		return 0, err
 	}
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		logger.Error("Error getting cookie request: ", err)
-		return err
+		logger.Error("Error getting cookie response: ", err)
+		return 0, err
 	}
 	resp.Body.Close()
 	// Extract the JSESSIONID cookie
@@ -77,7 +173,7 @@ func (s *Banner) getSections(
 	)
 	if err != nil {
 		logger.Error("Error making request to set term: ", err)
-		return err
+		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
@@ -85,7 +181,7 @@ func (s *Banner) getSections(
 	resp, err = client.Do(req)
 	if err != nil {
 		logger.Error("Error setting term: ", err)
-		return err
+		return 0, err
 	}
 	resp.Body.Close()
 	// Make a request to get sections
@@ -96,7 +192,7 @@ func (s *Banner) getSections(
 	)
 	if err != nil {
 		log.Error("Error creating request:", err)
-		return err
+		return 0, err
 	}
 	req.AddCookie(cookie)
 	req.URL.Query().Set("txt_term", termStr)
@@ -106,7 +202,7 @@ func (s *Banner) getSections(
 	resp, err = client.Do(req)
 	if err != nil {
 		log.Println("Error requesting first sections: ", err)
-		return err
+		return 0, err
 	}
 	defer resp.Body.Close()
 	type Sectioncount struct {
@@ -115,7 +211,7 @@ func (s *Banner) getSections(
 	var sectionCount Sectioncount
 	if err := json.NewDecoder(resp.Body).Decode(&sectionCount); err != nil {
 		logger.Error("Error decoding first sections: ", err)
-		return err
+		return 0, err
 	}
 	count := sectionCount.Count
 	logger.Info("starting collection on", count, "sections")
@@ -134,7 +230,7 @@ func (s *Banner) getSections(
 		workersReq.URL.Query().Set("pageMaxSize", strconv.Itoa(MAX_PAGE_SIZE))
 		go func(req http.Request) {
 			defer wg.Done()
-			err := insertGroupOfSections(workerLog, workersReq, schoolId, term)
+			err := insertGroupOfSections(workerLog, workersReq, school.ID, term)
 			if err != nil {
 				errCh <- err
 			}
@@ -146,16 +242,67 @@ func (s *Banner) getSections(
 		logger.Error("There was an error searching sections: ", err)
 	}
 	if len(errCh) > 0 {
-		return errors.New("error searching sections")
+		return 0, errors.New("error searching sections")
 	}
 
 	logger.Info(count, "sections finished")
-	return nil
+	return 0, nil
+}
+
+func (b *banner) getHostname(school db.School) (string, error) {
+	schoolEntry, ok := b.schools[school.ID]
+	if !ok {
+		err := errors.New(fmt.Sprint("school not there: ", school))
+		return "", err
+	}
+	hostname := schoolEntry.hostname
+	return hostname, nil
+}
+
+func termConversion(term db.Term) string {
+	var seasonString string
+	if term.Season == db.SeasonEnumWinter {
+		seasonString = "10"
+	} else if term.Season == db.SeasonEnumSpring {
+		seasonString = "20"
+	} else if term.Season == db.SeasonEnumSummer {
+		seasonString = "30"
+	} else if term.Season == db.SeasonEnumFall {
+		seasonString = "40"
+	} else {
+		panic("Invalid year / season")
+	}
+	return strconv.Itoa(int(term.Year)) + seasonString
+}
+
+func inverseTermConversion(term string) (db.Term, error) {
+	var dbTerm db.Term
+	if len(term) != 6 {
+		err := errors.New(fmt.Sprint("term not right size must be 6: ", term))
+		return dbTerm, err
+	}
+	year, _ := strconv.Atoi(term[:4])
+	strSeason := term[4:]
+	var season db.SeasonEnum
+	if strSeason == "10" {
+		season = db.SeasonEnumWinter
+	} else if strSeason == "20" {
+		season = db.SeasonEnumSpring
+	} else if strSeason == "30" {
+		season = db.SeasonEnumSummer
+	} else if strSeason == "40" {
+		season = db.SeasonEnumFall
+	} else {
+		err := errors.New(fmt.Sprint("invalid season section of term: ", term))
+		return dbTerm, err
+	}
+	dbTerm = db.Term{Year: int32(year), Season: season}
+	return dbTerm, nil
 }
 
 // json types for the insertions
 
-type MeetingTime struct {
+type meetingTime struct {
 	Monday      bool        `json:"monday"`
 	Tuesday     bool        `json:"tuesday"`
 	Wednesday   bool        `json:"wednesday"`
@@ -171,17 +318,17 @@ type MeetingTime struct {
 	EndDate     string      `json:"endDate"`
 }
 
-type MeetingsFaculty struct {
-	MeetingTime MeetingTime `json:"meetingTime"`
+type meetingsFaculty struct {
+	MeetingTime meetingTime `json:"meetingTime"`
 }
 
-type Faculty struct {
+type faculty struct {
 	DisplayName      string `json:"displayName"`
 	EmailAddress     string `json:"emailAddress"`
 	PrimaryIndicator bool   `json:"primaryIndicator"`
 }
 
-type Section struct {
+type section struct {
 	ID                  string            `json:"id"`
 	Term                string            `json:"term"`
 	CourseNumber        string            `json:"courseNumber"`
@@ -192,16 +339,16 @@ type Section struct {
 	MaximumEnrollment   int32             `json:"maximumEnrollment"`
 	InstructionalMethod string            `json:"instructionalMethod"`
 	OpenSection         bool              `json:"openSection"`
-	MeetingFaculty      []MeetingsFaculty `json:"meetingsFaculty"`
-	Faculty             []Faculty         `json:"faculty"`
+	MeetingFaculty      []meetingsFaculty `json:"meetingsFaculty"`
+	Faculty             []faculty         `json:"faculty"`
 	Credits             uint8             `json:"creditHourLow"`
 	SubjectCourse       string            `json:"subjectCourse"`
 	SubjectDescription  string            `json:"subjectDescription"`
 	CampusDescription   string            `json:"campusDescription"`
 }
 
-type SectionSearch struct {
-	Sections []Section `json:"data"`
+type sectionSearch struct {
+	Sections []section `json:"data"`
 }
 
 func toBannerTime(dbTime pgtype.Text) pgtype.Time {
@@ -243,7 +390,7 @@ func insertGroupOfSections(
 		return err
 	}
 
-	var sections SectionSearch
+	var sections sectionSearch
 	if err := json.NewDecoder(resp.Body).Decode(&sections); err != nil {
 		logger.Error("Error decoding sections: ", err)
 		return err
@@ -253,10 +400,10 @@ func insertGroupOfSections(
 	var meetingTimes []db.StageMeetingTimesParams
 	facultyMembers := make(map[string]db.UpsertFacultyParams)
 	courses := make(map[string]db.UpsertCoursesParams)
-	for _, section := range sections.Sections {
+	for _, s := range sections.Sections {
 		primaryFac := pgtype.Text{String: "", Valid: false}
 		// add all fac regardless of whether they are the main teacher
-		for _, fac := range section.Faculty {
+		for _, fac := range s.Faculty {
 			if fac.EmailAddress == "" {
 				// professors without emails do not deserve to be put in the database
 				continue
@@ -290,9 +437,9 @@ func insertGroupOfSections(
 			}
 			facultyMembers[facID] = facultyMember
 		}
-		courseId := section.Subject + "," + section.CourseNumber
-		sectionId := courseId + "," + section.SequenceNumber
-		for _, meeting := range section.MeetingFaculty {
+		courseId := s.Subject + "," + s.CourseNumber
+		sectionId := courseId + "," + s.SequenceNumber
+		for _, meeting := range s.MeetingFaculty {
 			meetingTime := meeting.MeetingTime
 			// ex format:
 			// "meetingTime": {
@@ -336,44 +483,32 @@ func insertGroupOfSections(
 			meetingTimes = append(meetingTimes, dbMeetingTime)
 
 		}
-		dbSection := db.Section{
+		dbSection := db.StageSectionsParams{
 			ID:                sectionId,
-			TermSeason:        term.Season,
-			TermYear:          term.Year,
+			Termseason:        term.Season,
+			Termyear:          term.Year,
 			CourseID:          courseId,
-			SchoolID:          schoolId,
-			MaxEnrollment:     pgtype.Int4{Int32: section.MaximumEnrollment, Valid: true},
-			InstructionMethod: pgtype.Text{String: section.InstructionalMethod, Valid: true},
-			Campus:            pgtype.Text{String: section.CampusDescription, Valid: true},
-			Enrollment:        pgtype.Int4{Int32: section.MaximumEnrollment, Valid: true},
-			PrimaryFacultyID:  primaryFac,
+			Schoolid:          schoolId,
+			Maxenrollment:     pgtype.Int4{Int32: s.MaximumEnrollment, Valid: true},
+			Instructionmethod: pgtype.Text{String: s.InstructionalMethod, Valid: true},
+			Campus:            pgtype.Text{String: s.CampusDescription, Valid: true},
+			Enrollment:        pgtype.Int4{Int32: s.MaximumEnrollment, Valid: true},
+			Primaryfacultyid:  primaryFac,
 		}
-		course := db.Course{
+		course := db.UpsertCoursesParams{
 			ID:                 courseId,
-			SchoolID:           schoolId,
-			SubjectCode:        pgtype.Text{String: section.Subject, Valid: true},
-			Number:             pgtype.Text{String: section.CourseNumber, Valid: true},
-			SubjectDescription: pgtype.Text{String: section.SubjectDescription, Valid: true},
-			Title:              pgtype.Text{String: section.CourseTitle, Valid: true},
+			Schoolid:           schoolId,
+			Subjectcode:        pgtype.Text{String: s.Subject, Valid: true},
+			Number:             pgtype.Text{String: s.CourseNumber, Valid: true},
+			Subjectdescription: pgtype.Text{String: s.SubjectDescription, Valid: true},
+			Title:              pgtype.Text{String: s.CourseTitle, Valid: true},
 			// cannot get the description from here 😥
 			Description: pgtype.Text{String: "", Valid: false},
-			CreditHours: 0,
+			Credithours: 0,
 		}
 		courses[courseId] = course
 		dbSections = append(dbSections, dbSection)
 	}
 
 	return nil
-}
-
-type Banner struct{}
-
-var instance *Banner
-var once sync.Once
-
-func GetBanner() *Banner {
-	once.Do(func() {
-		instance = &Banner{}
-	})
-	return instance
 }

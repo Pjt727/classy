@@ -105,7 +105,7 @@ type PreviousFullSectionCollection struct {
 
 type School struct {
 	ID   string
-	Name pgtype.Text
+	Name string
 }
 
 type Section struct {
