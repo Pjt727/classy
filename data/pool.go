@@ -8,16 +8,17 @@ import (
 
 	"github.com/Pjt727/classy/data/db"
 	"github.com/joho/godotenv"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var (
-	pgQuery *db.Queries
-	pgOnce  sync.Once
+	dbPool *pgxpool.Pool
+	pgOnce sync.Once
 )
 
-func NewQueries(ctx context.Context) (*db.Queries, error) {
+func NewQueries(ctx context.Context) (*pgxpool.Pool, error) {
 
 	err := godotenv.Load()
 
@@ -26,15 +27,19 @@ func NewQueries(ctx context.Context) (*db.Queries, error) {
 	}
 	connString := os.Getenv("DB_CONN")
 
+	var poolErr error = nil
 	pgOnce.Do(func() {
 
-		dbPool, err := pgxpool.New(ctx, connString)
+		pgPool, err := pgxpool.New(ctx, connString)
 		if err != nil {
-			panic(fmt.Errorf("unable to create connection pool: %w", err))
+			log.Error(fmt.Errorf("Unable to create connection pool: %w", err))
+			poolErr = err
 		}
-
-		pgQuery = db.New(dbPool)
+		dbPool = pgPool
 	})
+	if poolErr != nil {
+		return dbPool, err
+	}
 
-	return pgQuery, nil
+	return dbPool, nil
 }

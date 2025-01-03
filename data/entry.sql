@@ -55,7 +55,26 @@ VALUES
         @description, @creditHours)
 ON CONFLICT DO NOTHING;
 
--- name: UpdateSchools :exec
--- INSERT INTO schools
---     ()
--- ;
+-- name: UpsertSchools :exec
+INSERT INTO schools
+    (id, name)
+VALUES
+    (@id, @name)
+ON CONFLICT DO NOTHING;
+
+-- name: UpsertTermCollection :exec
+INSERT INTO term_collections
+    (school_id, year, season, still_collecting)
+VALUES
+    (@schoolId, @year, @season, @stillCollecting)
+ON CONFLICT (school_id, year, season) DO UPDATE
+SET
+    still_collecting = EXCLUDED.still_collecting;
+;
+
+-- name: UpsertTerm :exec
+INSERT INTO terms
+    (year, season)
+VALUES
+    (@year, @season)
+ON CONFLICT DO NOTHING;

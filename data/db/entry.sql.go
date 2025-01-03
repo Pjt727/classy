@@ -162,3 +162,66 @@ func (q *Queries) UpsertFaculty(ctx context.Context, arg UpsertFacultyParams) er
 	)
 	return err
 }
+
+const upsertSchools = `-- name: UpsertSchools :exec
+INSERT INTO schools
+    (id, name)
+VALUES
+    ($1, $2)
+ON CONFLICT DO NOTHING
+`
+
+type UpsertSchoolsParams struct {
+	ID   string
+	Name string
+}
+
+func (q *Queries) UpsertSchools(ctx context.Context, arg UpsertSchoolsParams) error {
+	_, err := q.db.Exec(ctx, upsertSchools, arg.ID, arg.Name)
+	return err
+}
+
+const upsertTerm = `-- name: UpsertTerm :exec
+INSERT INTO terms
+    (year, season)
+VALUES
+    ($1, $2)
+ON CONFLICT DO NOTHING
+`
+
+type UpsertTermParams struct {
+	Year   int32
+	Season SeasonEnum
+}
+
+func (q *Queries) UpsertTerm(ctx context.Context, arg UpsertTermParams) error {
+	_, err := q.db.Exec(ctx, upsertTerm, arg.Year, arg.Season)
+	return err
+}
+
+const upsertTermCollection = `-- name: UpsertTermCollection :exec
+INSERT INTO term_collections
+    (school_id, year, season, still_collecting)
+VALUES
+    ($1, $2, $3, $4)
+ON CONFLICT (school_id, year, season) DO UPDATE
+SET
+    still_collecting = EXCLUDED.still_collecting
+`
+
+type UpsertTermCollectionParams struct {
+	Schoolid        string
+	Year            int32
+	Season          SeasonEnum
+	Stillcollecting pgtype.Bool
+}
+
+func (q *Queries) UpsertTermCollection(ctx context.Context, arg UpsertTermCollectionParams) error {
+	_, err := q.db.Exec(ctx, upsertTermCollection,
+		arg.Schoolid,
+		arg.Year,
+		arg.Season,
+		arg.Stillcollecting,
+	)
+	return err
+}

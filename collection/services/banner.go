@@ -56,15 +56,15 @@ type bannerTerm struct {
 	Description string `json:"description"`
 }
 
+func (b *banner) GetName() string { return "Banner" }
+
 func (b *banner) GetTermCollections(
 	logger log.Entry,
 	ctx context.Context,
-	q *db.Queries,
 	school db.School,
-	term db.Term,
-) ([]db.TermCollection, error) {
+) ([]db.UpsertTermCollectionParams, error) {
 	const MAX_TERMS_COUNT = "100"
-	var termCollection []db.TermCollection
+	var termCollection []db.UpsertTermCollectionParams
 
 	hostname, err := b.getHostname(school)
 	if err != nil {
@@ -112,11 +112,11 @@ func (b *banner) GetTermCollections(
 		// the View Only appears on all terms which probably wont update
 		stillCollecting := !strings.HasSuffix(term.Description, "(View Only)")
 
-		termCollection = append(termCollection, db.TermCollection{
-			SchoolID:        school.Name,
+		termCollection = append(termCollection, db.UpsertTermCollectionParams{
+			Schoolid:        school.Name,
 			Year:            t.Year,
 			Season:          t.Season,
-			StillCollecting: pgtype.Bool{Bool: stillCollecting, Valid: true},
+			Stillcollecting: pgtype.Bool{Bool: stillCollecting, Valid: true},
 		})
 	}
 
@@ -230,7 +230,7 @@ func (b *banner) UpdateAllSections(
 		workersReq.URL.Query().Set("pageMaxSize", strconv.Itoa(MAX_PAGE_SIZE))
 		go func(req http.Request) {
 			defer wg.Done()
-			err := insertGroupOfSections(workerLog, workersReq, school.ID, term)
+			err := insertGroupOfSections(workerLog, workersReq, ctx, q, school.ID, term)
 			if err != nil {
 				errCh <- err
 			}
@@ -380,6 +380,8 @@ func toBannerTime(dbTime pgtype.Text) pgtype.Time {
 func insertGroupOfSections(
 	logger *log.Entry,
 	req *http.Request,
+	ctx context.Context,
+	q *db.Queries,
 	schoolId string,
 	term db.Term,
 ) error {
@@ -508,6 +510,36 @@ func insertGroupOfSections(
 		}
 		courses[courseId] = course
 		dbSections = append(dbSections, dbSection)
+	}
+
+	// insert all of the meetings
+
+	_, err = q.StageMeetingTimes(ctx, meetingTimes)
+	if err != nil {
+		logger.Error("Staging meetings error", err)
+		return err
+	}
+
+	_, err = q.StageSections(ctx, dbSections)
+	if err != nil {
+		logger.Error("Staging sections error", err)
+		return err
+	}
+
+	for _, fac := range facultyMembers {
+		err = q.UpsertFaculty(ctx, fac)
+		if err != nil {
+			logger.Error("Error upserting fac", err)
+			return err
+		}
+	}
+
+	for _, course := range courses {
+		err = q.UpsertCourses(ctx, course)
+		if err != nil {
+			logger.Error("Error upserting course", err)
+			return err
+		}
 	}
 
 	return nil
