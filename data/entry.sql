@@ -35,7 +35,7 @@ VALUES
         @isTuesday, @isWednesday, @isThursday,
         @isFriday, @isSaturday, @isSunday);
 
--- name: UpsertFaculty :exec
+-- name: UpsertFaculty :batchexec
 INSERT INTO faculty_members
     (id, school_id, name,
         email_address, first_name, last_name)
@@ -44,7 +44,7 @@ VALUES
         @emailAddress, @firstName, @lastName)
 ON CONFLICT DO NOTHING;
 
--- name: UpsertCourses :exec
+-- name: UpsertCourses :batchexec
 INSERT INTO courses
     (id, school_id, subject_code,
         number, subject_description, title,
@@ -62,7 +62,7 @@ VALUES
     (@id, @name)
 ON CONFLICT DO NOTHING;
 
--- name: UpsertTermCollection :exec
+-- name: UpsertTermCollection :batchexec
 INSERT INTO term_collections
     (school_id, year, season, still_collecting)
 VALUES
@@ -72,7 +72,7 @@ SET
     still_collecting = EXCLUDED.still_collecting;
 ;
 
--- name: UpsertTerm :exec
+-- name: UpsertTerm :batchexec
 INSERT INTO terms
     (year, season)
 VALUES

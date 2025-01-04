@@ -45,6 +45,9 @@ var orchestrationLogger *log.Entry
 var dbPool *pgxpool.Pool
 
 func init() {
+	schoolIdToService = make(map[string]*Service)
+	schoolIdToSchool = make(map[string]db.School)
+
 	orchestrationLogger = log.WithFields(log.Fields{"job": "orchestration"})
 	serviceEntries = []Service{services.Banner}
 	ctx := context.Background()
@@ -62,6 +65,7 @@ func init() {
 			serviceLogger.Error("Skipping school to service mapping because error: ", err)
 			continue
 		}
+
 		for _, school := range schools {
 			schoolIdToService[school.ID] = &service
 			schoolIdToSchool[school.ID] = school
@@ -96,6 +100,7 @@ func UpsertAllTerms(ctx context.Context) {
 	var wg sync.WaitGroup
 	errCh := make(chan error)
 	numberOfWorkers := len(schoolIdToService)
+	orchestrationLogger.Infof(`Starting to add %d school's terms`, numberOfWorkers)
 	wg.Add(numberOfWorkers)
 	for school_id, s := range schoolIdToService {
 		school := schoolIdToSchool[school_id]
@@ -112,40 +117,57 @@ func UpsertAllTerms(ctx context.Context) {
 			}
 			defer tx.Commit(ctx)
 			q := db.New(tx)
+			logger.Tracef(`starting collection terms`)
 			termCollections, err := (*s).GetTermCollections(logger, ctx, school)
+			logger.Tracef(`finished collection terms`)
 			if err != nil {
 				errCh <- err
+				logger.Trace(`propagating commit err: `, err)
 				tx.Rollback(ctx)
 				return
 			}
 
-			for _, termCollection := range termCollections {
-				// need to also ensure that the term is there
-				err = q.UpsertTerm(ctx, db.UpsertTermParams{
+			logger.Tracef(`starting adding collection terms to db`)
+			terms := make([]db.UpsertTermParams, len(termCollections))
+			for i, termCollection := range termCollections {
+				terms[i] = db.UpsertTermParams{
 					Year:   termCollection.Year,
 					Season: termCollection.Season,
-				})
-				if err != nil {
-					errCh <- err
-					tx.Rollback(ctx)
-					return
-				}
-				err = q.UpsertTermCollection(ctx, termCollection)
-				if err != nil {
-					errCh <- err
-					tx.Rollback(ctx)
-					return
 				}
 			}
+			dt := q.UpsertTerm(ctx, terms)
+			dt.Exec(func(i int, err error) {
+				if err != nil {
+					errCh <- err
+					tx.Rollback(ctx)
+					return
+				}
+			})
+			dtc := q.UpsertTermCollection(ctx, termCollections)
+			dtc.Exec(func(i int, err error) {
+				if err != nil {
+					errCh <- err
+					tx.Rollback(ctx)
+					return
+				}
+			})
+
+			logger.Tracef(`finished adding collection terms to db`)
 		}(school, s, *termLogger)
 	}
-	wg.Wait()
 
+	go func() {
+		wg.Wait()
+		close(errCh)
+	}()
+
+	errorCount := 0
 	for err := range errCh {
 		orchestrationLogger.Error("There was an error collecting terms: ", err)
+		errorCount++
 	}
 
-	orchestrationLogger.Info(numberOfWorkers-len(errCh), "terms added")
+	orchestrationLogger.Infof(`Added %d school's terms successfully`, numberOfWorkers-errorCount)
 
 }
 
@@ -162,7 +184,11 @@ func UpdateAllSectionsOfSchool(ctx context.Context, school_id string, term db.Te
 		return
 	}
 	school := schoolIdToSchool[school_id]
-	updateLogger = orchestrationLogger.WithField("service", (*s).GetName())
+	updateLogger = orchestrationLogger.WithFields(log.Fields{
+		"service": (*s).GetName(),
+		"school":  school,
+		"term":    term,
+	})
 	tx, err := dbPool.Begin(ctx)
 	if err != nil {
 		updateLogger.Error("couldn't begin transaction", updateLogger)
@@ -176,6 +202,6 @@ func UpdateAllSectionsOfSchool(ctx context.Context, school_id string, term db.Te
 		tx.Rollback(ctx)
 		return
 	} else {
-		updateLogger.Info("updated", numOfUpdates, "sections")
+		updateLogger.Infof("updated %d sections", numOfUpdates)
 	}
 }

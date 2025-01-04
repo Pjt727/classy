@@ -45,8 +45,10 @@ func (b *banner) ListValidSchools(
 	q *db.Queries,
 ) ([]db.School, error) {
 	schools := make([]db.School, len(b.schools))
+	i := 0
 	for _, schoolEntry := range b.schools {
-		schools = append(schools, schoolEntry.school)
+		schools[i] = schoolEntry.school
+		i++
 	}
 	return schools, nil
 }
@@ -113,7 +115,7 @@ func (b *banner) GetTermCollections(
 		stillCollecting := !strings.HasSuffix(term.Description, "(View Only)")
 
 		termCollection = append(termCollection, db.UpsertTermCollectionParams{
-			Schoolid:        school.Name,
+			Schoolid:        school.ID,
 			Year:            t.Year,
 			Season:          t.Season,
 			Stillcollecting: pgtype.Bool{Bool: stillCollecting, Valid: true},
@@ -157,14 +159,11 @@ func (b *banner) UpdateAllSections(
 	}
 	resp.Body.Close()
 	// Extract the JSESSIONID cookie
+	// JSESSIONID
 	cookie := resp.Cookies()[0]
 	// Associate the cookie with a term
 	formData := url.Values{
-		"term":            {termStr},
-		"studyPath":       {""},
-		"studyPathText":   {""},
-		"startDatepicker": {""},
-		"endDatepicker":   {""},
+		"term": {termStr},
 	}
 	req, err = http.NewRequest(
 		"POST",
@@ -172,7 +171,7 @@ func (b *banner) UpdateAllSections(
 		bytes.NewBufferString(formData.Encode()),
 	)
 	if err != nil {
-		logger.Error("Error making request to set term: ", err)
+		logger.Error("Error creating request to set term: ", err)
 		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -184,6 +183,7 @@ func (b *banner) UpdateAllSections(
 		return 0, err
 	}
 	resp.Body.Close()
+
 	// Make a request to get sections
 	req, err = http.NewRequest(
 		"GET",
@@ -195,10 +195,13 @@ func (b *banner) UpdateAllSections(
 		return 0, err
 	}
 	req.AddCookie(cookie)
-	req.URL.Query().Set("txt_term", termStr)
-	req.URL.Query().Set("pageOffSet", "0")
-	// get amount of sections for the term
-	req.URL.Query().Set("pageMaxSize", "1")
+	queryParams := url.Values{
+		"txt_term":    {termStr},
+		"pageOffset":  {"0"},
+		"pageMaxSize": {"1"},
+	}
+	req.URL.RawQuery = queryParams.Encode()
+	// dump, _ = httputil.DumpRequestOut(req, true)
 	resp, err = client.Do(req)
 	if err != nil {
 		log.Println("Error requesting first sections: ", err)
@@ -214,7 +217,7 @@ func (b *banner) UpdateAllSections(
 		return 0, err
 	}
 	count := sectionCount.Count
-	logger.Info("starting collection on", count, "sections")
+	logger.Infof("starting collection on %d sections", count)
 
 	var wg sync.WaitGroup
 	errCh := make(chan error)
@@ -226,8 +229,12 @@ func (b *banner) UpdateAllSections(
 			"pageOffSet":  strconv.Itoa(i * MAX_PAGE_SIZE),
 			"pageMaxSize": strconv.Itoa(MAX_PAGE_SIZE),
 		})
-		workersReq.URL.Query().Set("pageOffSet", strconv.Itoa(i*MAX_PAGE_SIZE))
-		workersReq.URL.Query().Set("pageMaxSize", strconv.Itoa(MAX_PAGE_SIZE))
+		queryParams := url.Values{
+			"txt_term":    {termStr},
+			"pageOffset":  {strconv.Itoa(i * MAX_PAGE_SIZE)},
+			"pageMaxSize": {strconv.Itoa(MAX_PAGE_SIZE)},
+		}
+		workersReq.URL.RawQuery = queryParams.Encode()
 		go func(req http.Request) {
 			defer wg.Done()
 			err := insertGroupOfSections(workerLog, workersReq, ctx, q, school.ID, term)
@@ -236,7 +243,11 @@ func (b *banner) UpdateAllSections(
 			}
 		}(*workersReq)
 	}
-	wg.Wait()
+
+	go func() {
+		wg.Wait()
+		close(errCh)
+	}()
 
 	for err := range errCh {
 		logger.Error("There was an error searching sections: ", err)
@@ -245,8 +256,9 @@ func (b *banner) UpdateAllSections(
 		return 0, errors.New("error searching sections")
 	}
 
-	logger.Info(count, "sections finished")
-	return 0, nil
+	logger.Infof("sections finished getting %d sections", count)
+	// TODO change this is something more accurate possibly
+	return count, nil
 }
 
 func (b *banner) getHostname(school db.School) (string, error) {
@@ -329,7 +341,7 @@ type faculty struct {
 }
 
 type section struct {
-	ID                  string            `json:"id"`
+	ID                  int               `json:"id"`
 	Term                string            `json:"term"`
 	CourseNumber        string            `json:"courseNumber"`
 	Subject             string            `json:"subject"`
@@ -516,30 +528,53 @@ func insertGroupOfSections(
 
 	_, err = q.StageMeetingTimes(ctx, meetingTimes)
 	if err != nil {
-		logger.Error("Staging meetings error", err)
+		logger.Error("Staging meetings error ", err)
 		return err
 	}
 
 	_, err = q.StageSections(ctx, dbSections)
 	if err != nil {
-		logger.Error("Staging sections error", err)
+		logger.Error("Staging sections error ", err)
 		return err
 	}
 
-	for _, fac := range facultyMembers {
-		err = q.UpsertFaculty(ctx, fac)
+	batchFacultyMembers := make([]db.UpsertFacultyParams, len(facultyMembers))
+	i := 0
+	for _, facMem := range facultyMembers {
+		batchFacultyMembers[i] = facMem
+		i += 1
+	}
+	buf := q.UpsertFaculty(ctx, batchFacultyMembers)
+
+	var outerErr error = nil
+	buf.Exec(func(i int, err error) {
 		if err != nil {
-			logger.Error("Error upserting fac", err)
-			return err
+			outerErr = err
 		}
+	})
+
+	if outerErr != nil {
+		logger.Error("Error upserting fac ", outerErr)
+		return err
 	}
 
+	batchCourses := make([]db.UpsertCoursesParams, len(courses))
+	i = 0
 	for _, course := range courses {
-		err = q.UpsertCourses(ctx, course)
+		batchCourses[i] = course
+		i += 1
+	}
+
+	bc := q.UpsertCourses(ctx, batchCourses)
+	bc.Exec(func(i int, err error) {
 		if err != nil {
-			logger.Error("Error upserting course", err)
-			return err
+			outerErr = err
 		}
+	})
+
+	if outerErr != nil {
+		logger.Error("Error upserting course", outerErr)
+		return err
 	}
 
 	return nil

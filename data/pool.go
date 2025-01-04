@@ -6,7 +6,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/Pjt727/classy/data/db"
 	"github.com/joho/godotenv"
 	log "github.com/sirupsen/logrus"
 

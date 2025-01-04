@@ -2,7 +2,7 @@
 
 
 @hostname=ssb1-reg.banner.marist.edu
-@term=202520
+@term=202510
 # get a banner cookie
 # @name REQUEST_SEARCH_PAGE
 GET https://{{hostname}}/StudentRegistrationSsb/ssb/term/termSelection?mode=search
@@ -23,11 +23,7 @@ Content-Type: application/x-www-form-urlencoded
 Accept: application/json
 Cookie: JSESSIONID={{REQUEST_SEARCH_PAGE.response.cookies.JSESSIONID.value}}
 
-term={{term}}&
-studyPath=&
-studyPathText=&
-startDatepicker=&
-endDatepicker=
+term={{term}}
 
 ###
 
@@ -45,4 +41,18 @@ Cookie: JSESSIONID={{REQUEST_SEARCH_PAGE.response.cookies.JSESSIONID.value}}
 #     change that often
 GET https://ssb1-reg.banner.marist.edu/StudentRegistrationSsb/ssb/classSearch/getTerms?searchTerm=&offset=1&max=100
 
+###
+
+# GET https://ssb1-reg.banner.marist.edu/StudentRegistrationSsb/ssb/searchResults/searchResults?txt_term={{term}}&startDatepicker=&endDatepicker=&uniqueSessionId=rvboz1735403153035&pageOffset=10&pageMaxSize=10&sortColumn=subjectDescription&sortDirection=asc
+POST https://ssb1-reg.banner.marist.edu/StudentRegistrationSsb/ssb/term/search?mode=search HTTP/1.1
+User-Agent: Go-http-client/1.1
+Content-Length: 11
+Accept: application/json
+Content-Type: application/x-www-form-urlencoded
+Cookie: JSESSIONID=AAF61A37A616C641E647B9C45AF1649E
+Accept-Encoding: gzip
+
+term=202510 
+
+###
 
