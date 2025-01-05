@@ -11,3 +11,5 @@ ORDER BY counter
 );
 SELECT * FROM staging_meeting_times 
 WHERE (section_id, term_season, term_year, course_id, school_id) IN (SELECT id, term_season, term_year, course_id, school_id FROM sections);
+
+SELECT * FROM sections WHERE sections.term_year = 2021
