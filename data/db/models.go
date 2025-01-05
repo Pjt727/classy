@@ -76,7 +76,7 @@ type FacultyMember struct {
 }
 
 type MeetingTime struct {
-	ID           int32
+	Sequence     int32
 	SectionID    string
 	TermSeason   SeasonEnum
 	TermYear     int32
@@ -122,7 +122,7 @@ type Section struct {
 }
 
 type StagingMeetingTime struct {
-	ID           int32
+	Sequence     int32
 	SectionID    string
 	TermSeason   SeasonEnum
 	TermYear     int32
@@ -164,5 +164,5 @@ type TermCollection struct {
 	SchoolID        string
 	Year            int32
 	Season          SeasonEnum
-	StillCollecting pgtype.Bool
+	StillCollecting bool
 }

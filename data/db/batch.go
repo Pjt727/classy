@@ -222,7 +222,7 @@ type UpsertTermCollectionParams struct {
 	Schoolid        string
 	Year            int32
 	Season          SeasonEnum
-	Stillcollecting pgtype.Bool
+	Stillcollecting bool
 }
 
 func (q *Queries) UpsertTermCollection(ctx context.Context, arg []UpsertTermCollectionParams) *UpsertTermCollectionBatchResults {

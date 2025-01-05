@@ -1,6 +1,5 @@
 # This is a minimal pipeline to be able to fetch banner courses
 
-
 @hostname=ssb1-reg.banner.marist.edu
 @term=202510
 # get a banner cookie

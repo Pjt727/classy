@@ -29,6 +29,7 @@ func (r *iteratorForStageMeetingTimes) Next() bool {
 
 func (r iteratorForStageMeetingTimes) Values() ([]interface{}, error) {
 	return []interface{}{
+		r.rows[0].Sequence,
 		r.rows[0].Sectionid,
 		r.rows[0].Termseason,
 		r.rows[0].Termyear,
@@ -54,7 +55,7 @@ func (r iteratorForStageMeetingTimes) Err() error {
 }
 
 func (q *Queries) StageMeetingTimes(ctx context.Context, arg []StageMeetingTimesParams) (int64, error) {
-	return q.db.CopyFrom(ctx, []string{"staging_meeting_times"}, []string{"section_id", "term_season", "term_year", "course_id", "school_id", "start_date", "end_date", "meeting_type", "start_minutes", "end_minutes", "is_monday", "is_tuesday", "is_wednesday", "is_thursday", "is_friday", "is_saturday", "is_sunday"}, &iteratorForStageMeetingTimes{rows: arg})
+	return q.db.CopyFrom(ctx, []string{"staging_meeting_times"}, []string{"sequence", "section_id", "term_season", "term_year", "course_id", "school_id", "start_date", "end_date", "meeting_type", "start_minutes", "end_minutes", "is_monday", "is_tuesday", "is_wednesday", "is_thursday", "is_friday", "is_saturday", "is_sunday"}, &iteratorForStageMeetingTimes{rows: arg})
 }
 
 // iteratorForStageSections implements pgx.CopyFromSource.

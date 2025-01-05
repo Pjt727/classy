@@ -118,27 +118,27 @@ func (b *banner) GetTermCollections(
 			Schoolid:        school.ID,
 			Year:            t.Year,
 			Season:          t.Season,
-			Stillcollecting: pgtype.Bool{Bool: stillCollecting, Valid: true},
+			Stillcollecting: stillCollecting,
 		})
 	}
 
 	return termCollection, nil
 }
 
-func (b *banner) UpdateAllSections(
+func (b *banner) StageAllClasses(
 	logger log.Entry,
 	ctx context.Context,
 	q *db.Queries,
 	school db.School,
 	term db.Term,
-) (int, error) {
+) error {
 	const MAX_PAGE_SIZE = 200 // the max this value can do is 500 more
 	logger.Info("Starting full section")
 	termStr := termConversion(term)
 	hostname, err := b.getHostname(school)
 	if err != nil {
 		logger.Error("Error getting school entry: ", err)
-		return 0, err
+		return err
 	}
 
 	// Get a banner cookie
@@ -149,13 +149,13 @@ func (b *banner) UpdateAllSections(
 	)
 	if err != nil {
 		logger.Error("Error creating cookie request: ", err)
-		return 0, err
+		return err
 	}
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		logger.Error("Error getting cookie response: ", err)
-		return 0, err
+		return err
 	}
 	resp.Body.Close()
 	// Extract the JSESSIONID cookie
@@ -172,7 +172,7 @@ func (b *banner) UpdateAllSections(
 	)
 	if err != nil {
 		logger.Error("Error creating request to set term: ", err)
-		return 0, err
+		return err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
@@ -180,7 +180,7 @@ func (b *banner) UpdateAllSections(
 	resp, err = client.Do(req)
 	if err != nil {
 		logger.Error("Error setting term: ", err)
-		return 0, err
+		return err
 	}
 	resp.Body.Close()
 
@@ -192,7 +192,7 @@ func (b *banner) UpdateAllSections(
 	)
 	if err != nil {
 		log.Error("Error creating request:", err)
-		return 0, err
+		return err
 	}
 	req.AddCookie(cookie)
 	queryParams := url.Values{
@@ -205,7 +205,7 @@ func (b *banner) UpdateAllSections(
 	resp, err = client.Do(req)
 	if err != nil {
 		log.Println("Error requesting first sections: ", err)
-		return 0, err
+		return err
 	}
 	defer resp.Body.Close()
 	type Sectioncount struct {
@@ -214,7 +214,7 @@ func (b *banner) UpdateAllSections(
 	var sectionCount Sectioncount
 	if err := json.NewDecoder(resp.Body).Decode(&sectionCount); err != nil {
 		logger.Error("Error decoding first sections: ", err)
-		return 0, err
+		return err
 	}
 	count := sectionCount.Count
 	logger.Infof("starting collection on %d sections", count)
@@ -253,12 +253,12 @@ func (b *banner) UpdateAllSections(
 		logger.Error("There was an error searching sections: ", err)
 	}
 	if len(errCh) > 0 {
-		return 0, errors.New("error searching sections")
+		return errors.New("error searching sections")
 	}
 
 	logger.Infof("sections finished getting %d sections", count)
 	// TODO change this is something more accurate possibly
-	return count, nil
+	return nil
 }
 
 func (b *banner) getHostname(school db.School) (string, error) {
@@ -453,7 +453,7 @@ func insertGroupOfSections(
 		}
 		courseId := s.Subject + "," + s.CourseNumber
 		sectionId := courseId + "," + s.SequenceNumber
-		for _, meeting := range s.MeetingFaculty {
+		for i, meeting := range s.MeetingFaculty {
 			meetingTime := meeting.MeetingTime
 			// ex format:
 			// "meetingTime": {
@@ -476,6 +476,7 @@ func insertGroupOfSections(
 				endDate.Valid = true
 			}
 			dbMeetingTime := db.StageMeetingTimesParams{
+				Sequence:     int32(i),
 				Sectionid:    sectionId,
 				Termseason:   term.Season,
 				Termyear:     term.Year,
@@ -574,6 +575,13 @@ func insertGroupOfSections(
 
 	if outerErr != nil {
 		logger.Error("Error upserting course", outerErr)
+		return outerErr
+	}
+
+	_, err = q.MoveStagedCoursesAndMeetings(ctx, schoolId, term)
+
+	if err != nil {
+		logger.Error("Error moving staged", err)
 		return err
 	}
 

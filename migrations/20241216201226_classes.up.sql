@@ -19,7 +19,7 @@ CREATE TABLE term_collections (
     year INT,
     season season_enum,
 
-    still_collecting BOOL,
+    still_collecting BOOL NOT NULL,
     FOREIGN KEY (school_id) REFERENCES schools(id),
     FOREIGN KEY (year, season) REFERENCES terms(year, season),
     PRIMARY KEY (school_id, year, season)
@@ -93,7 +93,7 @@ CREATE TABLE staging_sections (
 );
 
 CREATE TABLE meeting_times (
-    id SERIAL,
+    sequence INT,
     section_id TEXT,
     term_season season_enum,
     term_year INT,
@@ -114,11 +114,11 @@ CREATE TABLE meeting_times (
     is_sunday BOOLEAN NOT NULL,
     FOREIGN KEY (section_id, term_season, term_year, course_id, school_id) 
         REFERENCES sections(id, term_season, term_year, course_id, school_id) ON DELETE CASCADE,
-    PRIMARY KEY (id, section_id, term_season, term_year, course_id, school_id)
+    PRIMARY KEY (sequence, section_id, term_season, term_year, course_id, school_id)
 );
 
 CREATE TABLE staging_meeting_times (
-    id SERIAL NOT NULL,
+    sequence INT NOT NULL,
     section_id TEXT NOT NULL,
     term_season season_enum NOT NULL,
     term_year INT NOT NULL,

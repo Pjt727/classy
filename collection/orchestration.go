@@ -22,13 +22,13 @@ type Service interface {
 	// adds every section to database and returns the amount changed
 	//     because different services may have different adding procedures
 	//     it is on the implementer
-	UpdateAllSections(
+	StageAllClasses(
 		logger log.Entry,
 		ctx context.Context,
 		q *db.Queries,
 		school db.School,
 		term db.Term,
-	) (int, error)
+	) error
 
 	// get the terms that school (does NOT upsert them to the db)
 	GetTermCollections(
@@ -189,19 +189,27 @@ func UpdateAllSectionsOfSchool(ctx context.Context, school_id string, term db.Te
 		"school":  school,
 		"term":    term,
 	})
+	q := db.New(dbPool)
+	if err := q.ReadyCoursesMeetingsStaging(ctx); err != nil {
+		updateLogger.Error("Could not ready staging tables", updateLogger)
+		return
+	}
+	defer q.CleanupCoursesMeetingsStaging(ctx)
+	if err := (*s).StageAllClasses(*updateLogger, ctx, q, school, term); err != nil {
+		updateLogger.Error("Update sections aborting any staged sections/ meetings", updateLogger)
+		return
+	}
 	tx, err := dbPool.Begin(ctx)
 	if err != nil {
 		updateLogger.Error("couldn't begin transaction", updateLogger)
 		return
 	}
 	defer tx.Commit(ctx)
-	q := db.New(dbPool).WithTx(tx)
-	numOfUpdates, err := (*s).UpdateAllSections(*updateLogger, ctx, q, school, term)
+	q = db.New(dbPool).WithTx(tx)
+	changesCount, err := q.MoveStagedCoursesAndMeetings(ctx, school_id, term)
 	if err != nil {
-		updateLogger.Error("update sections failed rolling back", updateLogger)
 		tx.Rollback(ctx)
 		return
-	} else {
-		updateLogger.Infof("updated %d sections", numOfUpdates)
 	}
+	updateLogger.Infof("updated %d meetings and sections", changesCount)
 }
