@@ -578,12 +578,5 @@ func insertGroupOfSections(
 		return outerErr
 	}
 
-	_, err = q.MoveStagedCoursesAndMeetings(ctx, schoolId, term)
-
-	if err != nil {
-		logger.Error("Error moving staged", err)
-		return err
-	}
-
 	return nil
 }

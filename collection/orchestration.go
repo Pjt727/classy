@@ -194,7 +194,7 @@ func UpdateAllSectionsOfSchool(ctx context.Context, school_id string, term db.Te
 		updateLogger.Error("Could not ready staging tables", updateLogger)
 		return
 	}
-	defer q.CleanupCoursesMeetingsStaging(ctx)
+	// defer q.CleanupCoursesMeetingsStaging(ctx)
 	if err := (*s).StageAllClasses(*updateLogger, ctx, q, school, term); err != nil {
 		updateLogger.Error("Update sections aborting any staged sections/ meetings", updateLogger)
 		return
