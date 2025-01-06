@@ -3,6 +3,7 @@ module github.com/Pjt727/classy
 go 1.23.3
 
 require (
+	github.com/go-chi/chi/v5 v5.2.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect

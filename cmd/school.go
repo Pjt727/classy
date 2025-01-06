@@ -15,15 +15,12 @@ import (
 )
 
 // getSchoolCmd represents the getSchool command
-var getSchoolCmd = &cobra.Command{
-	Use:   "getSchool",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+var schoolCmd = &cobra.Command{
+	Use:   "school",
+	Short: "Collects information from a single school and term",
+	Long: `Collects and upserts in the db information from a single school
+and term (defaulting the current term) Updating the following data: sections, meeting times, courses, 
+facualty members, and internal collection tables`,
 	Run: func(cmd *cobra.Command, args []string) {
 		log.SetLevel(log.TraceLevel)
 		logger := log.WithFields(log.Fields{
@@ -62,17 +59,8 @@ to quickly create a Cobra application.`,
 }
 
 func init() {
-	rootCmd.AddCommand(getSchoolCmd)
+	collectCmd.AddCommand(schoolCmd)
 
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// getSchoolCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// getSchoolCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 	now := time.Now()
 	year := now.Year()
 	month := now.Month()
@@ -90,21 +78,21 @@ func init() {
 	default:
 		panic("Missing month")
 	}
-	getSchoolCmd.Flags().String(
+	schoolCmd.Flags().String(
 		"schoolid",
 		"marist",
-		"The school to be scraped (none for all of them)",
+		"The school to be collected (none for all of them)",
 	)
-	getSchoolCmd.Flags().String(
+	schoolCmd.Flags().String(
 		"termseason",
 		season,
 		fmt.Sprintf(
-			"The season to be scraped (%s, %s, %s, %s)",
+			"The season to be collected (%s, %s, %s, %s)",
 			db.SeasonEnumWinter,
 			db.SeasonEnumSpring,
 			db.SeasonEnumSummer,
 			db.SeasonEnumFall,
 		),
 	)
-	getSchoolCmd.Flags().Int("termyear", year, "The year to be scraped (YYYY)")
+	schoolCmd.Flags().Int("termyear", year, "The year to be collected (YYYY)")
 }

@@ -1,5 +1,4 @@
 -- can't use temp tables with sqlc so i use staging tables here
-DROP TYPE IF EXISTS season_enum;
 CREATE TYPE season_enum AS ENUM ('Spring', 'Fall', 'Winter', 'Summer');
 
 CREATE TABLE schools (

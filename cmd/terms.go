@@ -12,10 +12,11 @@ import (
 )
 
 // getSchoolTermsCmd represents the getSchoolTerms command
-var getSchoolTermsCmd = &cobra.Command{
-	Use:   "getSchoolTerms",
-	Short: "Gets all schools and terms defined in orchestration",
-	Long:  ``,
+var termsCmd = &cobra.Command{
+	Use:   "terms",
+	Short: "Collects all school terms defined in orchestration",
+	Long: `Collects and upserts in the db all schools for each of their terms 
+as defined in orchestration`,
 	Run: func(cmd *cobra.Command, args []string) {
 		log.SetLevel(log.TraceLevel)
 		logger := log.WithFields(log.Fields{
@@ -33,6 +34,5 @@ var getSchoolTermsCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(getSchoolTermsCmd)
-
+	collectCmd.AddCommand(termsCmd)
 }
