@@ -17,11 +17,13 @@ CREATE TABLE term_collections (
     school_id TEXT,
     year INT,
     season season_enum,
+    id TEXT, -- used for services to determine which term to do
+    name TEXT,
 
     still_collecting BOOL NOT NULL,
     FOREIGN KEY (school_id) REFERENCES schools(id),
     FOREIGN KEY (year, season) REFERENCES terms(year, season),
-    PRIMARY KEY (school_id, year, season)
+    PRIMARY KEY (school_id, year, season, id)
 );
 
 CREATE TABLE previous_full_section_collections (
@@ -63,6 +65,7 @@ CREATE TABLE sections (
     id TEXT,
     term_season season_enum,
     term_year INT,
+    term_collection_id TEXT,
     course_id TEXT,
     school_id TEXT,
 
@@ -73,7 +76,8 @@ CREATE TABLE sections (
     primary_faculty_id TEXT,
     FOREIGN KEY (course_id, school_id) REFERENCES courses(id, school_id),
     FOREIGN KEY (primary_faculty_id, school_id) REFERENCES faculty_members(id, school_id),
-    FOREIGN KEY (term_year, term_season) REFERENCES terms(year, season),
+
+    FOREIGN KEY (school_id, term_year, term_season, term_collection_id) REFERENCES term_collections(school_id, year, season, id),
     PRIMARY KEY (id, term_season, term_year, course_id, school_id)
 );
 
