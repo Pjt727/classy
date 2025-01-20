@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"strconv"
 	"strings"
@@ -33,8 +34,10 @@ var once sync.Once
 
 func init() {
 	marist := db.School{ID: "marist", Name: "Marist University"}
+	temple := db.School{ID: "temple", Name: "Temple University"}
 	schools := map[string]bannerSchool{
 		marist.ID: {school: marist, hostname: "ssb1-reg.banner.marist.edu"},
+		temple.ID: {school: temple, hostname: "prd-xereg.temple.edu"},
 	}
 	Banner = &banner{schools: schools}
 }
@@ -65,10 +68,11 @@ func (b *banner) GetTermCollections(
 	ctx context.Context,
 	school db.School,
 ) ([]db.UpsertTermCollectionParams, error) {
-	const MAX_TERMS_COUNT = "100"
+
+	const MAX_TERMS_COUNT = ""
 	var termCollection []db.UpsertTermCollectionParams
 
-	hostname, err := b.getHostname(school)
+	hostname, err := b.getHostname(school.ID)
 	if err != nil {
 		logger.Error("Error getting school entry: ", err)
 		return termCollection, err
@@ -106,7 +110,7 @@ func (b *banner) GetTermCollections(
 		//   "code": "202510",
 		//   "description": "Winter 2025 (View Only)"
 		// },
-		t, err := inverseTermConversion(term.Code)
+		t, err := termConversion(term)
 		if err != nil {
 			logger.Error("Error decoding term code: ", err)
 			return termCollection, err
@@ -115,10 +119,15 @@ func (b *banner) GetTermCollections(
 		stillCollecting := !strings.HasSuffix(term.Description, "(View Only)")
 
 		termCollection = append(termCollection, db.UpsertTermCollectionParams{
-			Schoolid:        school.ID,
-			Year:            t.Year,
-			Season:          t.Season,
-			Stillcollecting: stillCollecting,
+			ID:       term.Code,
+			SchoolID: school.ID,
+			Year:     t.Year,
+			Season:   t.Season,
+			Name: pgtype.Text{
+				String: term.Description,
+				Valid:  true,
+			},
+			StillCollecting: stillCollecting,
 		})
 	}
 
@@ -129,19 +138,29 @@ func (b *banner) StageAllClasses(
 	logger log.Entry,
 	ctx context.Context,
 	q *db.Queries,
-	school db.School,
-	term db.Term,
+	termCollection db.TermCollection,
 ) error {
 	const MAX_PAGE_SIZE = 200 // the max this value can do is 500 more
 	logger.Info("Starting full section")
-	termStr := termConversion(term)
-	hostname, err := b.getHostname(school)
+	// banner term strings have a string of characteres used unique to that school
+	// for example MARIST's format is as follows
+	// YEARSEASON (MARIST)
+	// winter = 10
+	// spring = 20
+	// summer = 30
+	// fall = 40
+	// ex: 202510
+	//     this is year 2025 winter term
+	// this code is used to uniquely identify the term and is sent into the session
+	//    which then determines which courses are collected
+	termStr := termCollection.ID
+	hostname, err := b.getHostname(termCollection.SchoolID)
 	if err != nil {
 		logger.Error("Error getting school entry: ", err)
 		return err
 	}
 
-	// Get a banner cookie
+	// Get banner cookie(s)
 	req, err := http.NewRequest(
 		"GET",
 		"https://"+hostname+"/StudentRegistrationSsb/ssb/term/termSelection?mode=search",
@@ -151,16 +170,16 @@ func (b *banner) StageAllClasses(
 		logger.Error("Error creating cookie request: ", err)
 		return err
 	}
-	client := &http.Client{}
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{
+		Jar: jar,
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		logger.Error("Error getting cookie response: ", err)
 		return err
 	}
 	resp.Body.Close()
-	// Extract the JSESSIONID cookie
-	// JSESSIONID
-	cookie := resp.Cookies()[0]
 	// Associate the cookie with a term
 	formData := url.Values{
 		"term": {termStr},
@@ -176,7 +195,6 @@ func (b *banner) StageAllClasses(
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
-	req.AddCookie(cookie)
 	resp, err = client.Do(req)
 	if err != nil {
 		logger.Error("Error setting term: ", err)
@@ -194,14 +212,12 @@ func (b *banner) StageAllClasses(
 		log.Error("Error creating request:", err)
 		return err
 	}
-	req.AddCookie(cookie)
 	queryParams := url.Values{
 		"txt_term":    {termStr},
 		"pageOffset":  {"0"},
 		"pageMaxSize": {"1"},
 	}
 	req.URL.RawQuery = queryParams.Encode()
-	// dump, _ = httputil.DumpRequestOut(req, true)
 	resp, err = client.Do(req)
 	if err != nil {
 		log.Println("Error requesting first sections: ", err)
@@ -237,7 +253,7 @@ func (b *banner) StageAllClasses(
 		workersReq.URL.RawQuery = queryParams.Encode()
 		go func(req http.Request) {
 			defer wg.Done()
-			err := insertGroupOfSections(workerLog, workersReq, ctx, q, school.ID, term)
+			err := insertGroupOfSections(workerLog, workersReq, ctx, q, client, termCollection)
 			if err != nil {
 				errCh <- err
 			}
@@ -261,51 +277,35 @@ func (b *banner) StageAllClasses(
 	return nil
 }
 
-func (b *banner) getHostname(school db.School) (string, error) {
-	schoolEntry, ok := b.schools[school.ID]
+func (b *banner) getHostname(schoolID string) (string, error) {
+	schoolEntry, ok := b.schools[schoolID]
 	if !ok {
-		err := errors.New(fmt.Sprint("school not there: ", school))
+		err := errors.New(fmt.Sprint("school not there: ", schoolID))
 		return "", err
 	}
 	hostname := schoolEntry.hostname
 	return hostname, nil
 }
 
-func termConversion(term db.Term) string {
-	var seasonString string
-	if term.Season == db.SeasonEnumWinter {
-		seasonString = "10"
-	} else if term.Season == db.SeasonEnumSpring {
-		seasonString = "20"
-	} else if term.Season == db.SeasonEnumSummer {
-		seasonString = "30"
-	} else if term.Season == db.SeasonEnumFall {
-		seasonString = "40"
-	} else {
-		panic("Invalid year / season")
-	}
-	return strconv.Itoa(int(term.Year)) + seasonString
-}
-
-func inverseTermConversion(term string) (db.Term, error) {
+func termConversion(termEntry bannerTerm) (db.Term, error) {
+	desc := strings.ToLower(termEntry.Description)
 	var dbTerm db.Term
-	if len(term) != 6 {
-		err := errors.New(fmt.Sprint("term not right size must be 6: ", term))
+	if len(termEntry.Code) != 6 {
+		err := errors.New(fmt.Sprint("term not right size must be 6: ", termEntry.Code))
 		return dbTerm, err
 	}
-	year, _ := strconv.Atoi(term[:4])
-	strSeason := term[4:]
+	year, _ := strconv.Atoi(termEntry.Code[:4])
 	var season db.SeasonEnum
-	if strSeason == "10" {
+	if strings.Contains(desc, "winter") {
 		season = db.SeasonEnumWinter
-	} else if strSeason == "20" {
+	} else if strings.Contains(desc, "spring") {
 		season = db.SeasonEnumSpring
-	} else if strSeason == "30" {
+	} else if strings.Contains(desc, "summer") {
 		season = db.SeasonEnumSummer
-	} else if strSeason == "40" {
+	} else if strings.Contains(desc, "fall") {
 		season = db.SeasonEnumFall
 	} else {
-		err := errors.New(fmt.Sprint("invalid season section of term: ", term))
+		err := errors.New(fmt.Sprint("invalid season section of term: ", termEntry.Code))
 		return dbTerm, err
 	}
 	dbTerm = db.Term{Year: int32(year), Season: season}
@@ -323,9 +323,9 @@ type meetingTime struct {
 	Saturday    bool        `json:"saturday"`
 	Sunday      bool        `json:"sunday"`
 	Campus      pgtype.Text `json:"campus"`
-	EndTime     pgtype.Text `json:"end_time"`
-	StartTime   pgtype.Text `json:"start_time"`
-	MeetingType string      `json:"meeting_type"`
+	EndTime     pgtype.Text `json:"endTime"`
+	StartTime   pgtype.Text `json:"beginTime"`
+	MeetingType string      `json:"meetingType"`
 	StartDate   string      `json:"startDate"`
 	EndDate     string      `json:"endDate"`
 }
@@ -353,7 +353,7 @@ type section struct {
 	OpenSection         bool              `json:"openSection"`
 	MeetingFaculty      []meetingsFaculty `json:"meetingsFaculty"`
 	Faculty             []faculty         `json:"faculty"`
-	Credits             uint8             `json:"creditHourLow"`
+	Credits             float32           `json:"creditHourLow"`
 	SubjectCourse       string            `json:"subjectCourse"`
 	SubjectDescription  string            `json:"subjectDescription"`
 	CampusDescription   string            `json:"campusDescription"`
@@ -394,10 +394,9 @@ func insertGroupOfSections(
 	req *http.Request,
 	ctx context.Context,
 	q *db.Queries,
-	schoolId string,
-	term db.Term,
+	client *http.Client,
+	termCollection db.TermCollection,
 ) error {
-	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		logger.Error("Error getting sections")
@@ -443,11 +442,11 @@ func insertGroupOfSections(
 
 			facultyMember := db.UpsertFacultyParams{
 				ID:           facID,
-				Schoolid:     schoolId,
+				SchoolID:     termCollection.SchoolID,
 				Name:         fac.DisplayName,
-				Emailaddress: pgtype.Text{String: fac.EmailAddress, Valid: true},
-				Firstname:    firstName,
-				Lastname:     lastName,
+				EmailAddress: pgtype.Text{String: fac.EmailAddress, Valid: true},
+				FirstName:    firstName,
+				LastName:     lastName,
 			}
 			facultyMembers[facID] = facultyMember
 		}
@@ -476,50 +475,48 @@ func insertGroupOfSections(
 				endDate.Valid = true
 			}
 			dbMeetingTime := db.StageMeetingTimesParams{
-				Sequence:     int32(i),
-				Sectionid:    sectionId,
-				Termseason:   term.Season,
-				Termyear:     term.Year,
-				Courseid:     courseId,
-				Schoolid:     schoolId,
-				Startdate:    startDate,
-				Enddate:      endDate,
-				Meetingtype:  pgtype.Text{String: meetingTime.MeetingType, Valid: false},
-				Startminutes: toBannerTime(meetingTime.StartTime),
-				Endminutes:   toBannerTime(meetingTime.EndTime),
-				Ismonday:     meetingTime.Monday,
-				Istuesday:    meetingTime.Tuesday,
-				Iswednesday:  meetingTime.Wednesday,
-				Isthursday:   meetingTime.Thursday,
-				Isfriday:     meetingTime.Friday,
-				Issaturday:   meetingTime.Saturday,
-				Issunday:     meetingTime.Sunday,
+				Sequence:         int32(i),
+				SectionID:        sectionId,
+				CourseID:         courseId,
+				TermCollectionID: termCollection.ID,
+				SchoolID:         termCollection.SchoolID,
+				StartDate:        startDate,
+				EndDate:          endDate,
+				MeetingType:      pgtype.Text{String: meetingTime.MeetingType, Valid: false},
+				StartMinutes:     toBannerTime(meetingTime.StartTime),
+				EndMinutes:       toBannerTime(meetingTime.EndTime),
+				IsMonday:         meetingTime.Monday,
+				IsTuesday:        meetingTime.Tuesday,
+				IsWednesday:      meetingTime.Wednesday,
+				IsThursday:       meetingTime.Thursday,
+				IsFriday:         meetingTime.Friday,
+				IsSaturday:       meetingTime.Saturday,
+				IsSunday:         meetingTime.Sunday,
 			}
 			meetingTimes = append(meetingTimes, dbMeetingTime)
 
 		}
 		dbSection := db.StageSectionsParams{
 			ID:                sectionId,
-			Termseason:        term.Season,
-			Termyear:          term.Year,
-			CourseID:          courseId,
-			Schoolid:          schoolId,
-			Maxenrollment:     pgtype.Int4{Int32: s.MaximumEnrollment, Valid: true},
-			Instructionmethod: pgtype.Text{String: s.InstructionalMethod, Valid: true},
 			Campus:            pgtype.Text{String: s.CampusDescription, Valid: true},
+			CourseID:          courseId,
+			SchoolID:          termCollection.SchoolID,
+			TermCollectionID:  termCollection.ID,
 			Enrollment:        pgtype.Int4{Int32: s.MaximumEnrollment, Valid: true},
-			Primaryfacultyid:  primaryFac,
+			MaxEnrollment:     pgtype.Int4{Int32: s.MaximumEnrollment, Valid: true},
+			InstructionMethod: pgtype.Text{String: s.InstructionalMethod, Valid: true},
+			PrimaryFacultyID:  primaryFac,
 		}
 		course := db.UpsertCoursesParams{
 			ID:                 courseId,
-			Schoolid:           schoolId,
-			Subjectcode:        pgtype.Text{String: s.Subject, Valid: true},
+			SchoolID:           termCollection.SchoolID,
+			SubjectCode:        pgtype.Text{String: s.Subject, Valid: true},
 			Number:             pgtype.Text{String: s.CourseNumber, Valid: true},
-			Subjectdescription: pgtype.Text{String: s.SubjectDescription, Valid: true},
+			SubjectDescription: pgtype.Text{String: s.SubjectDescription, Valid: true},
 			Title:              pgtype.Text{String: s.CourseTitle, Valid: true},
 			// cannot get the description from here 😥
 			Description: pgtype.Text{String: "", Valid: false},
-			Credithours: 0,
+			CreditHours: s.Credits,
 		}
 		courses[courseId] = course
 		dbSections = append(dbSections, dbSection)

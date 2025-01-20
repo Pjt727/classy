@@ -30,23 +30,22 @@ func (r *iteratorForStageMeetingTimes) Next() bool {
 func (r iteratorForStageMeetingTimes) Values() ([]interface{}, error) {
 	return []interface{}{
 		r.rows[0].Sequence,
-		r.rows[0].Sectionid,
-		r.rows[0].Termseason,
-		r.rows[0].Termyear,
-		r.rows[0].Courseid,
-		r.rows[0].Schoolid,
-		r.rows[0].Startdate,
-		r.rows[0].Enddate,
-		r.rows[0].Meetingtype,
-		r.rows[0].Startminutes,
-		r.rows[0].Endminutes,
-		r.rows[0].Ismonday,
-		r.rows[0].Istuesday,
-		r.rows[0].Iswednesday,
-		r.rows[0].Isthursday,
-		r.rows[0].Isfriday,
-		r.rows[0].Issaturday,
-		r.rows[0].Issunday,
+		r.rows[0].SectionID,
+		r.rows[0].TermCollectionID,
+		r.rows[0].CourseID,
+		r.rows[0].SchoolID,
+		r.rows[0].StartDate,
+		r.rows[0].EndDate,
+		r.rows[0].MeetingType,
+		r.rows[0].StartMinutes,
+		r.rows[0].EndMinutes,
+		r.rows[0].IsMonday,
+		r.rows[0].IsTuesday,
+		r.rows[0].IsWednesday,
+		r.rows[0].IsThursday,
+		r.rows[0].IsFriday,
+		r.rows[0].IsSaturday,
+		r.rows[0].IsSunday,
 	}, nil
 }
 
@@ -55,7 +54,7 @@ func (r iteratorForStageMeetingTimes) Err() error {
 }
 
 func (q *Queries) StageMeetingTimes(ctx context.Context, arg []StageMeetingTimesParams) (int64, error) {
-	return q.db.CopyFrom(ctx, []string{"staging_meeting_times"}, []string{"sequence", "section_id", "term_season", "term_year", "course_id", "school_id", "start_date", "end_date", "meeting_type", "start_minutes", "end_minutes", "is_monday", "is_tuesday", "is_wednesday", "is_thursday", "is_friday", "is_saturday", "is_sunday"}, &iteratorForStageMeetingTimes{rows: arg})
+	return q.db.CopyFrom(ctx, []string{"staging_meeting_times"}, []string{"sequence", "section_id", "term_collection_id", "course_id", "school_id", "start_date", "end_date", "meeting_type", "start_minutes", "end_minutes", "is_monday", "is_tuesday", "is_wednesday", "is_thursday", "is_friday", "is_saturday", "is_sunday"}, &iteratorForStageMeetingTimes{rows: arg})
 }
 
 // iteratorForStageSections implements pgx.CopyFromSource.
@@ -81,13 +80,12 @@ func (r iteratorForStageSections) Values() ([]interface{}, error) {
 		r.rows[0].ID,
 		r.rows[0].Campus,
 		r.rows[0].CourseID,
-		r.rows[0].Schoolid,
-		r.rows[0].Termyear,
-		r.rows[0].Termseason,
+		r.rows[0].SchoolID,
+		r.rows[0].TermCollectionID,
 		r.rows[0].Enrollment,
-		r.rows[0].Maxenrollment,
-		r.rows[0].Instructionmethod,
-		r.rows[0].Primaryfacultyid,
+		r.rows[0].MaxEnrollment,
+		r.rows[0].InstructionMethod,
+		r.rows[0].PrimaryFacultyID,
 	}, nil
 }
 
@@ -96,5 +94,5 @@ func (r iteratorForStageSections) Err() error {
 }
 
 func (q *Queries) StageSections(ctx context.Context, arg []StageSectionsParams) (int64, error) {
-	return q.db.CopyFrom(ctx, []string{"staging_sections"}, []string{"id", "campus", "course_id", "school_id", "term_year", "term_season", "enrollment", "max_enrollment", "instruction_method", "primary_faculty_id"}, &iteratorForStageSections{rows: arg})
+	return q.db.CopyFrom(ctx, []string{"staging_sections"}, []string{"id", "campus", "course_id", "school_id", "term_collection_id", "enrollment", "max_enrollment", "instruction_method", "primary_faculty_id"}, &iteratorForStageSections{rows: arg})
 }

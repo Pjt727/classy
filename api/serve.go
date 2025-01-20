@@ -15,7 +15,20 @@ func Serve() {
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("classy api running"))
 	})
+	r.Route("/get", func(r chi.Router) {
+		r.Route("/{schoolID}", func(r chi.Router) {
+			r.Get("/terms", func(w http.ResponseWriter, r *http.Request) {
+
+			})
+
+			r.Route("/{termCollectionID}", func(r chi.Router) {
+                r.Get("/classes", func(w http.ResponseWriter, r *http.Request) {
+
+                })
+			})
+		})
+	})
 	port := 3000
-	log.Infof("Running server on :%d", port)
+	log.Info/@[a-z_]*[A-Z] f("Running server on :%d", port)
 	http.ListenAndServe(fmt.Sprintf(":%d", port), r)
 }

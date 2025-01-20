@@ -1,47 +1,50 @@
--- name: ListCourses :many
-SELECT * FROM courses;
+-- name: DeleteStagingSections :exec
+DELETE FROM staging_sections
+WHERE school_id = @school_id
+    AND term_collection_id = @term_collection_id
+;
 
--- name: TruncateStagingSections :exec
-TRUNCATE TABLE staging_sections;
-
--- name: TruncateStagingMeetingTimes :exec
-TRUNCATE TABLE staging_meeting_times;
+-- name: DeleteStagingMeetingTimes :exec
+DELETE FROM staging_meeting_times
+WHERE school_id = @school_id
+     AND term_collection_id = @term_collection_id
+;
 
 -- name: StageSections :copyfrom
 INSERT INTO staging_sections 
     (id, campus, course_id, 
-        school_id, term_year, term_season, 
+        school_id, term_collection_id,
         enrollment, max_enrollment, instruction_method,
         primary_faculty_id, campus)
 VALUES
     (@id, @campus, @course_id,
-        @schoolId, @termYear, @termSeason,
-        @enrollment, @maxEnrollment, @instructionMethod,
-        @primaryFacultyId, @campus);
+        @school_id, @term_collection_id,
+        @enrollment, @max_enrollment, @instruction_method,
+        @primary_faculty_id, @campus);
 
 -- name: StageMeetingTimes :copyfrom
 INSERT INTO staging_meeting_times 
-    (sequence, section_id, term_season, 
-        term_year, course_id, school_id, 
+    (sequence, section_id, term_collection_id,
+        course_id, school_id, 
         start_date, end_date, meeting_type,
         start_minutes, end_minutes, is_monday,
         is_tuesday, is_wednesday, is_thursday,
         is_friday, is_saturday, is_sunday)
 VALUES
-    (@sequence, @sectionId, @termSeason, 
-        @termYear, @courseId, @schoolId, 
-        @startDate, @endDate, @meetingType,
-        @startMinutes, @endMinutes, @isMonday,
-        @isTuesday, @isWednesday, @isThursday,
-        @isFriday, @isSaturday, @isSunday);
+    (@sequence, @section_id, @term_collection_id,
+        @course_id, @school_id, 
+        @start_date, @end_date, @meeting_type,
+        @start_minutes, @end_minutes, @is_monday,
+        @is_tuesday, @is_wednesday, @is_thursday,
+        @is_friday, @is_saturday, @is_sunday);
 
 -- name: UpsertFaculty :batchexec
 INSERT INTO faculty_members
     (id, school_id, name,
         email_address, first_name, last_name)
 VALUES
-    (@id, @schoolId, @name,
-        @emailAddress, @firstName, @lastName)
+    (@id, @school_id, @name,
+        @email_address, @first_name, @last_name)
 ON CONFLICT DO NOTHING;
 
 -- name: UpsertCourses :batchexec
@@ -50,12 +53,12 @@ INSERT INTO courses
         number, subject_description, title,
         description, credit_hours)
 VALUES 
-    (@id, @schoolId, @subjectCode,
-        @number, @subjectDescription, @title,
-        @description, @creditHours)
+    (@id, @school_id, @subject_code,
+        @number, @subject_description, @title,
+        @description, @credit_hours)
 ON CONFLICT DO NOTHING;
 
--- name: UpsertSchools :exec
+-- name: UpsertSchool :exec
 INSERT INTO schools
     (id, name)
 VALUES
@@ -64,12 +67,13 @@ ON CONFLICT DO NOTHING;
 
 -- name: UpsertTermCollection :batchexec
 INSERT INTO term_collections
-    (school_id, year, season, still_collecting)
+    (id, school_id, year, season, name, still_collecting)
 VALUES
-    (@schoolId, @year, @season, @stillCollecting)
-ON CONFLICT (school_id, year, season) DO UPDATE
+    (@id, @school_id, @year, @season, @name, @still_collecting)
+ON CONFLICT (id, school_id) DO UPDATE
 SET
-    still_collecting = EXCLUDED.still_collecting;
+    still_collecting = EXCLUDED.still_collecting,
+    name = EXCLUDED.name;
 ;
 
 -- name: UpsertTerm :batchexec
@@ -81,32 +85,31 @@ ON CONFLICT DO NOTHING;
 
 -- name: RemoveUnstagedSections :exec
 DELETE FROM sections s
-WHERE s.term_season = @termSeason 
-  AND s.term_year = @termYear 
+WHERE s.term_collection_id = @term_collection_id
   AND s.school_id = @school_id
   AND NOT EXISTS (
     SELECT 1 
     FROM staging_sections ss
     WHERE ss.id = s.id
-      AND ss.term_season = s.term_season
-      AND ss.term_year = s.term_year
+      AND ss.term_collection_id = s.term_collection_id
       AND ss.course_id = s.course_id
       AND ss.school_id = s.school_id
   );
 
 -- name: MoveStagedSections :exec
 INSERT INTO sections 
-    (id, term_season, term_year, 
+    (id, term_collection_id,
         course_id, school_id, max_enrollment, 
         instruction_method, campus, enrollment,
         primary_faculty_id)
 SELECT
-    id, term_season, term_year, 
+    DISTINCT ON (id, term_collection_id, course_id, school_id)
+    id, term_collection_id,
     course_id, school_id, max_enrollment, 
     instruction_method, campus, enrollment,
     primary_faculty_id
 FROM staging_sections
-ON CONFLICT (id, course_id, school_id, term_year, term_season) DO UPDATE
+ON CONFLICT (id, course_id, school_id, term_collection_id) DO UPDATE
 SET 
     campus = EXCLUDED.campus,
     enrollment = EXCLUDED.enrollment,
@@ -122,15 +125,13 @@ WHERE sections.campus != EXCLUDED.campus
 
 -- name: RemoveUnstagedMeetings :exec
 DELETE FROM meeting_times mt
-WHERE mt.term_season = @termSeason 
-  AND mt.term_year = @termYear 
+WHERE mt.term_collection_id = @term_collection_id
   AND mt.school_id = @school_id
   AND NOT EXISTS (
     SELECT 1 
     FROM staging_meeting_times smt
     WHERE smt."sequence" = mt."sequence"
-      AND smt.term_season = mt.term_season
-      AND smt.term_year = mt.term_year
+      AND smt.term_collection_id = mt.term_collection_id
       AND smt.course_id = mt.course_id
       AND smt.school_id = mt.school_id
       AND smt.section_id = mt.section_id
@@ -140,21 +141,22 @@ WHERE mt.term_season = @termSeason
 
 -- name: MoveStagedMeetingTimes :exec
 INSERT INTO meeting_times
-    (sequence, section_id, term_season, 
-        term_year, course_id, school_id, 
+    (sequence, section_id,
+        term_collection_id, course_id, school_id, 
         start_date, end_date, meeting_type,
         start_minutes, end_minutes, is_monday,
         is_tuesday, is_wednesday, is_thursday,
         is_friday, is_saturday, is_sunday)
 SELECT 
-    sequence, section_id, term_season, 
-    term_year, course_id, school_id, 
+    DISTINCT ON (sequence, section_id, term_collection_id, course_id, school_id)
+    sequence, section_id, term_collection_id,
+    course_id, school_id, 
     start_date, end_date, meeting_type,
     start_minutes, end_minutes, is_monday,
     is_tuesday, is_wednesday, is_thursday,
     is_friday, is_saturday, is_sunday
 FROM staging_meeting_times
-ON CONFLICT ("sequence", section_id, course_id, school_id, term_year, term_season) DO UPDATE
+ON CONFLICT ("sequence", section_id, course_id, school_id, term_collection_id) DO UPDATE
 SET 
     start_date = EXCLUDED.start_date,
     end_date = EXCLUDED.end_date,

@@ -11,56 +11,56 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const listCourses = `-- name: ListCourses :many
-SELECT id, school_id, subject_code, number, subject_description, title, description, credit_hours FROM courses
+const deleteStagingMeetingTimes = `-- name: DeleteStagingMeetingTimes :exec
+DELETE FROM staging_meeting_times
+WHERE school_id = $1
+     AND term_collection_id = $2
 `
 
-func (q *Queries) ListCourses(ctx context.Context) ([]Course, error) {
-	rows, err := q.db.Query(ctx, listCourses)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Course
-	for rows.Next() {
-		var i Course
-		if err := rows.Scan(
-			&i.ID,
-			&i.SchoolID,
-			&i.SubjectCode,
-			&i.Number,
-			&i.SubjectDescription,
-			&i.Title,
-			&i.Description,
-			&i.CreditHours,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+type DeleteStagingMeetingTimesParams struct {
+	SchoolID         string
+	TermCollectionID string
+}
+
+func (q *Queries) DeleteStagingMeetingTimes(ctx context.Context, arg DeleteStagingMeetingTimesParams) error {
+	_, err := q.db.Exec(ctx, deleteStagingMeetingTimes, arg.SchoolID, arg.TermCollectionID)
+	return err
+}
+
+const deleteStagingSections = `-- name: DeleteStagingSections :exec
+DELETE FROM staging_sections
+WHERE school_id = $1
+    AND term_collection_id = $2
+`
+
+type DeleteStagingSectionsParams struct {
+	SchoolID         string
+	TermCollectionID string
+}
+
+func (q *Queries) DeleteStagingSections(ctx context.Context, arg DeleteStagingSectionsParams) error {
+	_, err := q.db.Exec(ctx, deleteStagingSections, arg.SchoolID, arg.TermCollectionID)
+	return err
 }
 
 const moveStagedMeetingTimes = `-- name: MoveStagedMeetingTimes :exec
 INSERT INTO meeting_times
-    (sequence, section_id, term_season, 
-        term_year, course_id, school_id, 
+    (sequence, section_id,
+        term_collection_id, course_id, school_id, 
         start_date, end_date, meeting_type,
         start_minutes, end_minutes, is_monday,
         is_tuesday, is_wednesday, is_thursday,
         is_friday, is_saturday, is_sunday)
 SELECT 
-    sequence, section_id, term_season, 
-    term_year, course_id, school_id, 
+    DISTINCT ON (sequence, section_id, term_collection_id, course_id, school_id)
+    sequence, section_id, term_collection_id,
+    course_id, school_id, 
     start_date, end_date, meeting_type,
     start_minutes, end_minutes, is_monday,
     is_tuesday, is_wednesday, is_thursday,
     is_friday, is_saturday, is_sunday
 FROM staging_meeting_times
-ON CONFLICT ("sequence", section_id, course_id, school_id, term_year, term_season) DO UPDATE
+ON CONFLICT ("sequence", section_id, course_id, school_id, term_collection_id) DO UPDATE
 SET 
     start_date = EXCLUDED.start_date,
     end_date = EXCLUDED.end_date,
@@ -95,17 +95,18 @@ func (q *Queries) MoveStagedMeetingTimes(ctx context.Context) error {
 
 const moveStagedSections = `-- name: MoveStagedSections :exec
 INSERT INTO sections 
-    (id, term_season, term_year, 
+    (id, term_collection_id,
         course_id, school_id, max_enrollment, 
         instruction_method, campus, enrollment,
         primary_faculty_id)
 SELECT
-    id, term_season, term_year, 
+    DISTINCT ON (id, term_collection_id, course_id, school_id)
+    id, term_collection_id,
     course_id, school_id, max_enrollment, 
     instruction_method, campus, enrollment,
     primary_faculty_id
 FROM staging_sections
-ON CONFLICT (id, course_id, school_id, term_year, term_season) DO UPDATE
+ON CONFLICT (id, course_id, school_id, term_collection_id) DO UPDATE
 SET 
     campus = EXCLUDED.campus,
     enrollment = EXCLUDED.enrollment,
@@ -126,15 +127,13 @@ func (q *Queries) MoveStagedSections(ctx context.Context) error {
 
 const removeUnstagedMeetings = `-- name: RemoveUnstagedMeetings :exec
 DELETE FROM meeting_times mt
-WHERE mt.term_season = $1 
-  AND mt.term_year = $2 
-  AND mt.school_id = $3
+WHERE mt.term_collection_id = $1
+  AND mt.school_id = $2
   AND NOT EXISTS (
     SELECT 1 
     FROM staging_meeting_times smt
     WHERE smt."sequence" = mt."sequence"
-      AND smt.term_season = mt.term_season
-      AND smt.term_year = mt.term_year
+      AND smt.term_collection_id = mt.term_collection_id
       AND smt.course_id = mt.course_id
       AND smt.school_id = mt.school_id
       AND smt.section_id = mt.section_id
@@ -142,96 +141,72 @@ WHERE mt.term_season = $1
 `
 
 type RemoveUnstagedMeetingsParams struct {
-	Termseason SeasonEnum
-	Termyear   int32
-	SchoolID   string
+	TermCollectionID string
+	SchoolID         string
 }
 
 func (q *Queries) RemoveUnstagedMeetings(ctx context.Context, arg RemoveUnstagedMeetingsParams) error {
-	_, err := q.db.Exec(ctx, removeUnstagedMeetings, arg.Termseason, arg.Termyear, arg.SchoolID)
+	_, err := q.db.Exec(ctx, removeUnstagedMeetings, arg.TermCollectionID, arg.SchoolID)
 	return err
 }
 
 const removeUnstagedSections = `-- name: RemoveUnstagedSections :exec
 DELETE FROM sections s
-WHERE s.term_season = $1 
-  AND s.term_year = $2 
-  AND s.school_id = $3
+WHERE s.term_collection_id = $1
+  AND s.school_id = $2
   AND NOT EXISTS (
     SELECT 1 
     FROM staging_sections ss
     WHERE ss.id = s.id
-      AND ss.term_season = s.term_season
-      AND ss.term_year = s.term_year
+      AND ss.term_collection_id = s.term_collection_id
       AND ss.course_id = s.course_id
       AND ss.school_id = s.school_id
   )
 `
 
 type RemoveUnstagedSectionsParams struct {
-	Termseason SeasonEnum
-	Termyear   int32
-	SchoolID   string
+	TermCollectionID string
+	SchoolID         string
 }
 
 func (q *Queries) RemoveUnstagedSections(ctx context.Context, arg RemoveUnstagedSectionsParams) error {
-	_, err := q.db.Exec(ctx, removeUnstagedSections, arg.Termseason, arg.Termyear, arg.SchoolID)
+	_, err := q.db.Exec(ctx, removeUnstagedSections, arg.TermCollectionID, arg.SchoolID)
 	return err
 }
 
 type StageMeetingTimesParams struct {
-	Sequence     int32
-	Sectionid    string
-	Termseason   SeasonEnum
-	Termyear     int32
-	Courseid     string
-	Schoolid     string
-	Startdate    pgtype.Timestamp
-	Enddate      pgtype.Timestamp
-	Meetingtype  pgtype.Text
-	Startminutes pgtype.Time
-	Endminutes   pgtype.Time
-	Ismonday     bool
-	Istuesday    bool
-	Iswednesday  bool
-	Isthursday   bool
-	Isfriday     bool
-	Issaturday   bool
-	Issunday     bool
+	Sequence         int32
+	SectionID        string
+	TermCollectionID string
+	CourseID         string
+	SchoolID         string
+	StartDate        pgtype.Timestamp
+	EndDate          pgtype.Timestamp
+	MeetingType      pgtype.Text
+	StartMinutes     pgtype.Time
+	EndMinutes       pgtype.Time
+	IsMonday         bool
+	IsTuesday        bool
+	IsWednesday      bool
+	IsThursday       bool
+	IsFriday         bool
+	IsSaturday       bool
+	IsSunday         bool
 }
 
 type StageSectionsParams struct {
 	ID                string
 	Campus            pgtype.Text
 	CourseID          string
-	Schoolid          string
-	Termyear          int32
-	Termseason        SeasonEnum
+	SchoolID          string
+	TermCollectionID  string
 	Enrollment        pgtype.Int4
-	Maxenrollment     pgtype.Int4
-	Instructionmethod pgtype.Text
-	Primaryfacultyid  pgtype.Text
+	MaxEnrollment     pgtype.Int4
+	InstructionMethod pgtype.Text
+	PrimaryFacultyID  pgtype.Text
 }
 
-const truncateStagingMeetingTimes = `-- name: TruncateStagingMeetingTimes :exec
-TRUNCATE TABLE staging_meeting_times
-`
-
-func (q *Queries) TruncateStagingMeetingTimes(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, truncateStagingMeetingTimes)
-	return err
-}
-
-const truncateStagingSections = `-- name: TruncateStagingSections :exec
-TRUNCATE TABLE staging_sections
-`
-
-func (q *Queries) TruncateStagingSections(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, truncateStagingSections)
-	return err
-}
-
-const upsertSchools = `-- name: UpsertSchools :exec
+const upsertSchool = `-- name: UpsertSchool :exec
 INSERT INTO schools
     (id, name)
 VALUES
@@ -239,12 +214,12 @@ VALUES
 ON CONFLICT DO NOTHING
 `
 
-type UpsertSchoolsParams struct {
+type UpsertSchoolParams struct {
 	ID   string
 	Name string
 }
 
-func (q *Queries) UpsertSchools(ctx context.Context, arg UpsertSchoolsParams) error {
-	_, err := q.db.Exec(ctx, upsertSchools, arg.ID, arg.Name)
+func (q *Queries) UpsertSchool(ctx context.Context, arg UpsertSchoolParams) error {
+	_, err := q.db.Exec(ctx, upsertSchool, arg.ID, arg.Name)
 	return err
 }

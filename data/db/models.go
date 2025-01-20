@@ -63,7 +63,7 @@ type Course struct {
 	SubjectDescription pgtype.Text
 	Title              pgtype.Text
 	Description        pgtype.Text
-	CreditHours        int32
+	CreditHours        float32
 }
 
 type FacultyMember struct {
@@ -76,30 +76,28 @@ type FacultyMember struct {
 }
 
 type MeetingTime struct {
-	Sequence     int32
-	SectionID    string
-	TermSeason   SeasonEnum
-	TermYear     int32
-	CourseID     string
-	SchoolID     string
-	StartDate    pgtype.Timestamp
-	EndDate      pgtype.Timestamp
-	MeetingType  pgtype.Text
-	StartMinutes pgtype.Time
-	EndMinutes   pgtype.Time
-	IsMonday     bool
-	IsTuesday    bool
-	IsWednesday  bool
-	IsThursday   bool
-	IsFriday     bool
-	IsSaturday   bool
-	IsSunday     bool
+	Sequence         int32
+	SectionID        string
+	TermCollectionID string
+	CourseID         string
+	SchoolID         string
+	StartDate        pgtype.Timestamp
+	EndDate          pgtype.Timestamp
+	MeetingType      pgtype.Text
+	StartMinutes     pgtype.Time
+	EndMinutes       pgtype.Time
+	IsMonday         bool
+	IsTuesday        bool
+	IsWednesday      bool
+	IsThursday       bool
+	IsFriday         bool
+	IsSaturday       bool
+	IsSunday         bool
 }
 
 type PreviousFullSectionCollection struct {
 	SchoolID       string
-	Year           int32
-	Season         SeasonEnum
+	CollectionID   string
 	TimeCollection pgtype.Timestamptz
 }
 
@@ -110,8 +108,7 @@ type School struct {
 
 type Section struct {
 	ID                string
-	TermSeason        SeasonEnum
-	TermYear          int32
+	TermCollectionID  string
 	CourseID          string
 	SchoolID          string
 	MaxEnrollment     pgtype.Int4
@@ -122,30 +119,28 @@ type Section struct {
 }
 
 type StagingMeetingTime struct {
-	Sequence     int32
-	SectionID    string
-	TermSeason   SeasonEnum
-	TermYear     int32
-	CourseID     string
-	SchoolID     string
-	StartDate    pgtype.Timestamp
-	EndDate      pgtype.Timestamp
-	MeetingType  pgtype.Text
-	StartMinutes pgtype.Time
-	EndMinutes   pgtype.Time
-	IsMonday     bool
-	IsTuesday    bool
-	IsWednesday  bool
-	IsThursday   bool
-	IsFriday     bool
-	IsSaturday   bool
-	IsSunday     bool
+	Sequence         int32
+	SectionID        string
+	TermCollectionID string
+	CourseID         string
+	SchoolID         string
+	StartDate        pgtype.Timestamp
+	EndDate          pgtype.Timestamp
+	MeetingType      pgtype.Text
+	StartMinutes     pgtype.Time
+	EndMinutes       pgtype.Time
+	IsMonday         bool
+	IsTuesday        bool
+	IsWednesday      bool
+	IsThursday       bool
+	IsFriday         bool
+	IsSaturday       bool
+	IsSunday         bool
 }
 
 type StagingSection struct {
 	ID                string
-	TermSeason        SeasonEnum
-	TermYear          int32
+	TermCollectionID  string
 	CourseID          string
 	SchoolID          string
 	MaxEnrollment     pgtype.Int4
@@ -161,8 +156,10 @@ type Term struct {
 }
 
 type TermCollection struct {
+	ID              string
 	SchoolID        string
 	Year            int32
 	Season          SeasonEnum
+	Name            pgtype.Text
 	StillCollecting bool
 }

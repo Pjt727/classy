@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Pjt727/classy/collection"
+	"github.com/Pjt727/classy/data"
 	"github.com/Pjt727/classy/data/db"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -26,7 +27,6 @@ facualty members, and internal collection tables`,
 		logger := log.WithFields(log.Fields{
 			"job": "getSchool",
 		})
-		fmt.Println("getSchool called")
 		schoolId, err := cmd.Flags().GetString("schoolid")
 		if err != nil {
 			logger.Error("invalid schoolid", err)
@@ -39,7 +39,12 @@ facualty members, and internal collection tables`,
 		}
 		termSeasonInput, err := cmd.Flags().GetString("termseason")
 		if err != nil {
-			logger.Error("invalid termyear", err)
+			logger.Error("invalid termseason", err)
+			return
+		}
+		schoolName, err := cmd.Flags().GetString("schoolname")
+		if err != nil {
+			logger.Error("invalid school name", err)
 			return
 		}
 		var termSeason db.SeasonEnum
@@ -47,13 +52,73 @@ facualty members, and internal collection tables`,
 			logger.Error("Term season is invalid: ", err)
 			return
 		}
-		term := db.Term{
-			Year:   int32(termYear),
-			Season: termSeason,
-		}
 		ctx := context.Background()
+		dbPool, err := data.NewQueries(ctx)
+		if err != nil {
+			logger.Error("Could not connect to db: ", err)
+			return
+		}
+		if schoolName == "" {
+			school, ok := collection.SchoolIdToSchool[schoolId]
+			if ok {
+				schoolName = school.Name
+			}
+		}
+
+		service, ok := collection.SchoolIdToService[schoolId]
+		if !ok {
+			logger.Error("Unknown school id, do not know how to scrape", err)
+			return
+		}
+		// update the terms for the school
+		err = collection.UpsertSchoolTerms(ctx, *logger, db.School{
+			ID:   schoolId,
+			Name: schoolName,
+		},
+			service,
+		)
+		if err != nil {
+			logger.Error("There was an error upserting school's terms: ", err)
+			return
+		}
+
+		q := db.New(dbPool)
+		termCollections, err := q.GetTermCollectionsForSchool(ctx, db.GetTermCollectionsForSchoolParams{
+			SchoolID: schoolId,
+			Year:     int32(termYear),
+			Season:   termSeason,
+		})
+		if err != nil {
+			logger.Error("There was an error getting terms: ", err)
+			return
+		}
+
+		var termCollection db.TermCollection
+		if len(termCollections) == 0 {
+			logger.Errorf("There are no terms for %s %d", termSeason, termYear)
+			return
+		} else if len(termCollections) == 1 {
+			termCollection = termCollections[0].TermCollection
+		} else {
+			for termCollection == (db.TermCollection{}) {
+				fmt.Printf("There are multiple terms for %s and %d. Choose one:\n", termSeason, termYear)
+				for i, getTermCollection := range termCollections {
+					t := getTermCollection.TermCollection
+					fmt.Printf("%d: %s %s\n", i+1, t.Name.String, t.ID)
+				}
+				var choice int32
+				_, err = fmt.Scanln(&choice)
+				choice-- // 1 based numbering
+				if choice < 0 || len(termCollections) <= int(choice) {
+					logger.Errorf("Invalid choice try again\n\n\n")
+				} else {
+					termCollection = termCollections[choice].TermCollection
+				}
+			}
+		}
+
 		logger.Infof("Starting update for school %s", schoolId)
-		collection.UpdateAllSectionsOfSchool(ctx, schoolId, term)
+		collection.UpdateAllSectionsOfSchool(ctx, schoolId, termCollection)
 		logger.Infof("Finished update for school %s", schoolId)
 	},
 }
@@ -82,6 +147,11 @@ func init() {
 		"schoolid",
 		"marist",
 		"The school to be collected (none for all of them)",
+	)
+	schoolCmd.Flags().String(
+		"schoolname",
+		"",
+		"The name of the school to be collected",
 	)
 	schoolCmd.Flags().String(
 		"termseason",

@@ -2,9 +2,8 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"sync"
-
-	log "github.com/sirupsen/logrus"
 )
 
 // the main purpose of this staging process in not effiency... It is to have the
@@ -14,20 +13,25 @@ import (
 // if those triggers did not matter then we would simply delete all respective meeting / section data
 //    and use copy from or batch inserts directly on the table
 
-// the table should already be empty this is a double check
-func (q *Queries) ReadyCoursesMeetingsStaging(ctx context.Context) error {
+func (q *Queries) DeleteCoursesMeetingsStaging(ctx context.Context, termCollection TermCollection) error {
 	errCh := make(chan error, 2)
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		if err := q.TruncateStagingMeetingTimes(ctx); err != nil {
+		if err := q.DeleteStagingMeetingTimes(ctx, DeleteStagingMeetingTimesParams{
+			TermCollectionID: termCollection.ID,
+			SchoolID:         termCollection.SchoolID,
+		}); err != nil {
 			errCh <- err
 		}
 	}()
 	go func() {
 		defer wg.Done()
-		if err := q.TruncateStagingSections(ctx); err != nil {
+		if err := q.DeleteStagingSections(ctx, DeleteStagingSectionsParams{
+			TermCollectionID: termCollection.ID,
+			SchoolID:         termCollection.SchoolID,
+		}); err != nil {
 			errCh <- err
 		}
 	}()
@@ -41,44 +45,32 @@ func (q *Queries) ReadyCoursesMeetingsStaging(ctx context.Context) error {
 	return nil
 }
 
-func (q *Queries) CleanupCoursesMeetingsStaging(ctx context.Context) error {
-	// for now they are the same thing
-	return q.ReadyCoursesMeetingsStaging(ctx)
-}
-
 // moves all staged
 func (q *Queries) MoveStagedCoursesAndMeetings(
 	ctx context.Context,
-	schoolId string,
-	term Term,
+	termCollection TermCollection,
 ) (int, error) {
 	err := q.RemoveUnstagedSections(ctx, RemoveUnstagedSectionsParams{
-		Termseason: term.Season,
-		Termyear:   term.Year,
-		SchoolID:   schoolId,
+		TermCollectionID: termCollection.ID,
+		SchoolID:         termCollection.SchoolID,
 	})
 	if err != nil {
-		log.Trace("remove sections error propagating: ", err)
-		return 0, err
+		return 0, fmt.Errorf("error unstaging sections %v", err)
 	}
 	err = q.RemoveUnstagedMeetings(ctx, RemoveUnstagedMeetingsParams{
-		Termseason: term.Season,
-		Termyear:   term.Year,
-		SchoolID:   schoolId,
+		TermCollectionID: termCollection.ID,
+		SchoolID:         termCollection.SchoolID,
 	})
 	if err != nil {
-		log.Trace("remove meeting error propagating: ", err)
-		return 0, err
+		return 0, fmt.Errorf("error unstaging meeting %v", err)
 	}
 	err = q.MoveStagedSections(ctx)
 	if err != nil {
-		log.Trace("move sections error propagating: ", err)
-		return 0, err
+		return 0, fmt.Errorf("error staging sections %v", err)
 	}
 	err = q.MoveStagedMeetingTimes(ctx)
 	if err != nil {
-		log.Trace("move meeting times error propagating: ", err)
-		return 0, err
+		return 0, fmt.Errorf("error staging meetings %v", err)
 	}
 	return 0, nil
 }

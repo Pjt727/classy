@@ -14,25 +14,25 @@ CREATE TABLE terms (
 );
 
 CREATE TABLE term_collections (
+    id TEXT,
     school_id TEXT,
-    year INT,
-    season season_enum,
-    id TEXT, -- used for services to determine which term to do
-    name TEXT,
 
+    year INT NOT NULL,
+    season season_enum NOT NULL,
+    name TEXT,
     still_collecting BOOL NOT NULL,
     FOREIGN KEY (school_id) REFERENCES schools(id),
     FOREIGN KEY (year, season) REFERENCES terms(year, season),
-    PRIMARY KEY (school_id, year, season, id)
+    PRIMARY KEY (id, school_id)
 );
 
 CREATE TABLE previous_full_section_collections (
     school_id TEXT,
-    year INT,
-    season season_enum,
+    collection_id TEXT,
     time_collection TIMESTAMP WITH TIME ZONE,
-    FOREIGN KEY (school_id, year, season) REFERENCES term_collections(school_id, year, season),
-    PRIMARY KEY (school_id, year, season, time_collection)
+
+    FOREIGN KEY (collection_id, school_id) REFERENCES term_collections(id, school_id),
+    PRIMARY KEY (collection_id, school_id, time_collection)
 );
 
 CREATE TABLE faculty_members (
@@ -56,15 +56,13 @@ CREATE TABLE courses (
     subject_description TEXT,
     title TEXT,
     description TEXT,
-    credit_hours INTEGER NOT NULL,
+    credit_hours REAL NOT NULL,
     FOREIGN KEY (school_id) REFERENCES schools(id),
     PRIMARY KEY (id, school_id)
 );
 
 CREATE TABLE sections (
     id TEXT,
-    term_season season_enum,
-    term_year INT,
     term_collection_id TEXT,
     course_id TEXT,
     school_id TEXT,
@@ -77,14 +75,13 @@ CREATE TABLE sections (
     FOREIGN KEY (course_id, school_id) REFERENCES courses(id, school_id),
     FOREIGN KEY (primary_faculty_id, school_id) REFERENCES faculty_members(id, school_id),
 
-    FOREIGN KEY (school_id, term_year, term_season, term_collection_id) REFERENCES term_collections(school_id, year, season, id),
-    PRIMARY KEY (id, term_season, term_year, course_id, school_id)
+    FOREIGN KEY (term_collection_id, school_id) REFERENCES term_collections(id, school_id),
+    PRIMARY KEY (id, term_collection_id, course_id, school_id)
 );
 
 CREATE TABLE staging_sections (
     id TEXT NOT NULL,
-    term_season season_enum NOT NULL,
-    term_year INT NOT NULL,
+    term_collection_id TEXT NOT NULL,
     course_id TEXT NOT NULL,
     school_id TEXT NOT NULL,
 
@@ -98,8 +95,7 @@ CREATE TABLE staging_sections (
 CREATE TABLE meeting_times (
     sequence INT,
     section_id TEXT,
-    term_season season_enum,
-    term_year INT,
+    term_collection_id TEXT,
     course_id TEXT,
     school_id TEXT,
 
@@ -115,16 +111,15 @@ CREATE TABLE meeting_times (
     is_friday BOOLEAN NOT NULL,
     is_saturday BOOLEAN NOT NULL,
     is_sunday BOOLEAN NOT NULL,
-    FOREIGN KEY (section_id, term_season, term_year, course_id, school_id) 
-        REFERENCES sections(id, term_season, term_year, course_id, school_id) ON DELETE CASCADE,
-    PRIMARY KEY (sequence, section_id, term_season, term_year, course_id, school_id)
+    FOREIGN KEY (section_id, term_collection_id, course_id, school_id)
+        REFERENCES sections(id, term_collection_id, course_id, school_id) ON DELETE CASCADE,
+    PRIMARY KEY (sequence, section_id, term_collection_id, course_id, school_id)
 );
 
 CREATE TABLE staging_meeting_times (
     sequence INT NOT NULL,
     section_id TEXT NOT NULL,
-    term_season season_enum NOT NULL,
-    term_year INT NOT NULL,
+    term_collection_id TEXT NOT NULL,
     course_id TEXT NOT NULL,
     school_id TEXT NOT NULL,
 

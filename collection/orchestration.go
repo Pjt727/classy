@@ -11,6 +11,9 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// note logging is generally made with the api server in mind so the semantics
+//    might be a little confusing when running these commands from CMD commands
+
 type Service interface {
 
 	// get the name of the service
@@ -19,15 +22,15 @@ type Service interface {
 	// get the schools for this service (only called once at the start of the program)
 	ListValidSchools(logger log.Entry, ctx context.Context, q *db.Queries) ([]db.School, error)
 
-	// adds every section to database and returns the amount changed
-	//     because different services may have different adding procedures
-	//     it is on the implementer
+	// Should put ALL sections / meetings in the staging table as well as make
+	//     the needed professors / courses for the sections and meeting times
+	// ALL sections and meeting times must be put because they are diffed with the
+	//     current state of the database to make deletions
 	StageAllClasses(
 		logger log.Entry,
 		ctx context.Context,
 		q *db.Queries,
-		school db.School,
-		term db.Term,
+		term db.TermCollection,
 	) error
 
 	// get the terms that school (does NOT upsert them to the db)
@@ -39,14 +42,14 @@ type Service interface {
 }
 
 var serviceEntries []Service
-var schoolIdToService map[string]*Service
-var schoolIdToSchool map[string]db.School
+var SchoolIdToService map[string]*Service
+var SchoolIdToSchool map[string]db.School
 var orchestrationLogger *log.Entry
 var dbPool *pgxpool.Pool
 
 func init() {
-	schoolIdToService = make(map[string]*Service)
-	schoolIdToSchool = make(map[string]db.School)
+	SchoolIdToService = make(map[string]*Service)
+	SchoolIdToSchool = make(map[string]db.School)
 
 	orchestrationLogger = log.WithFields(log.Fields{"job": "orchestration"})
 	serviceEntries = []Service{services.Banner}
@@ -67,8 +70,8 @@ func init() {
 		}
 
 		for _, school := range schools {
-			schoolIdToService[school.ID] = &service
-			schoolIdToSchool[school.ID] = school
+			SchoolIdToService[school.ID] = &service
+			SchoolIdToSchool[school.ID] = school
 		}
 	}
 }
@@ -80,10 +83,10 @@ func UpsertAllSchools(ctx context.Context) {
 		return
 	}
 	q := db.New(dbPool).WithTx(tx)
-	for _, school := range schoolIdToSchool {
-		err = q.UpsertSchools(
+	for _, school := range SchoolIdToSchool {
+		err = q.UpsertSchool(
 			ctx,
-			db.UpsertSchoolsParams{
+			db.UpsertSchoolParams{
 				ID:   school.ID,
 				Name: school.Name,
 			})
@@ -96,64 +99,84 @@ func UpsertAllSchools(ctx context.Context) {
 	tx.Commit(ctx)
 }
 
+func UpsertSchoolTerms(ctx context.Context, logger log.Entry, school db.School, service *Service) error {
+	tx, err := dbPool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Commit(ctx)
+	q := db.New(tx)
+	logger.Tracef(`starting collection terms`)
+	termCollections, err := (*service).GetTermCollections(logger, ctx, school)
+	logger.Tracef(`finished collection terms`)
+	if err != nil {
+		logger.Trace(`propagating commit err: `, err)
+		tx.Rollback(ctx)
+		return err
+	}
+
+	logger.Tracef(`starting adding collection terms to db`)
+	terms := make([]db.UpsertTermParams, len(termCollections))
+	for i, termCollection := range termCollections {
+		terms[i] = db.UpsertTermParams{
+			Year:   termCollection.Year,
+			Season: termCollection.Season,
+		}
+	}
+
+	if err := q.UpsertSchool(ctx, db.UpsertSchoolParams{
+		ID:   school.ID,
+		Name: school.Name,
+	}); err != nil {
+		return err
+	}
+
+	dt := q.UpsertTerm(ctx, terms)
+	dt.Exec(func(i int, e error) {
+		if e != nil {
+			tx.Rollback(ctx)
+			err = e
+			return
+		}
+	})
+	if err != nil {
+		return err
+	}
+
+	dtc := q.UpsertTermCollection(ctx, termCollections)
+	dtc.Exec(func(i int, e error) {
+		if e != nil {
+			tx.Rollback(ctx)
+			err = e
+			return
+		}
+	})
+	if err != nil {
+		return err
+	}
+	logger.Tracef(`finished adding %d collection terms to db`, len(termCollections))
+	tx.Commit(ctx)
+	return nil
+}
+
 func UpsertAllTerms(ctx context.Context) {
 	var wg sync.WaitGroup
 	errCh := make(chan error)
-	numberOfWorkers := len(schoolIdToService)
+	numberOfWorkers := len(SchoolIdToService)
 	orchestrationLogger.Infof(`Starting to add %d school's terms`, numberOfWorkers)
 	wg.Add(numberOfWorkers)
-	for school_id, s := range schoolIdToService {
-		school := schoolIdToSchool[school_id]
+	for school_id, s := range SchoolIdToService {
+		school := SchoolIdToSchool[school_id]
 		termLogger := orchestrationLogger.WithFields(log.Fields{
 			"school_id": school_id,
 			"service":   (*s).GetName(),
 		})
-		go func(school db.School, s *Service, logger log.Entry) {
+		go func() {
 			defer wg.Done()
-			tx, err := dbPool.Begin(ctx)
-			if err != nil {
+			if err := UpsertSchoolTerms(ctx, *termLogger, school, s); err != nil {
 				errCh <- err
-				return
 			}
-			defer tx.Commit(ctx)
-			q := db.New(tx)
-			logger.Tracef(`starting collection terms`)
-			termCollections, err := (*s).GetTermCollections(logger, ctx, school)
-			logger.Tracef(`finished collection terms`)
-			if err != nil {
-				errCh <- err
-				logger.Trace(`propagating commit err: `, err)
-				tx.Rollback(ctx)
-				return
-			}
-
-			logger.Tracef(`starting adding collection terms to db`)
-			terms := make([]db.UpsertTermParams, len(termCollections))
-			for i, termCollection := range termCollections {
-				terms[i] = db.UpsertTermParams{
-					Year:   termCollection.Year,
-					Season: termCollection.Season,
-				}
-			}
-			dt := q.UpsertTerm(ctx, terms)
-			dt.Exec(func(i int, err error) {
-				if err != nil {
-					errCh <- err
-					tx.Rollback(ctx)
-					return
-				}
-			})
-			dtc := q.UpsertTermCollection(ctx, termCollections)
-			dtc.Exec(func(i int, err error) {
-				if err != nil {
-					errCh <- err
-					tx.Rollback(ctx)
-					return
-				}
-			})
-
-			logger.Tracef(`finished adding collection terms to db`)
-		}(school, s, *termLogger)
+		}()
 	}
 
 	go func() {
@@ -171,43 +194,44 @@ func UpsertAllTerms(ctx context.Context) {
 
 }
 
-func UpdateAllSectionsOfSchool(ctx context.Context, school_id string, term db.Term) {
+func UpdateAllSectionsOfSchool(ctx context.Context, schoolId string, termCollection db.TermCollection) {
 	// there might be a good way to easily sandbox schoools to what they should change
-	s, ok := schoolIdToService[school_id]
+	service, ok := SchoolIdToService[schoolId]
 	updateLogger := orchestrationLogger.WithFields(log.Fields{
-		"school_id": school_id,
-		"season":    term.Season,
-		"year":      term.Year,
+		"school_id": schoolId,
+		"season":    termCollection.Season,
+		"year":      termCollection.Year,
 	})
 	if !ok {
 		updateLogger.Error("Skipping update school... school not found")
 		return
 	}
-	school := schoolIdToSchool[school_id]
+	school := SchoolIdToSchool[schoolId]
 	updateLogger = orchestrationLogger.WithFields(log.Fields{
-		"service": (*s).GetName(),
-		"school":  school,
-		"term":    term,
+		"service":        (*service).GetName(),
+		"school":         school,
+		"termCollection": termCollection,
 	})
 	q := db.New(dbPool)
-	if err := q.ReadyCoursesMeetingsStaging(ctx); err != nil {
-		updateLogger.Error("Could not ready staging tables", updateLogger)
+	if err := q.DeleteCoursesMeetingsStaging(ctx, termCollection); err != nil {
+		updateLogger.Error("Could not ready staging tables", err)
 		return
 	}
 	// defer q.CleanupCoursesMeetingsStaging(ctx)
-	if err := (*s).StageAllClasses(*updateLogger, ctx, q, school, term); err != nil {
+	if err := (*service).StageAllClasses(*updateLogger, ctx, q, termCollection); err != nil {
 		updateLogger.Error("Update sections aborting any staged sections/ meetings", updateLogger)
 		return
 	}
 	tx, err := dbPool.Begin(ctx)
 	if err != nil {
-		updateLogger.Error("couldn't begin transaction", updateLogger)
+		updateLogger.Error("couldn't begin transaction: ", err)
 		return
 	}
 	defer tx.Commit(ctx)
 	q = db.New(dbPool).WithTx(tx)
-	changesCount, err := q.MoveStagedCoursesAndMeetings(ctx, school_id, term)
+	changesCount, err := q.MoveStagedCoursesAndMeetings(ctx, termCollection)
 	if err != nil {
+		updateLogger.Error("Failed moving courses: ", err)
 		tx.Rollback(ctx)
 		return
 	}

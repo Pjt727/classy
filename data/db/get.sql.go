@@ -10,25 +10,20 @@ import (
 )
 
 const getSchoolsClassesForTerm = `-- name: GetSchoolsClassesForTerm :many
-SELECT sections.id, sections.term_season, sections.term_year, sections.course_id, sections.school_id, sections.max_enrollment, sections.instruction_method, sections.campus, sections.enrollment, sections.primary_faculty_id, courses.id, courses.school_id, courses.subject_code, courses.number, courses.subject_description, courses.title, courses.description, courses.credit_hours, meeting_times.sequence, meeting_times.section_id, meeting_times.term_season, meeting_times.term_year, meeting_times.course_id, meeting_times.school_id, meeting_times.start_date, meeting_times.end_date, meeting_times.meeting_type, meeting_times.start_minutes, meeting_times.end_minutes, meeting_times.is_monday, meeting_times.is_tuesday, meeting_times.is_wednesday, meeting_times.is_thursday, meeting_times.is_friday, meeting_times.is_saturday, meeting_times.is_sunday
+SELECT sections.id, sections.term_collection_id, sections.course_id, sections.school_id, sections.max_enrollment, sections.instruction_method, sections.campus, sections.enrollment, sections.primary_faculty_id, courses.id, courses.school_id, courses.subject_code, courses.number, courses.subject_description, courses.title, courses.description, courses.credit_hours, meeting_times.sequence, meeting_times.section_id, meeting_times.term_collection_id, meeting_times.course_id, meeting_times.school_id, meeting_times.start_date, meeting_times.end_date, meeting_times.meeting_type, meeting_times.start_minutes, meeting_times.end_minutes, meeting_times.is_monday, meeting_times.is_tuesday, meeting_times.is_wednesday, meeting_times.is_thursday, meeting_times.is_friday, meeting_times.is_saturday, meeting_times.is_sunday
 FROM sections
-JOIN courses ON sections.course_id = courses.id
-             AND sections.school_id = courses.school_id
-             AND sections.term_year = courses.term_year
-             AND sections.term_season = courses.term_season
-JOIN meeting_times ON sections.id = meeting_times.section_id
-             AND sections.school_id = meeting_times.school_id
-             AND sections.term_year = meeting_times.term_year
-             AND sections.term_season = meeting_times.term_season
+JOIN courses ON sections.course_id             = courses.id
+             AND sections.school_id            = courses.school_id
+JOIN meeting_times ON sections.id              = meeting_times.section_id
+             AND sections.school_id            = meeting_times.school_id
+             AND sections.term_collection_id   = meeting_times.term_collection_id
 WHERE sections.school_id = $1
-      AND sections.term_year = $2
-      AND sections.term_season = $3
+      AND sections.term_collection_id = $2
 `
 
 type GetSchoolsClassesForTermParams struct {
-	Schoolid   string
-	Termyear   int32
-	Termseason SeasonEnum
+	SchoolID         string
+	TermCollectionID string
 }
 
 type GetSchoolsClassesForTermRow struct {
@@ -38,7 +33,7 @@ type GetSchoolsClassesForTermRow struct {
 }
 
 func (q *Queries) GetSchoolsClassesForTerm(ctx context.Context, arg GetSchoolsClassesForTermParams) ([]GetSchoolsClassesForTermRow, error) {
-	rows, err := q.db.Query(ctx, getSchoolsClassesForTerm, arg.Schoolid, arg.Termyear, arg.Termseason)
+	rows, err := q.db.Query(ctx, getSchoolsClassesForTerm, arg.SchoolID, arg.TermCollectionID)
 	if err != nil {
 		return nil, err
 	}
@@ -48,8 +43,7 @@ func (q *Queries) GetSchoolsClassesForTerm(ctx context.Context, arg GetSchoolsCl
 		var i GetSchoolsClassesForTermRow
 		if err := rows.Scan(
 			&i.Section.ID,
-			&i.Section.TermSeason,
-			&i.Section.TermYear,
+			&i.Section.TermCollectionID,
 			&i.Section.CourseID,
 			&i.Section.SchoolID,
 			&i.Section.MaxEnrollment,
@@ -67,8 +61,7 @@ func (q *Queries) GetSchoolsClassesForTerm(ctx context.Context, arg GetSchoolsCl
 			&i.Course.CreditHours,
 			&i.MeetingTime.Sequence,
 			&i.MeetingTime.SectionID,
-			&i.MeetingTime.TermSeason,
-			&i.MeetingTime.TermYear,
+			&i.MeetingTime.TermCollectionID,
 			&i.MeetingTime.CourseID,
 			&i.MeetingTime.SchoolID,
 			&i.MeetingTime.StartDate,
@@ -83,6 +76,51 @@ func (q *Queries) GetSchoolsClassesForTerm(ctx context.Context, arg GetSchoolsCl
 			&i.MeetingTime.IsFriday,
 			&i.MeetingTime.IsSaturday,
 			&i.MeetingTime.IsSunday,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTermCollectionsForSchool = `-- name: GetTermCollectionsForSchool :many
+SELECT term_collections.id, term_collections.school_id, term_collections.year, term_collections.season, term_collections.name, term_collections.still_collecting 
+FROM term_collections 
+WHERE school_id = $1
+      AND (year = $2 OR $2 IS NULL )
+      AND (season = $3 OR $3 IS NULL)
+`
+
+type GetTermCollectionsForSchoolParams struct {
+	SchoolID string
+	Year     int32
+	Season   SeasonEnum
+}
+
+type GetTermCollectionsForSchoolRow struct {
+	TermCollection TermCollection
+}
+
+func (q *Queries) GetTermCollectionsForSchool(ctx context.Context, arg GetTermCollectionsForSchoolParams) ([]GetTermCollectionsForSchoolRow, error) {
+	rows, err := q.db.Query(ctx, getTermCollectionsForSchool, arg.SchoolID, arg.Year, arg.Season)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetTermCollectionsForSchoolRow
+	for rows.Next() {
+		var i GetTermCollectionsForSchoolRow
+		if err := rows.Scan(
+			&i.TermCollection.ID,
+			&i.TermCollection.SchoolID,
+			&i.TermCollection.Year,
+			&i.TermCollection.Season,
+			&i.TermCollection.Name,
+			&i.TermCollection.StillCollecting,
 		); err != nil {
 			return nil, err
 		}

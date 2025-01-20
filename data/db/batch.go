@@ -37,13 +37,13 @@ type UpsertCoursesBatchResults struct {
 
 type UpsertCoursesParams struct {
 	ID                 string
-	Schoolid           string
-	Subjectcode        pgtype.Text
+	SchoolID           string
+	SubjectCode        pgtype.Text
 	Number             pgtype.Text
-	Subjectdescription pgtype.Text
+	SubjectDescription pgtype.Text
 	Title              pgtype.Text
 	Description        pgtype.Text
-	Credithours        int32
+	CreditHours        float32
 }
 
 func (q *Queries) UpsertCourses(ctx context.Context, arg []UpsertCoursesParams) *UpsertCoursesBatchResults {
@@ -51,13 +51,13 @@ func (q *Queries) UpsertCourses(ctx context.Context, arg []UpsertCoursesParams) 
 	for _, a := range arg {
 		vals := []interface{}{
 			a.ID,
-			a.Schoolid,
-			a.Subjectcode,
+			a.SchoolID,
+			a.SubjectCode,
 			a.Number,
-			a.Subjectdescription,
+			a.SubjectDescription,
 			a.Title,
 			a.Description,
-			a.Credithours,
+			a.CreditHours,
 		}
 		batch.Queue(upsertCourses, vals...)
 	}
@@ -104,11 +104,11 @@ type UpsertFacultyBatchResults struct {
 
 type UpsertFacultyParams struct {
 	ID           string
-	Schoolid     string
+	SchoolID     string
 	Name         string
-	Emailaddress pgtype.Text
-	Firstname    pgtype.Text
-	Lastname     pgtype.Text
+	EmailAddress pgtype.Text
+	FirstName    pgtype.Text
+	LastName     pgtype.Text
 }
 
 func (q *Queries) UpsertFaculty(ctx context.Context, arg []UpsertFacultyParams) *UpsertFacultyBatchResults {
@@ -116,11 +116,11 @@ func (q *Queries) UpsertFaculty(ctx context.Context, arg []UpsertFacultyParams) 
 	for _, a := range arg {
 		vals := []interface{}{
 			a.ID,
-			a.Schoolid,
+			a.SchoolID,
 			a.Name,
-			a.Emailaddress,
-			a.Firstname,
-			a.Lastname,
+			a.EmailAddress,
+			a.FirstName,
+			a.LastName,
 		}
 		batch.Queue(upsertFaculty, vals...)
 	}
@@ -204,12 +204,13 @@ func (b *UpsertTermBatchResults) Close() error {
 
 const upsertTermCollection = `-- name: UpsertTermCollection :batchexec
 INSERT INTO term_collections
-    (school_id, year, season, still_collecting)
+    (id, school_id, year, season, name, still_collecting)
 VALUES
-    ($1, $2, $3, $4)
-ON CONFLICT (school_id, year, season) DO UPDATE
+    ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (id, school_id) DO UPDATE
 SET
-    still_collecting = EXCLUDED.still_collecting
+    still_collecting = EXCLUDED.still_collecting,
+    name = EXCLUDED.name
 `
 
 type UpsertTermCollectionBatchResults struct {
@@ -219,20 +220,24 @@ type UpsertTermCollectionBatchResults struct {
 }
 
 type UpsertTermCollectionParams struct {
-	Schoolid        string
+	ID              string
+	SchoolID        string
 	Year            int32
 	Season          SeasonEnum
-	Stillcollecting bool
+	Name            pgtype.Text
+	StillCollecting bool
 }
 
 func (q *Queries) UpsertTermCollection(ctx context.Context, arg []UpsertTermCollectionParams) *UpsertTermCollectionBatchResults {
 	batch := &pgx.Batch{}
 	for _, a := range arg {
 		vals := []interface{}{
-			a.Schoolid,
+			a.ID,
+			a.SchoolID,
 			a.Year,
 			a.Season,
-			a.Stillcollecting,
+			a.Name,
+			a.StillCollecting,
 		}
 		batch.Queue(upsertTermCollection, vals...)
 	}
