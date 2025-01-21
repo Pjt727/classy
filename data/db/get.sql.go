@@ -70,73 +70,54 @@ func (q *Queries) GetSchool(ctx context.Context, schoolID string) (GetSchoolRow,
 	return i, err
 }
 
-const getSchoolsClassesForTerm = `-- name: GetSchoolsClassesForTerm :many
-SELECT sections.id, sections.term_collection_id, sections.course_id, sections.school_id, sections.max_enrollment, sections.instruction_method, sections.campus, sections.enrollment, sections.primary_faculty_id, courses.id, courses.school_id, courses.subject_code, courses.number, courses.subject_description, courses.title, courses.description, courses.credit_hours, meeting_times.sequence, meeting_times.section_id, meeting_times.term_collection_id, meeting_times.course_id, meeting_times.school_id, meeting_times.start_date, meeting_times.end_date, meeting_times.meeting_type, meeting_times.start_minutes, meeting_times.end_minutes, meeting_times.is_monday, meeting_times.is_tuesday, meeting_times.is_wednesday, meeting_times.is_thursday, meeting_times.is_friday, meeting_times.is_saturday, meeting_times.is_sunday
+const getSchoolsClassesForTermOrderedBySection = `-- name: GetSchoolsClassesForTermOrderedBySection :many
+SELECT id, term_collection_id, course_id, school_id, max_enrollment, instruction_method, campus, enrollment, primary_faculty_id
 FROM sections
-JOIN courses ON sections.course_id             = courses.id
-             AND sections.school_id            = courses.school_id
-JOIN meeting_times ON sections.id              = meeting_times.section_id
-             AND sections.school_id            = meeting_times.school_id
-             AND sections.term_collection_id   = meeting_times.term_collection_id
 WHERE sections.school_id = $1
       AND sections.term_collection_id = $2
 `
 
-type GetSchoolsClassesForTermParams struct {
+type GetSchoolsClassesForTermOrderedBySectionParams struct {
 	SchoolID         string `json:"school_id"`
 	TermCollectionID string `json:"term_collection_id"`
 }
 
-type GetSchoolsClassesForTermRow struct {
-	Section     Section     `json:"section"`
-	Course      Course      `json:"course"`
-	MeetingTime MeetingTime `json:"meeting_time"`
-}
-
-func (q *Queries) GetSchoolsClassesForTerm(ctx context.Context, arg GetSchoolsClassesForTermParams) ([]GetSchoolsClassesForTermRow, error) {
-	rows, err := q.db.Query(ctx, getSchoolsClassesForTerm, arg.SchoolID, arg.TermCollectionID)
+// SELECT sqlc.embed(sections), sqlc.embed(courses), sqlc.embed(meeting_times)
+// FROM sections
+// JOIN courses ON sections.course_id             = courses.id
+//
+//	AND sections.school_id            = courses.school_id
+//
+// JOIN meeting_times ON sections.id              = meeting_times.section_id
+//
+//	AND sections.school_id            = meeting_times.school_id
+//	AND sections.term_collection_id   = meeting_times.term_collection_id
+//
+// WHERE sections.school_id = @school_id
+//
+//	AND sections.term_collection_id = @term_collection_id
+//
+// GROUP BY sections.id
+// ;
+func (q *Queries) GetSchoolsClassesForTermOrderedBySection(ctx context.Context, arg GetSchoolsClassesForTermOrderedBySectionParams) ([]Section, error) {
+	rows, err := q.db.Query(ctx, getSchoolsClassesForTermOrderedBySection, arg.SchoolID, arg.TermCollectionID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetSchoolsClassesForTermRow
+	var items []Section
 	for rows.Next() {
-		var i GetSchoolsClassesForTermRow
+		var i Section
 		if err := rows.Scan(
-			&i.Section.ID,
-			&i.Section.TermCollectionID,
-			&i.Section.CourseID,
-			&i.Section.SchoolID,
-			&i.Section.MaxEnrollment,
-			&i.Section.InstructionMethod,
-			&i.Section.Campus,
-			&i.Section.Enrollment,
-			&i.Section.PrimaryFacultyID,
-			&i.Course.ID,
-			&i.Course.SchoolID,
-			&i.Course.SubjectCode,
-			&i.Course.Number,
-			&i.Course.SubjectDescription,
-			&i.Course.Title,
-			&i.Course.Description,
-			&i.Course.CreditHours,
-			&i.MeetingTime.Sequence,
-			&i.MeetingTime.SectionID,
-			&i.MeetingTime.TermCollectionID,
-			&i.MeetingTime.CourseID,
-			&i.MeetingTime.SchoolID,
-			&i.MeetingTime.StartDate,
-			&i.MeetingTime.EndDate,
-			&i.MeetingTime.MeetingType,
-			&i.MeetingTime.StartMinutes,
-			&i.MeetingTime.EndMinutes,
-			&i.MeetingTime.IsMonday,
-			&i.MeetingTime.IsTuesday,
-			&i.MeetingTime.IsWednesday,
-			&i.MeetingTime.IsThursday,
-			&i.MeetingTime.IsFriday,
-			&i.MeetingTime.IsSaturday,
-			&i.MeetingTime.IsSunday,
+			&i.ID,
+			&i.TermCollectionID,
+			&i.CourseID,
+			&i.SchoolID,
+			&i.MaxEnrollment,
+			&i.InstructionMethod,
+			&i.Campus,
+			&i.Enrollment,
+			&i.PrimaryFacultyID,
 		); err != nil {
 			return nil, err
 		}

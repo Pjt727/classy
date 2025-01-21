@@ -19,14 +19,20 @@ WHERE school_id = @school_id
       AND (season = @season OR @season IS NULL)
 ;
 
--- name: GetSchoolsClassesForTerm :many
-SELECT sqlc.embed(sections), sqlc.embed(courses), sqlc.embed(meeting_times)
+-- name: GetSchoolsClassesForTermOrderedBySection :many
+-- SELECT sqlc.embed(sections), sqlc.embed(courses), sqlc.embed(meeting_times)
+-- FROM sections
+-- JOIN courses ON sections.course_id             = courses.id
+--              AND sections.school_id            = courses.school_id
+-- JOIN meeting_times ON sections.id              = meeting_times.section_id
+--              AND sections.school_id            = meeting_times.school_id
+--              AND sections.term_collection_id   = meeting_times.term_collection_id
+-- WHERE sections.school_id = @school_id
+--       AND sections.term_collection_id = @term_collection_id
+-- GROUP BY sections.id
+-- ;
+SELECT *
 FROM sections
-JOIN courses ON sections.course_id             = courses.id
-             AND sections.school_id            = courses.school_id
-JOIN meeting_times ON sections.id              = meeting_times.section_id
-             AND sections.school_id            = meeting_times.school_id
-             AND sections.term_collection_id   = meeting_times.term_collection_id
 WHERE sections.school_id = @school_id
       AND sections.term_collection_id = @term_collection_id
 ;

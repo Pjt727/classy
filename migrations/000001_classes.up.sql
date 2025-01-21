@@ -136,3 +136,4 @@ CREATE TABLE staging_meeting_times (
     is_saturday BOOLEAN NOT NULL,
     is_sunday BOOLEAN NOT NULL
 );
+

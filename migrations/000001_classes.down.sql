@@ -1,11 +1,11 @@
 DROP TABLE staging_meeting_times;
 DROP TABLE staging_sections;
-DROP TABLE faculty_members;
 DROP TABLE meeting_times;
 DROP TABLE sections;
+DROP TABLE faculty_members;
 DROP TABLE courses;
-DROP TABLE schools;
 DROP TABLE previous_full_section_collections;
 DROP TABLE term_collections;
+DROP TABLE schools;
 DROP TABLE terms;
 DROP TYPE season_enum;

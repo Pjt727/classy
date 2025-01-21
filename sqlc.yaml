@@ -11,3 +11,15 @@ sql:
         out: "data/db"
         sql_package: "pgx/v5"
         emit_json_tags: true
+        overrides:
+          # classes view
+          - column: "classes.meeting_times"
+            go_type:
+              type: "MeetingTime"
+              slice: true
+          - column: "classes.course"
+            go_type:
+              type: "Course"
+          - column: "classes.section"
+            go_type:
+              type: "Section"

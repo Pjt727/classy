@@ -5,6 +5,7 @@ package cmd
 
 import (
 	"github.com/Pjt727/classy/api"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -14,6 +15,7 @@ var serveCmd = &cobra.Command{
 	Short: "Runs the api service",
 	Long:  `Runs the api service`,
 	Run: func(cmd *cobra.Command, args []string) {
+		log.SetLevel(log.TraceLevel)
 		api.Serve()
 	},
 }

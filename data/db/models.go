@@ -55,6 +55,12 @@ func (ns NullSeasonEnum) Value() (driver.Value, error) {
 	return string(ns.SeasonEnum), nil
 }
 
+type Class struct {
+	Section      Section       `json:"section"`
+	Course       Course        `json:"course"`
+	MeetingTimes []MeetingTime `json:"meeting_times"`
+}
+
 type Course struct {
 	ID                 string      `json:"id"`
 	SchoolID           string      `json:"school_id"`
