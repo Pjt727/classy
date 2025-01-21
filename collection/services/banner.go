@@ -69,7 +69,7 @@ func (b *banner) GetTermCollections(
 	school db.School,
 ) ([]db.UpsertTermCollectionParams, error) {
 
-	const MAX_TERMS_COUNT = ""
+	const MAX_TERMS_COUNT = "100"
 	var termCollection []db.UpsertTermCollectionParams
 
 	hostname, err := b.getHostname(school.ID)
@@ -96,6 +96,7 @@ func (b *banner) GetTermCollections(
 	defer resp.Body.Close()
 	var terms []bannerTerm
 	if err := json.NewDecoder(resp.Body).Decode(&terms); err != nil {
+		logger.Trace(resp.Body)
 		logger.Error("Error decoding terms: ", err)
 		return termCollection, err
 	}

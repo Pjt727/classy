@@ -36,14 +36,14 @@ type UpsertCoursesBatchResults struct {
 }
 
 type UpsertCoursesParams struct {
-	ID                 string
-	SchoolID           string
-	SubjectCode        pgtype.Text
-	Number             pgtype.Text
-	SubjectDescription pgtype.Text
-	Title              pgtype.Text
-	Description        pgtype.Text
-	CreditHours        float32
+	ID                 string      `json:"id"`
+	SchoolID           string      `json:"school_id"`
+	SubjectCode        pgtype.Text `json:"subject_code"`
+	Number             pgtype.Text `json:"number"`
+	SubjectDescription pgtype.Text `json:"subject_description"`
+	Title              pgtype.Text `json:"title"`
+	Description        pgtype.Text `json:"description"`
+	CreditHours        float32     `json:"credit_hours"`
 }
 
 func (q *Queries) UpsertCourses(ctx context.Context, arg []UpsertCoursesParams) *UpsertCoursesBatchResults {
@@ -103,12 +103,12 @@ type UpsertFacultyBatchResults struct {
 }
 
 type UpsertFacultyParams struct {
-	ID           string
-	SchoolID     string
-	Name         string
-	EmailAddress pgtype.Text
-	FirstName    pgtype.Text
-	LastName     pgtype.Text
+	ID           string      `json:"id"`
+	SchoolID     string      `json:"school_id"`
+	Name         string      `json:"name"`
+	EmailAddress pgtype.Text `json:"email_address"`
+	FirstName    pgtype.Text `json:"first_name"`
+	LastName     pgtype.Text `json:"last_name"`
 }
 
 func (q *Queries) UpsertFaculty(ctx context.Context, arg []UpsertFacultyParams) *UpsertFacultyBatchResults {
@@ -164,8 +164,8 @@ type UpsertTermBatchResults struct {
 }
 
 type UpsertTermParams struct {
-	Year   int32
-	Season SeasonEnum
+	Year   int32      `json:"year"`
+	Season SeasonEnum `json:"season"`
 }
 
 func (q *Queries) UpsertTerm(ctx context.Context, arg []UpsertTermParams) *UpsertTermBatchResults {
@@ -220,12 +220,12 @@ type UpsertTermCollectionBatchResults struct {
 }
 
 type UpsertTermCollectionParams struct {
-	ID              string
-	SchoolID        string
-	Year            int32
-	Season          SeasonEnum
-	Name            pgtype.Text
-	StillCollecting bool
+	ID              string      `json:"id"`
+	SchoolID        string      `json:"school_id"`
+	Year            int32       `json:"year"`
+	Season          SeasonEnum  `json:"season"`
+	Name            pgtype.Text `json:"name"`
+	StillCollecting bool        `json:"still_collecting"`
 }
 
 func (q *Queries) UpsertTermCollection(ctx context.Context, arg []UpsertTermCollectionParams) *UpsertTermCollectionBatchResults {

@@ -17,7 +17,7 @@ var (
 	pgOnce sync.Once
 )
 
-func NewQueries(ctx context.Context) (*pgxpool.Pool, error) {
+func NewPool(ctx context.Context) (*pgxpool.Pool, error) {
 
 	err := godotenv.Load()
 

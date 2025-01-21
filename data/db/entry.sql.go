@@ -18,8 +18,8 @@ WHERE school_id = $1
 `
 
 type DeleteStagingMeetingTimesParams struct {
-	SchoolID         string
-	TermCollectionID string
+	SchoolID         string `json:"school_id"`
+	TermCollectionID string `json:"term_collection_id"`
 }
 
 func (q *Queries) DeleteStagingMeetingTimes(ctx context.Context, arg DeleteStagingMeetingTimesParams) error {
@@ -34,8 +34,8 @@ WHERE school_id = $1
 `
 
 type DeleteStagingSectionsParams struct {
-	SchoolID         string
-	TermCollectionID string
+	SchoolID         string `json:"school_id"`
+	TermCollectionID string `json:"term_collection_id"`
 }
 
 func (q *Queries) DeleteStagingSections(ctx context.Context, arg DeleteStagingSectionsParams) error {
@@ -141,8 +141,8 @@ WHERE mt.term_collection_id = $1
 `
 
 type RemoveUnstagedMeetingsParams struct {
-	TermCollectionID string
-	SchoolID         string
+	TermCollectionID string `json:"term_collection_id"`
+	SchoolID         string `json:"school_id"`
 }
 
 func (q *Queries) RemoveUnstagedMeetings(ctx context.Context, arg RemoveUnstagedMeetingsParams) error {
@@ -165,8 +165,8 @@ WHERE s.term_collection_id = $1
 `
 
 type RemoveUnstagedSectionsParams struct {
-	TermCollectionID string
-	SchoolID         string
+	TermCollectionID string `json:"term_collection_id"`
+	SchoolID         string `json:"school_id"`
 }
 
 func (q *Queries) RemoveUnstagedSections(ctx context.Context, arg RemoveUnstagedSectionsParams) error {
@@ -175,35 +175,35 @@ func (q *Queries) RemoveUnstagedSections(ctx context.Context, arg RemoveUnstaged
 }
 
 type StageMeetingTimesParams struct {
-	Sequence         int32
-	SectionID        string
-	TermCollectionID string
-	CourseID         string
-	SchoolID         string
-	StartDate        pgtype.Timestamp
-	EndDate          pgtype.Timestamp
-	MeetingType      pgtype.Text
-	StartMinutes     pgtype.Time
-	EndMinutes       pgtype.Time
-	IsMonday         bool
-	IsTuesday        bool
-	IsWednesday      bool
-	IsThursday       bool
-	IsFriday         bool
-	IsSaturday       bool
-	IsSunday         bool
+	Sequence         int32            `json:"sequence"`
+	SectionID        string           `json:"section_id"`
+	TermCollectionID string           `json:"term_collection_id"`
+	CourseID         string           `json:"course_id"`
+	SchoolID         string           `json:"school_id"`
+	StartDate        pgtype.Timestamp `json:"start_date"`
+	EndDate          pgtype.Timestamp `json:"end_date"`
+	MeetingType      pgtype.Text      `json:"meeting_type"`
+	StartMinutes     pgtype.Time      `json:"start_minutes"`
+	EndMinutes       pgtype.Time      `json:"end_minutes"`
+	IsMonday         bool             `json:"is_monday"`
+	IsTuesday        bool             `json:"is_tuesday"`
+	IsWednesday      bool             `json:"is_wednesday"`
+	IsThursday       bool             `json:"is_thursday"`
+	IsFriday         bool             `json:"is_friday"`
+	IsSaturday       bool             `json:"is_saturday"`
+	IsSunday         bool             `json:"is_sunday"`
 }
 
 type StageSectionsParams struct {
-	ID                string
-	Campus            pgtype.Text
-	CourseID          string
-	SchoolID          string
-	TermCollectionID  string
-	Enrollment        pgtype.Int4
-	MaxEnrollment     pgtype.Int4
-	InstructionMethod pgtype.Text
-	PrimaryFacultyID  pgtype.Text
+	ID                string      `json:"id"`
+	Campus            pgtype.Text `json:"campus"`
+	CourseID          string      `json:"course_id"`
+	SchoolID          string      `json:"school_id"`
+	TermCollectionID  string      `json:"term_collection_id"`
+	Enrollment        pgtype.Int4 `json:"enrollment"`
+	MaxEnrollment     pgtype.Int4 `json:"max_enrollment"`
+	InstructionMethod pgtype.Text `json:"instruction_method"`
+	PrimaryFacultyID  pgtype.Text `json:"primary_faculty_id"`
 }
 
 const upsertSchool = `-- name: UpsertSchool :exec
@@ -215,8 +215,8 @@ ON CONFLICT DO NOTHING
 `
 
 type UpsertSchoolParams struct {
-	ID   string
-	Name string
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 func (q *Queries) UpsertSchool(ctx context.Context, arg UpsertSchoolParams) error {

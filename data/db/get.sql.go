@@ -9,6 +9,67 @@ import (
 	"context"
 )
 
+const getMostRecentTermCollection = `-- name: GetMostRecentTermCollection :many
+SELECT  
+FROM term_collections t
+JOIN previous_full_section_collections p 
+                    ON t.school_id    = p.school_id
+                    AND t.term_year   = p.term_year
+                    AND t.term_season = p.term_season
+                    AND t.season_kind = p.season_kind
+ORDER BY p.time_collection DESC
+LIMIT 1
+`
+
+type GetMostRecentTermCollectionRow struct {
+	TermCollection TermCollection `json:"term_collection"`
+}
+
+func (q *Queries) GetMostRecentTermCollection(ctx context.Context) ([]GetMostRecentTermCollectionRow, error) {
+	rows, err := q.db.Query(ctx, getMostRecentTermCollection)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetMostRecentTermCollectionRow
+	for rows.Next() {
+		var i GetMostRecentTermCollectionRow
+		if err := rows.Scan(
+			&i.TermCollection.ID,
+			&i.TermCollection.SchoolID,
+			&i.TermCollection.Year,
+			&i.TermCollection.Season,
+			&i.TermCollection.Name,
+			&i.TermCollection.StillCollecting,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getSchool = `-- name: GetSchool :one
+SELECT schools.id, schools.name
+FROM schools
+WHERE id = $1
+LIMIT 1
+`
+
+type GetSchoolRow struct {
+	School School `json:"school"`
+}
+
+func (q *Queries) GetSchool(ctx context.Context, schoolID string) (GetSchoolRow, error) {
+	row := q.db.QueryRow(ctx, getSchool, schoolID)
+	var i GetSchoolRow
+	err := row.Scan(&i.School.ID, &i.School.Name)
+	return i, err
+}
+
 const getSchoolsClassesForTerm = `-- name: GetSchoolsClassesForTerm :many
 SELECT sections.id, sections.term_collection_id, sections.course_id, sections.school_id, sections.max_enrollment, sections.instruction_method, sections.campus, sections.enrollment, sections.primary_faculty_id, courses.id, courses.school_id, courses.subject_code, courses.number, courses.subject_description, courses.title, courses.description, courses.credit_hours, meeting_times.sequence, meeting_times.section_id, meeting_times.term_collection_id, meeting_times.course_id, meeting_times.school_id, meeting_times.start_date, meeting_times.end_date, meeting_times.meeting_type, meeting_times.start_minutes, meeting_times.end_minutes, meeting_times.is_monday, meeting_times.is_tuesday, meeting_times.is_wednesday, meeting_times.is_thursday, meeting_times.is_friday, meeting_times.is_saturday, meeting_times.is_sunday
 FROM sections
@@ -22,14 +83,14 @@ WHERE sections.school_id = $1
 `
 
 type GetSchoolsClassesForTermParams struct {
-	SchoolID         string
-	TermCollectionID string
+	SchoolID         string `json:"school_id"`
+	TermCollectionID string `json:"term_collection_id"`
 }
 
 type GetSchoolsClassesForTermRow struct {
-	Section     Section
-	Course      Course
-	MeetingTime MeetingTime
+	Section     Section     `json:"section"`
+	Course      Course      `json:"course"`
+	MeetingTime MeetingTime `json:"meeting_time"`
 }
 
 func (q *Queries) GetSchoolsClassesForTerm(ctx context.Context, arg GetSchoolsClassesForTermParams) ([]GetSchoolsClassesForTermRow, error) {
@@ -87,6 +148,37 @@ func (q *Queries) GetSchoolsClassesForTerm(ctx context.Context, arg GetSchoolsCl
 	return items, nil
 }
 
+const getTermCollection = `-- name: GetTermCollection :one
+SELECT term_collections.id, term_collections.school_id, term_collections.year, term_collections.season, term_collections.name, term_collections.still_collecting
+FROM term_collections
+WHERE school_id = $1
+      AND id = $2
+LIMIT 1
+`
+
+type GetTermCollectionParams struct {
+	SchoolID         string `json:"school_id"`
+	TermCollectionID string `json:"term_collection_id"`
+}
+
+type GetTermCollectionRow struct {
+	TermCollection TermCollection `json:"term_collection"`
+}
+
+func (q *Queries) GetTermCollection(ctx context.Context, arg GetTermCollectionParams) (GetTermCollectionRow, error) {
+	row := q.db.QueryRow(ctx, getTermCollection, arg.SchoolID, arg.TermCollectionID)
+	var i GetTermCollectionRow
+	err := row.Scan(
+		&i.TermCollection.ID,
+		&i.TermCollection.SchoolID,
+		&i.TermCollection.Year,
+		&i.TermCollection.Season,
+		&i.TermCollection.Name,
+		&i.TermCollection.StillCollecting,
+	)
+	return i, err
+}
+
 const getTermCollectionsForSchool = `-- name: GetTermCollectionsForSchool :many
 SELECT term_collections.id, term_collections.school_id, term_collections.year, term_collections.season, term_collections.name, term_collections.still_collecting 
 FROM term_collections 
@@ -96,13 +188,13 @@ WHERE school_id = $1
 `
 
 type GetTermCollectionsForSchoolParams struct {
-	SchoolID string
-	Year     int32
-	Season   SeasonEnum
+	SchoolID string     `json:"school_id"`
+	Year     int32      `json:"year"`
+	Season   SeasonEnum `json:"season"`
 }
 
 type GetTermCollectionsForSchoolRow struct {
-	TermCollection TermCollection
+	TermCollection TermCollection `json:"term_collection"`
 }
 
 func (q *Queries) GetTermCollectionsForSchool(ctx context.Context, arg GetTermCollectionsForSchoolParams) ([]GetTermCollectionsForSchoolRow, error) {

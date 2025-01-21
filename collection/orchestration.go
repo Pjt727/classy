@@ -54,7 +54,7 @@ func init() {
 	orchestrationLogger = log.WithFields(log.Fields{"job": "orchestration"})
 	serviceEntries = []Service{services.Banner}
 	ctx := context.Background()
-	poolMaybe, err := data.NewQueries(ctx)
+	poolMaybe, err := data.NewPool(ctx)
 	if err != nil {
 		// this package doesn't work if it can't access the database
 		panic("Failed to init orchestration database connection")

@@ -33,8 +33,8 @@ func (e *SeasonEnum) Scan(src interface{}) error {
 }
 
 type NullSeasonEnum struct {
-	SeasonEnum SeasonEnum
-	Valid      bool // Valid is true if SeasonEnum is not NULL
+	SeasonEnum SeasonEnum `json:"season_enum"`
+	Valid      bool       `json:"valid"` // Valid is true if SeasonEnum is not NULL
 }
 
 // Scan implements the Scanner interface.
@@ -56,110 +56,110 @@ func (ns NullSeasonEnum) Value() (driver.Value, error) {
 }
 
 type Course struct {
-	ID                 string
-	SchoolID           string
-	SubjectCode        pgtype.Text
-	Number             pgtype.Text
-	SubjectDescription pgtype.Text
-	Title              pgtype.Text
-	Description        pgtype.Text
-	CreditHours        float32
+	ID                 string      `json:"id"`
+	SchoolID           string      `json:"school_id"`
+	SubjectCode        pgtype.Text `json:"subject_code"`
+	Number             pgtype.Text `json:"number"`
+	SubjectDescription pgtype.Text `json:"subject_description"`
+	Title              pgtype.Text `json:"title"`
+	Description        pgtype.Text `json:"description"`
+	CreditHours        float32     `json:"credit_hours"`
 }
 
 type FacultyMember struct {
-	ID           string
-	SchoolID     string
-	Name         string
-	EmailAddress pgtype.Text
-	FirstName    pgtype.Text
-	LastName     pgtype.Text
+	ID           string      `json:"id"`
+	SchoolID     string      `json:"school_id"`
+	Name         string      `json:"name"`
+	EmailAddress pgtype.Text `json:"email_address"`
+	FirstName    pgtype.Text `json:"first_name"`
+	LastName     pgtype.Text `json:"last_name"`
 }
 
 type MeetingTime struct {
-	Sequence         int32
-	SectionID        string
-	TermCollectionID string
-	CourseID         string
-	SchoolID         string
-	StartDate        pgtype.Timestamp
-	EndDate          pgtype.Timestamp
-	MeetingType      pgtype.Text
-	StartMinutes     pgtype.Time
-	EndMinutes       pgtype.Time
-	IsMonday         bool
-	IsTuesday        bool
-	IsWednesday      bool
-	IsThursday       bool
-	IsFriday         bool
-	IsSaturday       bool
-	IsSunday         bool
+	Sequence         int32            `json:"sequence"`
+	SectionID        string           `json:"section_id"`
+	TermCollectionID string           `json:"term_collection_id"`
+	CourseID         string           `json:"course_id"`
+	SchoolID         string           `json:"school_id"`
+	StartDate        pgtype.Timestamp `json:"start_date"`
+	EndDate          pgtype.Timestamp `json:"end_date"`
+	MeetingType      pgtype.Text      `json:"meeting_type"`
+	StartMinutes     pgtype.Time      `json:"start_minutes"`
+	EndMinutes       pgtype.Time      `json:"end_minutes"`
+	IsMonday         bool             `json:"is_monday"`
+	IsTuesday        bool             `json:"is_tuesday"`
+	IsWednesday      bool             `json:"is_wednesday"`
+	IsThursday       bool             `json:"is_thursday"`
+	IsFriday         bool             `json:"is_friday"`
+	IsSaturday       bool             `json:"is_saturday"`
+	IsSunday         bool             `json:"is_sunday"`
 }
 
 type PreviousFullSectionCollection struct {
-	SchoolID       string
-	CollectionID   string
-	TimeCollection pgtype.Timestamptz
+	SchoolID       string             `json:"school_id"`
+	CollectionID   string             `json:"collection_id"`
+	TimeCollection pgtype.Timestamptz `json:"time_collection"`
 }
 
 type School struct {
-	ID   string
-	Name string
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 type Section struct {
-	ID                string
-	TermCollectionID  string
-	CourseID          string
-	SchoolID          string
-	MaxEnrollment     pgtype.Int4
-	InstructionMethod pgtype.Text
-	Campus            pgtype.Text
-	Enrollment        pgtype.Int4
-	PrimaryFacultyID  pgtype.Text
+	ID                string      `json:"id"`
+	TermCollectionID  string      `json:"term_collection_id"`
+	CourseID          string      `json:"course_id"`
+	SchoolID          string      `json:"school_id"`
+	MaxEnrollment     pgtype.Int4 `json:"max_enrollment"`
+	InstructionMethod pgtype.Text `json:"instruction_method"`
+	Campus            pgtype.Text `json:"campus"`
+	Enrollment        pgtype.Int4 `json:"enrollment"`
+	PrimaryFacultyID  pgtype.Text `json:"primary_faculty_id"`
 }
 
 type StagingMeetingTime struct {
-	Sequence         int32
-	SectionID        string
-	TermCollectionID string
-	CourseID         string
-	SchoolID         string
-	StartDate        pgtype.Timestamp
-	EndDate          pgtype.Timestamp
-	MeetingType      pgtype.Text
-	StartMinutes     pgtype.Time
-	EndMinutes       pgtype.Time
-	IsMonday         bool
-	IsTuesday        bool
-	IsWednesday      bool
-	IsThursday       bool
-	IsFriday         bool
-	IsSaturday       bool
-	IsSunday         bool
+	Sequence         int32            `json:"sequence"`
+	SectionID        string           `json:"section_id"`
+	TermCollectionID string           `json:"term_collection_id"`
+	CourseID         string           `json:"course_id"`
+	SchoolID         string           `json:"school_id"`
+	StartDate        pgtype.Timestamp `json:"start_date"`
+	EndDate          pgtype.Timestamp `json:"end_date"`
+	MeetingType      pgtype.Text      `json:"meeting_type"`
+	StartMinutes     pgtype.Time      `json:"start_minutes"`
+	EndMinutes       pgtype.Time      `json:"end_minutes"`
+	IsMonday         bool             `json:"is_monday"`
+	IsTuesday        bool             `json:"is_tuesday"`
+	IsWednesday      bool             `json:"is_wednesday"`
+	IsThursday       bool             `json:"is_thursday"`
+	IsFriday         bool             `json:"is_friday"`
+	IsSaturday       bool             `json:"is_saturday"`
+	IsSunday         bool             `json:"is_sunday"`
 }
 
 type StagingSection struct {
-	ID                string
-	TermCollectionID  string
-	CourseID          string
-	SchoolID          string
-	MaxEnrollment     pgtype.Int4
-	InstructionMethod pgtype.Text
-	Campus            pgtype.Text
-	Enrollment        pgtype.Int4
-	PrimaryFacultyID  pgtype.Text
+	ID                string      `json:"id"`
+	TermCollectionID  string      `json:"term_collection_id"`
+	CourseID          string      `json:"course_id"`
+	SchoolID          string      `json:"school_id"`
+	MaxEnrollment     pgtype.Int4 `json:"max_enrollment"`
+	InstructionMethod pgtype.Text `json:"instruction_method"`
+	Campus            pgtype.Text `json:"campus"`
+	Enrollment        pgtype.Int4 `json:"enrollment"`
+	PrimaryFacultyID  pgtype.Text `json:"primary_faculty_id"`
 }
 
 type Term struct {
-	Year   int32
-	Season SeasonEnum
+	Year   int32      `json:"year"`
+	Season SeasonEnum `json:"season"`
 }
 
 type TermCollection struct {
-	ID              string
-	SchoolID        string
-	Year            int32
-	Season          SeasonEnum
-	Name            pgtype.Text
-	StillCollecting bool
+	ID              string      `json:"id"`
+	SchoolID        string      `json:"school_id"`
+	Year            int32       `json:"year"`
+	Season          SeasonEnum  `json:"season"`
+	Name            pgtype.Text `json:"name"`
+	StillCollecting bool        `json:"still_collecting"`
 }

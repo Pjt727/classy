@@ -53,7 +53,7 @@ facualty members, and internal collection tables`,
 			return
 		}
 		ctx := context.Background()
-		dbPool, err := data.NewQueries(ctx)
+		dbPool, err := data.NewPool(ctx)
 		if err != nil {
 			logger.Error("Could not connect to db: ", err)
 			return
