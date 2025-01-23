@@ -31,8 +31,14 @@ WHERE school_id = @school_id
 --       AND sections.term_collection_id = @term_collection_id
 -- GROUP BY sections.id
 -- ;
-SELECT *
-FROM sections
+SELECT sqlc.embed(sections), sqlc.embed(courses), section_meetings.meeting_times
+FROM section_meetings
+JOIN sections ON sections."sequence" = section_meetings."sequence"
+              AND sections.course_id = section_meetings.course_id
+              AND sections.school_id = section_meetings.school_id
+              AND sections.term_collection_id = section_meetings.term_collection_id
+JOIN courses ON sections.course_id = courses.id
+             AND sections.school_id = courses.school_id
 WHERE sections.school_id = @school_id
       AND sections.term_collection_id = @term_collection_id
 ;

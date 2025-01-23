@@ -71,8 +71,14 @@ func (q *Queries) GetSchool(ctx context.Context, schoolID string) (GetSchoolRow,
 }
 
 const getSchoolsClassesForTermOrderedBySection = `-- name: GetSchoolsClassesForTermOrderedBySection :many
-SELECT id, term_collection_id, course_id, school_id, max_enrollment, instruction_method, campus, enrollment, primary_faculty_id
-FROM sections
+SELECT sections.sequence, sections.term_collection_id, sections.course_id, sections.school_id, sections.max_enrollment, sections.instruction_method, sections.campus, sections.enrollment, sections.primary_faculty_id, courses.id, courses.school_id, courses.subject_code, courses.number, courses.subject_description, courses.title, courses.description, courses.credit_hours, section_meetings.meeting_times
+FROM section_meetings
+JOIN sections ON sections."sequence" = section_meetings."sequence"
+              AND sections.course_id = section_meetings.course_id
+              AND sections.school_id = section_meetings.school_id
+              AND sections.term_collection_id = section_meetings.term_collection_id
+JOIN courses ON sections.course_id = courses.id
+             AND sections.school_id = courses.school_id
 WHERE sections.school_id = $1
       AND sections.term_collection_id = $2
 `
@@ -80,6 +86,12 @@ WHERE sections.school_id = $1
 type GetSchoolsClassesForTermOrderedBySectionParams struct {
 	SchoolID         string `json:"school_id"`
 	TermCollectionID string `json:"term_collection_id"`
+}
+
+type GetSchoolsClassesForTermOrderedBySectionRow struct {
+	Section      Section       `json:"section"`
+	Course       Course        `json:"course"`
+	MeetingTimes []MeetingTime `json:"meeting_times"`
 }
 
 // SELECT sqlc.embed(sections), sqlc.embed(courses), sqlc.embed(meeting_times)
@@ -99,25 +111,34 @@ type GetSchoolsClassesForTermOrderedBySectionParams struct {
 //
 // GROUP BY sections.id
 // ;
-func (q *Queries) GetSchoolsClassesForTermOrderedBySection(ctx context.Context, arg GetSchoolsClassesForTermOrderedBySectionParams) ([]Section, error) {
+func (q *Queries) GetSchoolsClassesForTermOrderedBySection(ctx context.Context, arg GetSchoolsClassesForTermOrderedBySectionParams) ([]GetSchoolsClassesForTermOrderedBySectionRow, error) {
 	rows, err := q.db.Query(ctx, getSchoolsClassesForTermOrderedBySection, arg.SchoolID, arg.TermCollectionID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Section
+	var items []GetSchoolsClassesForTermOrderedBySectionRow
 	for rows.Next() {
-		var i Section
+		var i GetSchoolsClassesForTermOrderedBySectionRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.TermCollectionID,
-			&i.CourseID,
-			&i.SchoolID,
-			&i.MaxEnrollment,
-			&i.InstructionMethod,
-			&i.Campus,
-			&i.Enrollment,
-			&i.PrimaryFacultyID,
+			&i.Section.Sequence,
+			&i.Section.TermCollectionID,
+			&i.Section.CourseID,
+			&i.Section.SchoolID,
+			&i.Section.MaxEnrollment,
+			&i.Section.InstructionMethod,
+			&i.Section.Campus,
+			&i.Section.Enrollment,
+			&i.Section.PrimaryFacultyID,
+			&i.Course.ID,
+			&i.Course.SchoolID,
+			&i.Course.SubjectCode,
+			&i.Course.Number,
+			&i.Course.SubjectDescription,
+			&i.Course.Title,
+			&i.Course.Description,
+			&i.Course.CreditHours,
+			&i.MeetingTimes,
 		); err != nil {
 			return nil, err
 		}

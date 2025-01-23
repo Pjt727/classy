@@ -452,7 +452,7 @@ func insertGroupOfSections(
 			facultyMembers[facID] = facultyMember
 		}
 		courseId := s.Subject + "," + s.CourseNumber
-		sectionId := courseId + "," + s.SequenceNumber
+		sectionSequence := s.SequenceNumber
 		for i, meeting := range s.MeetingFaculty {
 			meetingTime := meeting.MeetingTime
 			// ex format:
@@ -477,7 +477,7 @@ func insertGroupOfSections(
 			}
 			dbMeetingTime := db.StageMeetingTimesParams{
 				Sequence:         int32(i),
-				SectionID:        sectionId,
+				SectionSequence:  sectionSequence,
 				CourseID:         courseId,
 				TermCollectionID: termCollection.ID,
 				SchoolID:         termCollection.SchoolID,
@@ -498,7 +498,7 @@ func insertGroupOfSections(
 
 		}
 		dbSection := db.StageSectionsParams{
-			ID:                sectionId,
+			Sequence:          sectionSequence,
 			Campus:            pgtype.Text{String: s.CampusDescription, Valid: true},
 			CourseID:          courseId,
 			SchoolID:          termCollection.SchoolID,

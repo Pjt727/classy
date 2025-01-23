@@ -61,8 +61,9 @@ CREATE TABLE courses (
     PRIMARY KEY (id, school_id)
 );
 
+-- TODO rename id TO sequence
 CREATE TABLE sections (
-    id TEXT,
+    sequence TEXT,
     term_collection_id TEXT,
     course_id TEXT,
     school_id TEXT,
@@ -76,11 +77,11 @@ CREATE TABLE sections (
     FOREIGN KEY (primary_faculty_id, school_id) REFERENCES faculty_members(id, school_id),
 
     FOREIGN KEY (term_collection_id, school_id) REFERENCES term_collections(id, school_id),
-    PRIMARY KEY (id, term_collection_id, course_id, school_id)
+    PRIMARY KEY (sequence, term_collection_id, course_id, school_id)
 );
 
 CREATE TABLE staging_sections (
-    id TEXT NOT NULL,
+    sequence TEXT NOT NULL,
     term_collection_id TEXT NOT NULL,
     course_id TEXT NOT NULL,
     school_id TEXT NOT NULL,
@@ -94,7 +95,7 @@ CREATE TABLE staging_sections (
 
 CREATE TABLE meeting_times (
     sequence INT,
-    section_id TEXT,
+    section_sequence TEXT,
     term_collection_id TEXT,
     course_id TEXT,
     school_id TEXT,
@@ -111,14 +112,14 @@ CREATE TABLE meeting_times (
     is_friday BOOLEAN NOT NULL,
     is_saturday BOOLEAN NOT NULL,
     is_sunday BOOLEAN NOT NULL,
-    FOREIGN KEY (section_id, term_collection_id, course_id, school_id)
-        REFERENCES sections(id, term_collection_id, course_id, school_id) ON DELETE CASCADE,
-    PRIMARY KEY (sequence, section_id, term_collection_id, course_id, school_id)
+    FOREIGN KEY (section_sequence, term_collection_id, course_id, school_id)
+        REFERENCES sections(sequence, term_collection_id, course_id, school_id) ON DELETE CASCADE,
+    PRIMARY KEY (sequence, section_sequence, term_collection_id, course_id, school_id)
 );
 
 CREATE TABLE staging_meeting_times (
     sequence INT NOT NULL,
-    section_id TEXT NOT NULL,
+    section_sequence TEXT NOT NULL,
     term_collection_id TEXT NOT NULL,
     course_id TEXT NOT NULL,
     school_id TEXT NOT NULL,

@@ -45,22 +45,22 @@ func (q *Queries) DeleteStagingSections(ctx context.Context, arg DeleteStagingSe
 
 const moveStagedMeetingTimes = `-- name: MoveStagedMeetingTimes :exec
 INSERT INTO meeting_times
-    (sequence, section_id,
+    (sequence, section_sequence,
         term_collection_id, course_id, school_id, 
         start_date, end_date, meeting_type,
         start_minutes, end_minutes, is_monday,
         is_tuesday, is_wednesday, is_thursday,
         is_friday, is_saturday, is_sunday)
 SELECT 
-    DISTINCT ON (sequence, section_id, term_collection_id, course_id, school_id)
-    sequence, section_id, term_collection_id,
+    DISTINCT ON (sequence, section_sequence, term_collection_id, course_id, school_id)
+    sequence, section_sequence, term_collection_id,
     course_id, school_id, 
     start_date, end_date, meeting_type,
     start_minutes, end_minutes, is_monday,
     is_tuesday, is_wednesday, is_thursday,
     is_friday, is_saturday, is_sunday
 FROM staging_meeting_times
-ON CONFLICT ("sequence", section_id, course_id, school_id, term_collection_id) DO UPDATE
+ON CONFLICT ("sequence", section_sequence, course_id, school_id, term_collection_id) DO UPDATE
 SET 
     start_date = EXCLUDED.start_date,
     end_date = EXCLUDED.end_date,
@@ -95,18 +95,18 @@ func (q *Queries) MoveStagedMeetingTimes(ctx context.Context) error {
 
 const moveStagedSections = `-- name: MoveStagedSections :exec
 INSERT INTO sections 
-    (id, term_collection_id,
+    (sequence, term_collection_id,
         course_id, school_id, max_enrollment, 
         instruction_method, campus, enrollment,
         primary_faculty_id)
 SELECT
-    DISTINCT ON (id, term_collection_id, course_id, school_id)
-    id, term_collection_id,
+    DISTINCT ON (sequence, term_collection_id, course_id, school_id)
+    sequence, term_collection_id,
     course_id, school_id, max_enrollment, 
     instruction_method, campus, enrollment,
     primary_faculty_id
 FROM staging_sections
-ON CONFLICT (id, course_id, school_id, term_collection_id) DO UPDATE
+ON CONFLICT ("sequence", course_id, school_id, term_collection_id) DO UPDATE
 SET 
     campus = EXCLUDED.campus,
     enrollment = EXCLUDED.enrollment,
@@ -136,7 +136,7 @@ WHERE mt.term_collection_id = $1
       AND smt.term_collection_id = mt.term_collection_id
       AND smt.course_id = mt.course_id
       AND smt.school_id = mt.school_id
-      AND smt.section_id = mt.section_id
+      AND smt.section_sequence = mt.section_sequence
   )
 `
 
@@ -157,7 +157,7 @@ WHERE s.term_collection_id = $1
   AND NOT EXISTS (
     SELECT 1 
     FROM staging_sections ss
-    WHERE ss.id = s.id
+    WHERE ss.sequence = s.sequence
       AND ss.term_collection_id = s.term_collection_id
       AND ss.course_id = s.course_id
       AND ss.school_id = s.school_id
@@ -176,7 +176,7 @@ func (q *Queries) RemoveUnstagedSections(ctx context.Context, arg RemoveUnstaged
 
 type StageMeetingTimesParams struct {
 	Sequence         int32            `json:"sequence"`
-	SectionID        string           `json:"section_id"`
+	SectionSequence  string           `json:"section_sequence"`
 	TermCollectionID string           `json:"term_collection_id"`
 	CourseID         string           `json:"course_id"`
 	SchoolID         string           `json:"school_id"`
@@ -195,7 +195,7 @@ type StageMeetingTimesParams struct {
 }
 
 type StageSectionsParams struct {
-	ID                string      `json:"id"`
+	Sequence          string      `json:"sequence"`
 	Campus            pgtype.Text `json:"campus"`
 	CourseID          string      `json:"course_id"`
 	SchoolID          string      `json:"school_id"`

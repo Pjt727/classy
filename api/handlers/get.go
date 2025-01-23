@@ -33,7 +33,8 @@ func GetClasses(w http.ResponseWriter, r *http.Request) {
 		db.GetSchoolsClassesForTermOrderedBySectionParams{
 			SchoolID:         termCollection.SchoolID,
 			TermCollectionID: termCollection.ID,
-		})
+		},
+	)
 	if err != nil {
 		log.Trace(err)
 		http.Error(w, http.StatusText(500), 500)

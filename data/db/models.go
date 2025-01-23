@@ -55,12 +55,6 @@ func (ns NullSeasonEnum) Value() (driver.Value, error) {
 	return string(ns.SeasonEnum), nil
 }
 
-type Class struct {
-	Section      Section       `json:"section"`
-	Course       Course        `json:"course"`
-	MeetingTimes []MeetingTime `json:"meeting_times"`
-}
-
 type Course struct {
 	ID                 string      `json:"id"`
 	SchoolID           string      `json:"school_id"`
@@ -83,7 +77,7 @@ type FacultyMember struct {
 
 type MeetingTime struct {
 	Sequence         int32            `json:"sequence"`
-	SectionID        string           `json:"section_id"`
+	SectionSequence  string           `json:"section_sequence"`
 	TermCollectionID string           `json:"term_collection_id"`
 	CourseID         string           `json:"course_id"`
 	SchoolID         string           `json:"school_id"`
@@ -113,7 +107,7 @@ type School struct {
 }
 
 type Section struct {
-	ID                string      `json:"id"`
+	Sequence          string      `json:"sequence"`
 	TermCollectionID  string      `json:"term_collection_id"`
 	CourseID          string      `json:"course_id"`
 	SchoolID          string      `json:"school_id"`
@@ -124,9 +118,17 @@ type Section struct {
 	PrimaryFacultyID  pgtype.Text `json:"primary_faculty_id"`
 }
 
+type SectionMeeting struct {
+	Sequence         string        `json:"sequence"`
+	SchoolID         string        `json:"school_id"`
+	TermCollectionID string        `json:"term_collection_id"`
+	CourseID         string        `json:"course_id"`
+	MeetingTimes     []MeetingTime `json:"meeting_times"`
+}
+
 type StagingMeetingTime struct {
 	Sequence         int32            `json:"sequence"`
-	SectionID        string           `json:"section_id"`
+	SectionSequence  string           `json:"section_sequence"`
 	TermCollectionID string           `json:"term_collection_id"`
 	CourseID         string           `json:"course_id"`
 	SchoolID         string           `json:"school_id"`
@@ -145,7 +147,7 @@ type StagingMeetingTime struct {
 }
 
 type StagingSection struct {
-	ID                string      `json:"id"`
+	Sequence          string      `json:"sequence"`
 	TermCollectionID  string      `json:"term_collection_id"`
 	CourseID          string      `json:"course_id"`
 	SchoolID          string      `json:"school_id"`
