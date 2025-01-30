@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"golang.org/x/net/html"
+	"io"
 	"math"
 	"net/http"
 	"net/http/cookiejar"
@@ -140,6 +142,7 @@ func (b *banner) StageAllClasses(
 	ctx context.Context,
 	q *db.Queries,
 	termCollection db.TermCollection,
+	fullCollection bool,
 ) error {
 	const MAX_PAGE_SIZE = 200 // the max this value can do is 500 more
 	logger.Info("Starting full section")
@@ -254,7 +257,7 @@ func (b *banner) StageAllClasses(
 		workersReq.URL.RawQuery = queryParams.Encode()
 		go func(req http.Request) {
 			defer wg.Done()
-			err := insertGroupOfSections(workerLog, workersReq, ctx, q, client, termCollection)
+			err := insertGroupOfSections(workerLog, workersReq, hostname, ctx, q, client, termCollection, fullCollection)
 			if err != nil {
 				errCh <- err
 			}
@@ -342,22 +345,23 @@ type faculty struct {
 }
 
 type section struct {
-	ID                  int               `json:"id"`
-	Term                string            `json:"term"`
-	CourseNumber        string            `json:"courseNumber"`
-	Subject             string            `json:"subject"`
-	SequenceNumber      string            `json:"sequenceNumber"`
-	CourseTitle         string            `json:"courseTitle"`
-	SeatsAvailable      int32             `json:"seatsAvailable"`
-	MaximumEnrollment   int32             `json:"maximumEnrollment"`
-	InstructionalMethod string            `json:"instructionalMethod"`
-	OpenSection         bool              `json:"openSection"`
-	MeetingFaculty      []meetingsFaculty `json:"meetingsFaculty"`
-	Faculty             []faculty         `json:"faculty"`
-	Credits             float32           `json:"creditHourLow"`
-	SubjectCourse       string            `json:"subjectCourse"`
-	SubjectDescription  string            `json:"subjectDescription"`
-	CampusDescription   string            `json:"campusDescription"`
+	ID                    int               `json:"id"`
+	Term                  string            `json:"term"`
+	CourseReferenceNumber string            `json:"courseReferenceNumber"`
+	CourseNumber          string            `json:"courseNumber"`
+	Subject               string            `json:"subject"`
+	SequenceNumber        string            `json:"sequenceNumber"`
+	CourseTitle           string            `json:"courseTitle"`
+	SeatsAvailable        int32             `json:"seatsAvailable"`
+	MaximumEnrollment     int32             `json:"maximumEnrollment"`
+	InstructionalMethod   string            `json:"instructionalMethod"`
+	OpenSection           bool              `json:"openSection"`
+	MeetingFaculty        []meetingsFaculty `json:"meetingsFaculty"`
+	Faculty               []faculty         `json:"faculty"`
+	Credits               float32           `json:"creditHourLow"`
+	SubjectCourse         string            `json:"subjectCourse"`
+	SubjectDescription    string            `json:"subjectDescription"`
+	CampusDescription     string            `json:"campusDescription"`
 }
 
 type sectionSearch struct {
@@ -392,13 +396,15 @@ func toBannerTime(dbTime pgtype.Text) pgtype.Time {
 
 func insertGroupOfSections(
 	logger *log.Entry,
-	req *http.Request,
+	sectionReq *http.Request,
+	hostname string,
 	ctx context.Context,
 	q *db.Queries,
 	client *http.Client,
 	termCollection db.TermCollection,
+	fullCollection bool,
 ) error {
-	resp, err := client.Do(req)
+	resp, err := client.Do(sectionReq)
 	if err != nil {
 		logger.Error("Error getting sections")
 		return err
@@ -414,6 +420,7 @@ func insertGroupOfSections(
 	var meetingTimes []db.StageMeetingTimesParams
 	facultyMembers := make(map[string]db.UpsertFacultyParams)
 	courses := make(map[string]db.UpsertCoursesParams)
+	courseReferenceNumbers := make(map[string]string)
 	for _, s := range sections.Sections {
 		primaryFac := pgtype.Text{String: "", Valid: false}
 		// add all fac regardless of whether they are the main teacher
@@ -520,8 +527,100 @@ func insertGroupOfSections(
 			CreditHours: s.Credits,
 		}
 		courses[courseId] = course
+		courseReferenceNumbers[courseId] = s.CourseReferenceNumber
 		dbSections = append(dbSections, dbSection)
 	}
+
+	// add all of the coures
+
+	var wg sync.WaitGroup
+	wg.Add(len(courseReferenceNumbers))
+	for courseId, referenceNumber := range courseReferenceNumbers {
+		go func() {
+			defer wg.Done()
+			formData := url.Values{
+				"term":                  {termCollection.ID},
+				"courseReferenceNumber": {referenceNumber},
+			}
+			courseDescReq, err := http.NewRequest(
+				"POST",
+				"https://"+hostname+"/StudentRegistrationSsb/ssb/searchResults/getCourseDescription",
+				bytes.NewBufferString(formData.Encode()),
+			)
+			courseDescReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+			if err != nil {
+				logger.Trace("Error making course desc request: ", err)
+				return
+			}
+
+			resp, err := client.Do(courseDescReq)
+			if err != nil {
+				logger.Trace("Error doing course desc request: ", err)
+				return
+			}
+			defer resp.Body.Close()
+			doc, err := html.Parse(resp.Body)
+			if err != nil {
+				logger.Trace("Error parsing body: ", err)
+				return
+			}
+			// example target element
+			// <section aria-labelledby="courseDescription">
+			// ...
+			// </section>
+			var nAnchor *html.Node
+			var sTxt string
+			var bufInnerHtml bytes.Buffer
+
+			w := io.Writer(&bufInnerHtml)
+
+			var f func(*html.Node)
+			f = func(n *html.Node) {
+				for _, attr := range n.Attr {
+					if attr.Key == "aria-labelledby" && attr.Val == "courseDescription" {
+						courseDesc := pgtype.Text{
+							String: strings.TrimSpace(n.Data),
+							Valid:  true,
+						}
+						fmt.Println(n.Data)
+						fmt.Println(n.Type)
+						fmt.Println(n.DataAtom)
+						course := courses[courseId]
+						course.Description = courseDesc
+						courses[courseId] = course
+						return
+					}
+				}
+				if n.Type == html.ElementNode && n.Data == "a" {
+					nAnchor = n
+				}
+
+				if nAnchor != nil {
+					if n != nAnchor { // don't write the a tag and its attributes
+						html.Render(w, n)
+					}
+					if n.Type == html.TextNode {
+						sTxt += n.Data
+					}
+				}
+
+				for c := n.FirstChild; c != nil; c = c.NextSibling {
+					f(c)
+				}
+
+				if n == nAnchor {
+					fmt.Println("Text:", sTxt)
+					fmt.Println("InnerHTML:", bufInnerHtml.String())
+					sTxt = ""
+					bufInnerHtml.Reset()
+					nAnchor = nil
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
 
 	// insert all of the meetings
 

@@ -31,6 +31,7 @@ type Service interface {
 		ctx context.Context,
 		q *db.Queries,
 		term db.TermCollection,
+		fullCollection bool,
 	) error
 
 	// get the terms that school (does NOT upsert them to the db)
@@ -218,7 +219,7 @@ func UpdateAllSectionsOfSchool(ctx context.Context, schoolId string, termCollect
 		return
 	}
 	// defer q.CleanupCoursesMeetingsStaging(ctx)
-	if err := (*service).StageAllClasses(*updateLogger, ctx, q, termCollection); err != nil {
+	if err := (*service).StageAllClasses(*updateLogger, ctx, q, termCollection, true); err != nil {
 		updateLogger.Error("Update sections aborting any staged sections/ meetings", updateLogger)
 		return
 	}
