@@ -1,11 +1,11 @@
 # This is a minimal pipeline to be able to fetch banner courses
 
-# @hostname=prd-xereg.temple.edu
+@hostname=prd-xereg.temple.edu
 @courseReferenceNumber=10002
-@hostname=ssb1-reg.banner.marist.edu
-# @term=202503
+# @hostname=ssb1-reg.banner.marist.edu
+@term=202503
 # @term=202504
-@term=202510
+# @term=202510
 # get the banner cookie(s)
 # @name REQUEST_SEARCH_PAGE
 GET https://{{hostname}}/StudentRegistrationSsb/ssb/term/termSelection?mode=search
@@ -25,10 +25,11 @@ GET https://{{hostname}}/StudentRegistrationSsb/ssb/term/termSelection?mode=sear
 POST https://{{hostname}}/StudentRegistrationSsb/ssb/term/search?mode=search
 Content-Type: application/x-www-form-urlencoded
 Accept: application/json
-Cookie:JSESSIONID={{REQUEST_SEARCH_PAGE.response.cookies.JSESSIONID.value}}; 
+Cookie: JSESSIONID={{REQUEST_SEARCH_PAGE.response.cookies.JSESSIONID.value}}; BIGipServerprd_xereg_8180_pool={{REQUEST_SEARCH_PAGE.response.cookies.BIGipServerprd_xereg_8180_pool.value}}
 
 term={{term}}
 
+# Cookie:JSESSIONID={{REQUEST_SEARCH_PAGE.response.cookies.JSESSIONID.value}}; 
 # Cookie: JSESSIONID={{REQUEST_SEARCH_PAGE.response.cookies.JSESSIONID.value}}; BIGipServerprd_xereg_8180_pool={{REQUEST_SEARCH_PAGE.response.cookies.BIGipServerprd_xereg_8180_pool.value}}
 ###
 
@@ -36,8 +37,7 @@ term={{term}}
 # note that the pageOffset is the section count and not the page count of offset
 
 # GET https://ssb1-reg.banner.marist.edu/StudentRegistrationSsb/ssb/searchResults/searchResults?txt_term={{term}}&startDatepicker=&endDatepicker=&uniqueSessionId=rvboz1735403153035&pageOffset=10&pageMaxSize=10&sortColumn=subjectDescription&sortDirection=asc
-GET https://{{hostname}}/StudentRegistrationSsb/ssb/searchResults/searchResults?txt_term={{term}}&pageOffset=0&pageMaxSize=1
-Cookie: JSESSIONID={{REQUEST_SEARCH_PAGE.response.cookies.JSESSIONID.value}};
+GET https://{{hostname}}/StudentRegistrationSsb/ssb/searchResults/searchResults?txt_term={{term}}&pageOffset=0&pageMaxSize=1 Cookie: JSESSIONID={{REQUEST_SEARCH_PAGE.response.cookies.JSESSIONID.value}};
 
 # Cookie: JSESSIONID={{REQUEST_SEARCH_PAGE.response.cookies.JSESSIONID.value}}; BIGipServerprd_xereg_8180_pool={{REQUEST_SEARCH_PAGE.response.cookies.BIGipServerprd_xereg_8180_pool.value}}
 ###

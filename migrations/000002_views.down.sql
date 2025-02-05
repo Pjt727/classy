@@ -1,1 +1,1 @@
-DROP VIEW classes;
+DROP VIEW section_meetings;

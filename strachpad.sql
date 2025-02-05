@@ -1,4 +1,5 @@
 SELECT * FROM terms;
+SELECT * FROM courses WHERE school_id = 'temple';
 SELECT * FROM schools;
 SELECT * FROM classes;
 SELECT * FROM term_collections
