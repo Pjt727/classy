@@ -26,10 +26,11 @@ CREATE TABLE term_collections (
     PRIMARY KEY (id, school_id)
 );
 
-CREATE TABLE previous_full_section_collections (
+CREATE TABLE previous_section_collections (
     school_id TEXT,
     collection_id TEXT,
     time_collection TIMESTAMP WITH TIME ZONE,
+    is_full BOOL NOT NULL,
 
     FOREIGN KEY (collection_id, school_id) REFERENCES term_collections(id, school_id),
     PRIMARY KEY (collection_id, school_id, time_collection)

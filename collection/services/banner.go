@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"net/http"
 	"net/http/cookiejar"
@@ -536,7 +535,7 @@ func (b *bannerSchool) insertGroupOfSections(
 				SchoolID:         termCollection.SchoolID,
 				StartDate:        startDate,
 				EndDate:          endDate,
-				MeetingType:      pgtype.Text{String: meetingTime.MeetingType, Valid: false},
+				MeetingType:      pgtype.Text{String: meetingTime.MeetingType, Valid: true},
 				StartMinutes:     toBannerTime(meetingTime.StartTime),
 				EndMinutes:       toBannerTime(meetingTime.EndTime),
 				IsMonday:         meetingTime.Monday,

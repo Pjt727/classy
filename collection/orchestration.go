@@ -42,49 +42,56 @@ type Service interface {
 	) ([]db.UpsertTermCollectionParams, error)
 }
 
-var serviceEntries []Service
-var SchoolIdToService map[string]*Service
-var SchoolIdToSchool map[string]db.School
-var orchestrationLogger *log.Entry
-var dbPool *pgxpool.Pool
+type Orchestrator struct {
+	serviceEntries      []Service
+	schoolIdToService   map[string]*Service
+	schoolIdToSchool    map[string]db.School
+	orchestrationLogger *log.Entry
+	dbPool              *pgxpool.Pool
+}
 
-func init() {
-	SchoolIdToService = make(map[string]*Service)
-	SchoolIdToSchool = make(map[string]db.School)
-
-	orchestrationLogger = log.WithFields(log.Fields{"job": "orchestration"})
-	serviceEntries = []Service{services.Banner}
+func GetDefaultOrchestrator() (Orchestrator, error) {
 	ctx := context.Background()
-	poolMaybe, err := data.NewPool(ctx)
-	if err != nil {
-		// this package doesn't work if it can't access the database
-		panic("Failed to init orchestration database connection")
+	dbPool, err := data.NewPool(ctx)
+	orchestrator := Orchestrator{
+		serviceEntries:      []Service{services.Banner},
+		schoolIdToService:   make(map[string]*Service),
+		schoolIdToSchool:    make(map[string]db.School),
+		orchestrationLogger: log.WithFields(log.Fields{"job": "orchestration"}),
+		dbPool:              dbPool,
 	}
-	dbPool = poolMaybe
-	for _, service := range serviceEntries {
-		serviceLogger := orchestrationLogger.WithField("service", service.GetName())
+	if err != nil {
+		return orchestrator, err
+	}
+	for _, service := range orchestrator.serviceEntries {
+		serviceLogger := orchestrator.orchestrationLogger.WithField("service", service.GetName())
 		q := db.New(dbPool)
 		schools, err := service.ListValidSchools(*serviceLogger, ctx, q)
 		if err != nil {
-			serviceLogger.Error("Skipping school to service mapping because error: ", err)
+			serviceLogger.Warn("Skipping school to service mapping because error: ", err)
 			continue
 		}
 
 		for _, school := range schools {
-			SchoolIdToService[school.ID] = &service
-			SchoolIdToSchool[school.ID] = school
+			orchestrator.schoolIdToService[school.ID] = &service
+			orchestrator.schoolIdToSchool[school.ID] = school
 		}
 	}
+
+	return orchestrator, nil
 }
 
-func UpsertAllSchools(ctx context.Context) {
-	tx, err := dbPool.Begin(ctx)
+func init() {
+}
+
+func (o Orchestrator) UpsertAllSchools(ctx context.Context) {
+	tx, err := o.dbPool.Begin(ctx)
 	if err != nil {
-		orchestrationLogger.Error("Couldn't begin transaction", err)
+		o.orchestrationLogger.Error("Couldn't begin transaction", err)
 		return
 	}
-	q := db.New(dbPool).WithTx(tx)
-	for _, school := range SchoolIdToSchool {
+	q := db.New(o.dbPool).WithTx(tx)
+	for _, school := range o.schoolIdToSchool {
 		err = q.UpsertSchool(
 			ctx,
 			db.UpsertSchoolParams{
@@ -92,7 +99,7 @@ func UpsertAllSchools(ctx context.Context) {
 				Name: school.Name,
 			})
 		if err != nil {
-			orchestrationLogger.Error("Couldn't add school", err)
+			o.orchestrationLogger.Error("Couldn't add school", err)
 			tx.Rollback(ctx)
 			return
 		}
@@ -100,8 +107,8 @@ func UpsertAllSchools(ctx context.Context) {
 	tx.Commit(ctx)
 }
 
-func UpsertSchoolTerms(ctx context.Context, logger log.Entry, school db.School, service *Service) error {
-	tx, err := dbPool.Begin(ctx)
+func (o Orchestrator) UpsertSchoolTerms(ctx context.Context, logger log.Entry, school db.School, service *Service) error {
+	tx, err := o.dbPool.Begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -160,21 +167,21 @@ func UpsertSchoolTerms(ctx context.Context, logger log.Entry, school db.School, 
 	return nil
 }
 
-func UpsertAllTerms(ctx context.Context) {
+func (o Orchestrator) UpsertAllTerms(ctx context.Context) {
 	var wg sync.WaitGroup
 	errCh := make(chan error)
-	numberOfWorkers := len(SchoolIdToService)
-	orchestrationLogger.Infof(`Starting to add %d school's terms`, numberOfWorkers)
+	numberOfWorkers := len(o.schoolIdToService)
+	o.orchestrationLogger.Infof(`Starting to add %d school's terms`, numberOfWorkers)
 	wg.Add(numberOfWorkers)
-	for school_id, s := range SchoolIdToService {
-		school := SchoolIdToSchool[school_id]
-		termLogger := orchestrationLogger.WithFields(log.Fields{
+	for school_id, s := range o.schoolIdToService {
+		school := o.schoolIdToSchool[school_id]
+		termLogger := o.orchestrationLogger.WithFields(log.Fields{
 			"school_id": school_id,
 			"service":   (*s).GetName(),
 		})
 		go func() {
 			defer wg.Done()
-			if err := UpsertSchoolTerms(ctx, *termLogger, school, s); err != nil {
+			if err := o.UpsertSchoolTerms(ctx, *termLogger, school, s); err != nil {
 				errCh <- err
 			}
 		}()
@@ -187,18 +194,20 @@ func UpsertAllTerms(ctx context.Context) {
 
 	errorCount := 0
 	for err := range errCh {
-		orchestrationLogger.Error("There was an error collecting terms: ", err)
+		o.orchestrationLogger.Error("There was an error collecting terms: ", err)
 		errorCount++
 	}
 
-	orchestrationLogger.Infof(`Added %d school's terms successfully`, numberOfWorkers-errorCount)
+	o.orchestrationLogger.Infof(`Added %d school's terms successfully`, numberOfWorkers-errorCount)
 
 }
 
-func UpdateAllSectionsOfSchool(ctx context.Context, schoolId string, termCollection db.TermCollection) {
+func (o Orchestrator) UpdateAllSectionsOfSchool(ctx context.Context, schoolId string, termCollection db.TermCollection) {
 	// there might be a good way to easily sandbox schoools to what they should change
-	service, ok := SchoolIdToService[schoolId]
-	updateLogger := orchestrationLogger.WithFields(log.Fields{
+	//    could make a wrapping q client with the state of the school and then write wrappers
+	//    for each of the functions
+	service, ok := o.schoolIdToService[schoolId]
+	updateLogger := o.orchestrationLogger.WithFields(log.Fields{
 		"school_id": schoolId,
 		"season":    termCollection.Season,
 		"year":      termCollection.Year,
@@ -207,13 +216,13 @@ func UpdateAllSectionsOfSchool(ctx context.Context, schoolId string, termCollect
 		updateLogger.Error("Skipping update school... school not found")
 		return
 	}
-	school := SchoolIdToSchool[schoolId]
-	updateLogger = orchestrationLogger.WithFields(log.Fields{
+	school := o.schoolIdToSchool[schoolId]
+	updateLogger = o.orchestrationLogger.WithFields(log.Fields{
 		"service":        (*service).GetName(),
 		"school":         school,
 		"termCollection": termCollection,
 	})
-	q := db.New(dbPool)
+	q := db.New(o.dbPool)
 	if err := q.DeleteCoursesMeetingsStaging(ctx, termCollection); err != nil {
 		updateLogger.Error("Could not ready staging tables", err)
 		return
@@ -223,13 +232,14 @@ func UpdateAllSectionsOfSchool(ctx context.Context, schoolId string, termCollect
 		updateLogger.Error("Update sections aborting any staged sections/ meetings", updateLogger)
 		return
 	}
-	tx, err := dbPool.Begin(ctx)
+	tx, err := o.dbPool.Begin(ctx)
+
 	if err != nil {
 		updateLogger.Error("couldn't begin transaction: ", err)
 		return
 	}
 	defer tx.Commit(ctx)
-	q = db.New(dbPool).WithTx(tx)
+	q = db.New(o.dbPool).WithTx(tx)
 	changesCount, err := q.MoveStagedCoursesAndMeetings(ctx, termCollection)
 	if err != nil {
 		updateLogger.Error("Failed moving courses: ", err)

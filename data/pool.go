@@ -17,13 +17,16 @@ var (
 	pgOnce sync.Once
 )
 
-func NewPool(ctx context.Context) (*pgxpool.Pool, error) {
-
+func init() {
 	err := godotenv.Load()
 
 	if err != nil {
 		panic("Error loading .env file")
 	}
+}
+
+func NewPool(ctx context.Context) (*pgxpool.Pool, error) {
+
 	connString := os.Getenv("DB_CONN")
 
 	var poolErr error = nil
@@ -37,7 +40,7 @@ func NewPool(ctx context.Context) (*pgxpool.Pool, error) {
 		dbPool = pgPool
 	})
 	if poolErr != nil {
-		return dbPool, err
+		return dbPool, poolErr
 	}
 
 	return dbPool, nil

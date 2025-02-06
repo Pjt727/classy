@@ -19,17 +19,15 @@ func Serve() {
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("classy api running"))
 	})
-	r.Route("/get", func(r chi.Router) {
-		r.Route("/{schoolID}", func(r chi.Router) {
-			r.Use(SchoolCtx)
-			r.Get("/terms", func(w http.ResponseWriter, r *http.Request) {
+	r.Route("/{schoolID}", func(r chi.Router) {
+		r.Use(SchoolCtx)
+		r.Get("/terms", func(w http.ResponseWriter, r *http.Request) {
 
-			})
+		})
 
-			r.Route("/{termCollectionID}", func(r chi.Router) {
-				r.Use(TermCollectionCtx)
-				r.Get("/classes", handlers.GetClasses)
-			})
+		r.Route("/{termCollectionID}", func(r chi.Router) {
+			r.Use(TermCollectionCtx)
+			r.Get("/classes", handlers.GetClasses)
 		})
 	})
 	port := 3000

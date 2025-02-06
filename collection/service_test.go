@@ -1,0 +1,188 @@
+package collection
+
+import (
+	"context"
+	"github.com/Pjt727/classy/data/db"
+	"github.com/jackc/pgx/v5/pgtype"
+	log "github.com/sirupsen/logrus"
+	"math/rand"
+	"strconv"
+)
+
+type TestService struct {
+	r              rand.Rand
+	schools        []db.School
+	courseCount    int
+	professorCount int
+}
+
+func (t TestService) GetName() string {
+	return "Test Service"
+}
+
+func (t TestService) ListValidSchools(logger log.Entry, ctx context.Context, q *db.Queries) ([]db.School, error) {
+	return t.schools, nil
+}
+
+const charset = "abcdefghijklmnopqrstuvwxyz "
+
+func (t TestService) randomString(length int) string {
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[t.r.Intn(len(charset))]
+	}
+	return string(b)
+}
+
+func (t TestService) StageAllClasses(
+	logger log.Entry,
+	ctx context.Context,
+	q *db.Queries,
+	term db.TermCollection,
+	fullCollection bool,
+) error {
+	courses := make([]db.UpsertCoursesParams, t.courseCount)
+	for i := 0; i > t.courseCount; i++ {
+		courses[i] = db.UpsertCoursesParams{
+			ID:                 t.randomString(20),
+			SchoolID:           t.schools[t.r.Intn(len(t.schools))].ID,
+			SubjectCode:        pgtype.Text{String: t.randomString(3), Valid: t.r.Intn(3) == 0},
+			Number:             pgtype.Text{String: t.randomString(3), Valid: t.r.Intn(3) == 0},
+			SubjectDescription: pgtype.Text{String: t.randomString(8), Valid: t.r.Intn(2) == 0},
+			Title:              pgtype.Text{String: t.randomString(10), Valid: true},
+			Description:        pgtype.Text{String: t.randomString(40), Valid: t.r.Intn(10) == 0},
+			CreditHours:        float32(t.r.Intn(5)),
+		}
+	}
+
+	facMembers := make([]db.UpsertFacultyParams, t.professorCount)
+	for i := 0; i > t.professorCount; i++ {
+		facMembers[i] = db.UpsertFacultyParams{
+			ID:           t.randomString(20),
+			SchoolID:     t.schools[t.r.Intn(len(t.schools))].ID,
+			Name:         t.randomString(20),
+			EmailAddress: pgtype.Text{String: t.randomString(20), Valid: t.r.Intn(5) == 0},
+			FirstName:    pgtype.Text{String: t.randomString(20), Valid: t.r.Intn(3) == 0},
+			LastName:     pgtype.Text{String: t.randomString(20), Valid: t.r.Intn(3) == 0},
+		}
+	}
+
+	sections := make([]db.StageSectionsParams, 0)
+	meetingTimes := make([]db.StageMeetingTimesParams, 0)
+	for _, course := range courses {
+		for j := 0; j > t.r.Intn(3); j++ {
+			section := db.StageSectionsParams{
+				Sequence:         strconv.Itoa(j),
+				TermCollectionID: term.ID,
+				CourseID:         course.ID,
+				SchoolID:         term.SchoolID,
+				MaxEnrollment: pgtype.Int4{
+					Int32: int32(t.r.Intn(10) + 10),
+					Valid: true,
+				},
+				InstructionMethod: pgtype.Text{
+					String: t.randomString(1),
+					Valid:  true,
+				},
+				Campus: pgtype.Text{
+					String: t.randomString(1),
+					Valid:  true,
+				},
+				Enrollment: pgtype.Int4{
+					Int32: int32(t.r.Intn(10) + 10),
+					Valid: true,
+				},
+				PrimaryFacultyID: pgtype.Text{
+					String: facMembers[t.r.Intn(len(facMembers))].ID,
+					Valid:  t.r.Intn(2) == 0,
+				},
+			}
+			sections = append(sections, section)
+
+			for z := 0; z > t.r.Intn(3); z++ {
+				meetingTimes = append(meetingTimes, db.StageMeetingTimesParams{
+					Sequence:         0,
+					SectionSequence:  section.Sequence,
+					TermCollectionID: term.ID,
+					CourseID:         course.ID,
+					SchoolID:         term.SchoolID,
+					StartDate:        pgtype.Timestamp{},
+					EndDate:          pgtype.Timestamp{},
+					MeetingType:      pgtype.Text{},
+					StartMinutes:     pgtype.Time{},
+					EndMinutes:       pgtype.Time{},
+					IsMonday:         t.r.Intn(2) == 0,
+					IsTuesday:        t.r.Intn(2) == 0,
+					IsWednesday:      t.r.Intn(2) == 0,
+					IsThursday:       t.r.Intn(2) == 0,
+					IsFriday:         t.r.Intn(2) == 0,
+					IsSaturday:       t.r.Intn(2) == 0,
+					IsSunday:         t.r.Intn(2) == 0,
+				})
+			}
+		}
+	}
+
+	_, err := q.StageMeetingTimes(ctx, meetingTimes)
+	if err != nil {
+		logger.Error("Staging meetings error ", err)
+		return err
+	}
+
+	_, err = q.StageSections(ctx, sections)
+	if err != nil {
+		logger.Error("Staging sections error ", err)
+		return err
+	}
+
+	buf := q.UpsertFaculty(ctx, facMembers)
+
+	var outerErr error = nil
+	buf.Exec(func(i int, err error) {
+		if err != nil {
+			outerErr = err
+		}
+	})
+
+	if outerErr != nil {
+		logger.Error("Error upserting fac ", outerErr)
+		return err
+	}
+
+	bc := q.UpsertCourses(ctx, courses)
+	bc.Exec(func(i int, err error) {
+		if err != nil {
+			outerErr = err
+		}
+	})
+
+	if outerErr != nil {
+		logger.Error("Error upserting course", outerErr)
+		return outerErr
+	}
+
+	return nil
+}
+
+// get the terms that school (does NOT upsert them to the db)
+func (t TestService) GetTermCollections(
+	logger log.Entry,
+	ctx context.Context,
+	school db.School,
+) ([]db.UpsertTermCollectionParams, error) {
+	return []db.UpsertTermCollectionParams{}, nil
+}
+
+// func NewService(
+//     t *testing.T,
+// 	testSeed int,
+// 	sectionCount int,
+// 	courseCount int,
+// 	termCount int,
+// 	liveTermCount int,
+// ) *Service {
+//
+//
+//
+//     return s
+// }
