@@ -1,12 +1,12 @@
 SELECT * FROM terms;
-SELECT * FROM courses WHERE school_id = 'temple';
+SELECT id, description FROM courses WHERE school_id = 'temple';
 SELECT * FROM schools;
 SELECT * FROM classes;
 SELECT * FROM term_collections
 WHERE school_id = 'temple';
 SELECT * FROM faculty_members;
-SELECT * FROM staging_sections;
-SELECT * FROM sections;
+SELECT course_id FROM staging_sections WHERE school_id = 'temple' GROUP BY course_id;
+SELECT * FROM sections WHERE school_id = 'temple';
 SELECT * FROM staging_meeting_times;
 SELECT * FROM meeting_times
 WHERE start_minutes != NULL
@@ -20,5 +20,5 @@ ORDER BY counter
 SELECT * FROM staging_meeting_times 
 WHERE (section_id, term_season, term_year, course_id, school_id) IN (SELECT id, term_season, term_year, course_id, school_id FROM sections);
 
-SELECT * FROM sections
+SELECT COUNT(*) FROM sections WHERE school_id = 'temple'
 

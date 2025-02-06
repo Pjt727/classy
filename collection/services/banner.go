@@ -6,8 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"golang.org/x/net/html"
-	"golang.org/x/time/rate"
+	"io"
 	"math"
 	"net/http"
 	"net/http/cookiejar"
@@ -16,6 +15,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/net/html"
+	"golang.org/x/time/rate"
 
 	"github.com/Pjt727/classy/data/db"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -46,14 +48,14 @@ func init() {
 			hostname:            "ssb1-reg.banner.marist.edu",
 			MaxTermCount:        100,
 			MaxSectionPageCount: 200,
-			RequestLimiter:      rate.NewLimiter(rate.Limit(100), 50),
+			RequestLimiter:      rate.NewLimiter(rate.Limit(100), 25),
 		},
 		temple.ID: {
 			school:              temple,
 			hostname:            "prd-xereg.temple.edu",
 			MaxTermCount:        100,
 			MaxSectionPageCount: 200,
-			RequestLimiter:      rate.NewLimiter(rate.Limit(100), 50),
+			RequestLimiter:      rate.NewLimiter(rate.Limit(100), 25),
 		},
 	}
 	Banner = &banner{schools: schools}
@@ -392,7 +394,7 @@ func (b *bannerSchool) stageAllClasses(
 		})
 		queryParams := url.Values{
 			"txt_term":    {termStr},
-			"pageOffset":  {strconv.Itoa(b.MaxSectionPageCount)},
+			"pageOffset":  {strconv.Itoa(i * b.MaxSectionPageCount)},
 			"pageMaxSize": {strconv.Itoa(b.MaxSectionPageCount)},
 		}
 		workersReq.URL.RawQuery = queryParams.Encode()
@@ -422,6 +424,18 @@ func (b *bannerSchool) stageAllClasses(
 	return nil
 }
 
+func dumpRequestInfo(req *http.Request) {
+	// Dump request method, URL, and headers
+	fmt.Printf("Method: %s\n", req.Method)
+	fmt.Printf("URL: %s\n", req.URL.String())
+	fmt.Println("Headers:")
+	for key, values := range req.Header {
+		for _, value := range values {
+			fmt.Printf("%s: %s\n", key, value)
+		}
+	}
+}
+
 func (b *bannerSchool) insertGroupOfSections(
 	logger *log.Entry,
 	sectionReq *http.Request,
@@ -431,11 +445,16 @@ func (b *bannerSchool) insertGroupOfSections(
 	termCollection db.TermCollection,
 	fullCollection bool,
 ) error {
+	if err := b.RequestLimiter.Wait(context.Background()); err != nil {
+		logger.Error("Limiter error:", err)
+		return err
+	}
 	resp, err := client.Do(sectionReq)
 	if err != nil {
 		logger.Error("Error getting sections")
 		return err
 	}
+	defer resp.Body.Close()
 
 	var sections sectionSearch
 	if err := json.NewDecoder(resp.Body).Decode(&sections); err != nil {
@@ -561,6 +580,7 @@ func (b *bannerSchool) insertGroupOfSections(
 	// add all of the coures
 	if fullCollection {
 		var wg sync.WaitGroup
+		var mu sync.Mutex
 		wg.Add(len(courseReferenceNumbers))
 		for courseId, referenceNumber := range courseReferenceNumbers {
 			go func() {
@@ -577,6 +597,8 @@ func (b *bannerSchool) insertGroupOfSections(
 				if courseDesc == nil {
 					return
 				}
+				mu.Lock()
+				defer mu.Unlock()
 				course := courses[courseId]
 				course.Description = pgtype.Text{
 					String: strings.TrimSpace(strings.TrimSpace(*courseDesc)),
@@ -642,6 +664,8 @@ func (b *bannerSchool) insertGroupOfSections(
 		logger.Error("Error upserting course", outerErr)
 		return outerErr
 	}
+
+	logger.Infof("Successfully added %d sections and their related information", len(dbSections))
 
 	return nil
 }
