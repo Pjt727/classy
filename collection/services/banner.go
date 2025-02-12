@@ -530,8 +530,9 @@ func (b *bannerSchool) insertGroupOfSections(
 			dbMeetingTime := db.StageMeetingTimesParams{
 				Sequence:         int32(i),
 				SectionSequence:  sectionSequence,
-				CourseID:         courseId,
 				TermCollectionID: termCollection.ID,
+				SubjectCode:      s.Subject,
+				CourseNumber:     s.CourseNumber,
 				SchoolID:         termCollection.SchoolID,
 				StartDate:        startDate,
 				EndDate:          endDate,
@@ -552,7 +553,8 @@ func (b *bannerSchool) insertGroupOfSections(
 		dbSection := db.StageSectionsParams{
 			Sequence:          sectionSequence,
 			Campus:            pgtype.Text{String: s.CampusDescription, Valid: true},
-			CourseID:          courseId,
+			SubjectCode:       s.Subject,
+			CourseNumber:      s.CourseNumber,
 			SchoolID:          termCollection.SchoolID,
 			TermCollectionID:  termCollection.ID,
 			Enrollment:        pgtype.Int4{Int32: s.MaximumEnrollment, Valid: true},
@@ -561,10 +563,9 @@ func (b *bannerSchool) insertGroupOfSections(
 			PrimaryFacultyID:  primaryFac,
 		}
 		course := db.UpsertCoursesParams{
-			ID:                 courseId,
 			SchoolID:           termCollection.SchoolID,
-			SubjectCode:        pgtype.Text{String: s.Subject, Valid: true},
-			Number:             pgtype.Text{String: s.CourseNumber, Valid: true},
+			SubjectCode:        s.Subject,
+			Number:             s.CourseNumber,
 			SubjectDescription: pgtype.Text{String: s.SubjectDescription, Valid: true},
 			Title:              pgtype.Text{String: s.CourseTitle, Valid: true},
 			// cannot get the description from here 😥

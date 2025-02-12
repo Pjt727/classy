@@ -56,10 +56,9 @@ func (ns NullSeasonEnum) Value() (driver.Value, error) {
 }
 
 type Course struct {
-	ID                 string      `json:"id"`
 	SchoolID           string      `json:"school_id"`
-	SubjectCode        pgtype.Text `json:"subject_code"`
-	Number             pgtype.Text `json:"number"`
+	SubjectCode        string      `json:"subject_code"`
+	Number             string      `json:"number"`
 	SubjectDescription pgtype.Text `json:"subject_description"`
 	Title              pgtype.Text `json:"title"`
 	Description        pgtype.Text `json:"description"`
@@ -79,7 +78,8 @@ type MeetingTime struct {
 	Sequence         int32            `json:"sequence"`
 	SectionSequence  string           `json:"section_sequence"`
 	TermCollectionID string           `json:"term_collection_id"`
-	CourseID         string           `json:"course_id"`
+	SubjectCode      string           `json:"subject_code"`
+	CourseNumber     string           `json:"course_number"`
 	SchoolID         string           `json:"school_id"`
 	StartDate        pgtype.Timestamp `json:"start_date"`
 	EndDate          pgtype.Timestamp `json:"end_date"`
@@ -95,10 +95,11 @@ type MeetingTime struct {
 	IsSunday         bool             `json:"is_sunday"`
 }
 
-type PreviousFullSectionCollection struct {
+type PreviousSectionCollection struct {
 	SchoolID       string             `json:"school_id"`
 	CollectionID   string             `json:"collection_id"`
 	TimeCollection pgtype.Timestamptz `json:"time_collection"`
+	IsFull         bool               `json:"is_full"`
 }
 
 type School struct {
@@ -109,7 +110,8 @@ type School struct {
 type Section struct {
 	Sequence          string      `json:"sequence"`
 	TermCollectionID  string      `json:"term_collection_id"`
-	CourseID          string      `json:"course_id"`
+	SubjectCode       string      `json:"subject_code"`
+	CourseNumber      string      `json:"course_number"`
 	SchoolID          string      `json:"school_id"`
 	MaxEnrollment     pgtype.Int4 `json:"max_enrollment"`
 	InstructionMethod pgtype.Text `json:"instruction_method"`
@@ -122,7 +124,8 @@ type SectionMeeting struct {
 	Sequence         string        `json:"sequence"`
 	SchoolID         string        `json:"school_id"`
 	TermCollectionID string        `json:"term_collection_id"`
-	CourseID         string        `json:"course_id"`
+	SubjectCode      string        `json:"subject_code"`
+	CourseNumber     string        `json:"course_number"`
 	MeetingTimes     []MeetingTime `json:"meeting_times"`
 }
 
@@ -130,7 +133,8 @@ type StagingMeetingTime struct {
 	Sequence         int32            `json:"sequence"`
 	SectionSequence  string           `json:"section_sequence"`
 	TermCollectionID string           `json:"term_collection_id"`
-	CourseID         string           `json:"course_id"`
+	SubjectCode      string           `json:"subject_code"`
+	CourseNumber     string           `json:"course_number"`
 	SchoolID         string           `json:"school_id"`
 	StartDate        pgtype.Timestamp `json:"start_date"`
 	EndDate          pgtype.Timestamp `json:"end_date"`
@@ -149,7 +153,8 @@ type StagingMeetingTime struct {
 type StagingSection struct {
 	Sequence          string      `json:"sequence"`
 	TermCollectionID  string      `json:"term_collection_id"`
-	CourseID          string      `json:"course_id"`
+	SubjectCode       string      `json:"subject_code"`
+	CourseNumber      string      `json:"course_number"`
 	SchoolID          string      `json:"school_id"`
 	MaxEnrollment     pgtype.Int4 `json:"max_enrollment"`
 	InstructionMethod pgtype.Text `json:"instruction_method"`

@@ -45,22 +45,22 @@ func (q *Queries) DeleteStagingSections(ctx context.Context, arg DeleteStagingSe
 
 const moveStagedMeetingTimes = `-- name: MoveStagedMeetingTimes :exec
 INSERT INTO meeting_times
-    (sequence, section_sequence,
-        term_collection_id, course_id, school_id, 
+    (sequence, section_sequence, subject_code,
+        term_collection_id, course_number, school_id, 
         start_date, end_date, meeting_type,
         start_minutes, end_minutes, is_monday,
         is_tuesday, is_wednesday, is_thursday,
         is_friday, is_saturday, is_sunday)
 SELECT 
-    DISTINCT ON (sequence, section_sequence, term_collection_id, course_id, school_id)
+    DISTINCT ON (sequence, section_sequence, term_collection_id, subject_code, course_number, school_id)
     sequence, section_sequence, term_collection_id,
-    course_id, school_id, 
+    subject_code, course_number, school_id, 
     start_date, end_date, meeting_type,
     start_minutes, end_minutes, is_monday,
     is_tuesday, is_wednesday, is_thursday,
     is_friday, is_saturday, is_sunday
 FROM staging_meeting_times
-ON CONFLICT ("sequence", section_sequence, course_id, school_id, term_collection_id) DO UPDATE
+ON CONFLICT ("sequence", section_sequence, subject_code, course_number, school_id, term_collection_id) DO UPDATE
 SET 
     start_date = EXCLUDED.start_date,
     end_date = EXCLUDED.end_date,
@@ -95,18 +95,18 @@ func (q *Queries) MoveStagedMeetingTimes(ctx context.Context) error {
 
 const moveStagedSections = `-- name: MoveStagedSections :exec
 INSERT INTO sections 
-    (sequence, term_collection_id,
-        course_id, school_id, max_enrollment, 
+    (sequence, term_collection_id, subject_code,
+        course_number, school_id, max_enrollment, 
         instruction_method, campus, enrollment,
         primary_faculty_id)
 SELECT
-    DISTINCT ON (sequence, term_collection_id, course_id, school_id)
-    sequence, term_collection_id,
-    course_id, school_id, max_enrollment, 
+    DISTINCT ON (sequence, term_collection_id, subject_code, course_number, school_id)
+    sequence, term_collection_id, subject_code,
+    course_number, school_id, max_enrollment, 
     instruction_method, campus, enrollment,
     primary_faculty_id
 FROM staging_sections
-ON CONFLICT ("sequence", course_id, school_id, term_collection_id) DO UPDATE
+ON CONFLICT ("sequence", subject_code, course_number, school_id, term_collection_id) DO UPDATE
 SET 
     campus = EXCLUDED.campus,
     enrollment = EXCLUDED.enrollment,
@@ -134,7 +134,8 @@ WHERE mt.term_collection_id = $1
     FROM staging_meeting_times smt
     WHERE smt."sequence" = mt."sequence"
       AND smt.term_collection_id = mt.term_collection_id
-      AND smt.course_id = mt.course_id
+      AND smt.subject_code = mt.subject_code
+      AND smt.course_number = mt.course_number
       AND smt.school_id = mt.school_id
       AND smt.section_sequence = mt.section_sequence
   )
@@ -159,7 +160,8 @@ WHERE s.term_collection_id = $1
     FROM staging_sections ss
     WHERE ss.sequence = s.sequence
       AND ss.term_collection_id = s.term_collection_id
-      AND ss.course_id = s.course_id
+      AND ss.subject_code = s.subject_code
+      AND ss.course_number = s.course_number
       AND ss.school_id = s.school_id
   )
 `
@@ -178,7 +180,8 @@ type StageMeetingTimesParams struct {
 	Sequence         int32            `json:"sequence"`
 	SectionSequence  string           `json:"section_sequence"`
 	TermCollectionID string           `json:"term_collection_id"`
-	CourseID         string           `json:"course_id"`
+	SubjectCode      string           `json:"subject_code"`
+	CourseNumber     string           `json:"course_number"`
 	SchoolID         string           `json:"school_id"`
 	StartDate        pgtype.Timestamp `json:"start_date"`
 	EndDate          pgtype.Timestamp `json:"end_date"`
@@ -197,7 +200,8 @@ type StageMeetingTimesParams struct {
 type StageSectionsParams struct {
 	Sequence          string      `json:"sequence"`
 	Campus            pgtype.Text `json:"campus"`
-	CourseID          string      `json:"course_id"`
+	SubjectCode       string      `json:"subject_code"`
+	CourseNumber      string      `json:"course_number"`
 	SchoolID          string      `json:"school_id"`
 	TermCollectionID  string      `json:"term_collection_id"`
 	Enrollment        pgtype.Int4 `json:"enrollment"`

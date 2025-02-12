@@ -44,10 +44,9 @@ func (t TestService) StageAllClasses(
 	courses := make([]db.UpsertCoursesParams, t.courseCount)
 	for i := 0; i > t.courseCount; i++ {
 		courses[i] = db.UpsertCoursesParams{
-			ID:                 t.randomString(20),
 			SchoolID:           t.schools[t.r.Intn(len(t.schools))].ID,
-			SubjectCode:        pgtype.Text{String: t.randomString(3), Valid: t.r.Intn(3) == 0},
-			Number:             pgtype.Text{String: t.randomString(3), Valid: t.r.Intn(3) == 0},
+			SubjectCode:        t.randomString(3),
+			Number:             t.randomString(3),
 			SubjectDescription: pgtype.Text{String: t.randomString(8), Valid: t.r.Intn(2) == 0},
 			Title:              pgtype.Text{String: t.randomString(10), Valid: true},
 			Description:        pgtype.Text{String: t.randomString(40), Valid: t.r.Intn(10) == 0},
@@ -72,30 +71,16 @@ func (t TestService) StageAllClasses(
 	for _, course := range courses {
 		for j := 0; j > t.r.Intn(3); j++ {
 			section := db.StageSectionsParams{
-				Sequence:         strconv.Itoa(j),
-				TermCollectionID: term.ID,
-				CourseID:         course.ID,
-				SchoolID:         term.SchoolID,
-				MaxEnrollment: pgtype.Int4{
-					Int32: int32(t.r.Intn(10) + 10),
-					Valid: true,
-				},
-				InstructionMethod: pgtype.Text{
-					String: t.randomString(1),
-					Valid:  true,
-				},
-				Campus: pgtype.Text{
-					String: t.randomString(1),
-					Valid:  true,
-				},
-				Enrollment: pgtype.Int4{
-					Int32: int32(t.r.Intn(10) + 10),
-					Valid: true,
-				},
-				PrimaryFacultyID: pgtype.Text{
-					String: facMembers[t.r.Intn(len(facMembers))].ID,
-					Valid:  t.r.Intn(2) == 0,
-				},
+				Sequence:          strconv.Itoa(j),
+				Campus:            pgtype.Text{String: t.randomString(1), Valid: true},
+				SubjectCode:       course.SubjectCode,
+				CourseNumber:      course.Number,
+				SchoolID:          term.SchoolID,
+				TermCollectionID:  term.ID,
+				Enrollment:        pgtype.Int4{Int32: int32(t.r.Intn(10) + 10), Valid: true},
+				MaxEnrollment:     pgtype.Int4{Int32: int32(t.r.Intn(10) + 10), Valid: true},
+				InstructionMethod: pgtype.Text{String: t.randomString(1), Valid: true},
+				PrimaryFacultyID:  pgtype.Text{String: facMembers[t.r.Intn(len(facMembers))].ID, Valid: t.r.Intn(2) == 0},
 			}
 			sections = append(sections, section)
 
@@ -104,7 +89,8 @@ func (t TestService) StageAllClasses(
 					Sequence:         0,
 					SectionSequence:  section.Sequence,
 					TermCollectionID: term.ID,
-					CourseID:         course.ID,
+					SubjectCode:      course.SubjectCode,
+					CourseNumber:     course.Number,
 					SchoolID:         term.SchoolID,
 					StartDate:        pgtype.Timestamp{},
 					EndDate:          pgtype.Timestamp{},

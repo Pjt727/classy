@@ -1,9 +1,12 @@
+-- notes:
 -- can't use temp tables with sqlc so i use staging tables here
+-- regex check constraints are mainly motiviated by api route names
 CREATE TYPE season_enum AS ENUM ('Spring', 'Fall', 'Winter', 'Summer');
 
 CREATE TABLE schools (
     id TEXT PRIMARY KEY,
-    name TEXT NOT NULL
+    name TEXT NOT NULL,
+    CONSTRAINT id CHECK (id ~ '^[a-zA-Z]*$')
 );
 
 CREATE TABLE terms (
@@ -23,7 +26,8 @@ CREATE TABLE term_collections (
     still_collecting BOOL NOT NULL,
     FOREIGN KEY (school_id) REFERENCES schools(id),
     FOREIGN KEY (year, season) REFERENCES terms(year, season),
-    PRIMARY KEY (id, school_id)
+    PRIMARY KEY (id, school_id),
+    CONSTRAINT id CHECK (id ~ '^[a-zA-Z0-9]*$')
 );
 
 CREATE TABLE previous_section_collections (
@@ -49,24 +53,25 @@ CREATE TABLE faculty_members (
 );
 
 CREATE TABLE courses (
-    id TEXT,
     school_id TEXT,
-
     subject_code TEXT,
     number TEXT,
+
     subject_description TEXT,
     title TEXT,
     description TEXT,
     credit_hours REAL NOT NULL,
     FOREIGN KEY (school_id) REFERENCES schools(id),
-    PRIMARY KEY (id, school_id)
+    PRIMARY KEY (school_id, subject_code, number),
+    CONSTRAINT subject_code CHECK (subject_code ~ '^[a-zA-Z0-9]*$'),
+    CONSTRAINT number CHECK (number ~ '^[a-zA-Z0-9]*$')
 );
 
--- TODO rename id TO sequence
 CREATE TABLE sections (
     sequence TEXT,
     term_collection_id TEXT,
-    course_id TEXT,
+    subject_code TEXT,
+    course_number TEXT,
     school_id TEXT,
 
     max_enrollment INTEGER,
@@ -74,17 +79,20 @@ CREATE TABLE sections (
     campus TEXT,
     enrollment INTEGER,
     primary_faculty_id TEXT,
-    FOREIGN KEY (course_id, school_id) REFERENCES courses(id, school_id),
+    FOREIGN KEY (school_id, subject_code, course_number) 
+        REFERENCES courses(school_id, subject_code, number),
     FOREIGN KEY (primary_faculty_id, school_id) REFERENCES faculty_members(id, school_id),
 
     FOREIGN KEY (term_collection_id, school_id) REFERENCES term_collections(id, school_id),
-    PRIMARY KEY (sequence, term_collection_id, course_id, school_id)
+    PRIMARY KEY (sequence, term_collection_id, subject_code, course_number, school_id),
+    CONSTRAINT subject_code CHECK (sequence ~ '^[a-zA-Z0-9]*$')
 );
 
 CREATE TABLE staging_sections (
     sequence TEXT NOT NULL,
     term_collection_id TEXT NOT NULL,
-    course_id TEXT NOT NULL,
+    subject_code TEXT NOT NULL,
+    course_number TEXT NOT NULL,
     school_id TEXT NOT NULL,
 
     max_enrollment INTEGER,
@@ -98,7 +106,8 @@ CREATE TABLE meeting_times (
     sequence INT,
     section_sequence TEXT,
     term_collection_id TEXT,
-    course_id TEXT,
+    subject_code TEXT,
+    course_number TEXT,
     school_id TEXT,
 
     start_date TIMESTAMP,
@@ -113,16 +122,17 @@ CREATE TABLE meeting_times (
     is_friday BOOLEAN NOT NULL,
     is_saturday BOOLEAN NOT NULL,
     is_sunday BOOLEAN NOT NULL,
-    FOREIGN KEY (section_sequence, term_collection_id, course_id, school_id)
-        REFERENCES sections(sequence, term_collection_id, course_id, school_id) ON DELETE CASCADE,
-    PRIMARY KEY (sequence, section_sequence, term_collection_id, course_id, school_id)
+    FOREIGN KEY (section_sequence, term_collection_id, school_id, subject_code, course_number)
+        REFERENCES sections(sequence, term_collection_id, school_id, subject_code, course_number) ON DELETE CASCADE,
+    PRIMARY KEY (sequence, section_sequence, term_collection_id, subject_code, course_number, school_id)
 );
 
 CREATE TABLE staging_meeting_times (
     sequence INT NOT NULL,
     section_sequence TEXT NOT NULL,
     term_collection_id TEXT NOT NULL,
-    course_id TEXT NOT NULL,
+    subject_code TEXT NOT NULL,
+    course_number TEXT NOT NULL,
     school_id TEXT NOT NULL,
 
     start_date TIMESTAMP,

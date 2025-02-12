@@ -19,13 +19,13 @@ var (
 
 const upsertCourses = `-- name: UpsertCourses :batchexec
 INSERT INTO courses
-    (id, school_id, subject_code,
+    (school_id, subject_code,
         number, subject_description, title,
         description, credit_hours)
 VALUES 
-    ($1, $2, $3,
-        $4, $5, $6,
-        $7, $8)
+    ($1, $2,
+        $3, $4, $5,
+        $6, $7)
 ON CONFLICT DO NOTHING
 `
 
@@ -36,10 +36,9 @@ type UpsertCoursesBatchResults struct {
 }
 
 type UpsertCoursesParams struct {
-	ID                 string      `json:"id"`
 	SchoolID           string      `json:"school_id"`
-	SubjectCode        pgtype.Text `json:"subject_code"`
-	Number             pgtype.Text `json:"number"`
+	SubjectCode        string      `json:"subject_code"`
+	Number             string      `json:"number"`
 	SubjectDescription pgtype.Text `json:"subject_description"`
 	Title              pgtype.Text `json:"title"`
 	Description        pgtype.Text `json:"description"`
@@ -50,7 +49,6 @@ func (q *Queries) UpsertCourses(ctx context.Context, arg []UpsertCoursesParams) 
 	batch := &pgx.Batch{}
 	for _, a := range arg {
 		vals := []interface{}{
-			a.ID,
 			a.SchoolID,
 			a.SubjectCode,
 			a.Number,

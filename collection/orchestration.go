@@ -2,6 +2,8 @@ package collection
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/Pjt727/classy/collection/services"
@@ -81,7 +83,9 @@ func GetDefaultOrchestrator() (Orchestrator, error) {
 	return orchestrator, nil
 }
 
-func init() {
+func (o Orchestrator) GetSchoolById(schoolId string) (db.School, bool) {
+	school, ok := o.schoolIdToSchool[schoolId]
+	return school, ok
 }
 
 func (o Orchestrator) UpsertAllSchools(ctx context.Context) {
@@ -107,7 +111,11 @@ func (o Orchestrator) UpsertAllSchools(ctx context.Context) {
 	tx.Commit(ctx)
 }
 
-func (o Orchestrator) UpsertSchoolTerms(ctx context.Context, logger log.Entry, school db.School, service *Service) error {
+func (o Orchestrator) UpsertSchoolTerms(ctx context.Context, logger log.Entry, school db.School) error {
+	service, ok := o.schoolIdToService[school.ID]
+	if !ok {
+		return errors.New(fmt.Sprintf("Do not know how to scrape %. No service was found.", school.ID))
+	}
 	tx, err := o.dbPool.Begin(ctx)
 	if err != nil {
 		return err
@@ -181,7 +189,7 @@ func (o Orchestrator) UpsertAllTerms(ctx context.Context) {
 		})
 		go func() {
 			defer wg.Done()
-			if err := o.UpsertSchoolTerms(ctx, *termLogger, school, s); err != nil {
+			if err := o.UpsertSchoolTerms(ctx, *termLogger, school); err != nil {
 				errCh <- err
 			}
 		}()

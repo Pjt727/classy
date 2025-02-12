@@ -20,11 +20,12 @@ SELECT
     s.sequence,
     s.school_id,
     s.term_collection_id,
-    s.course_id,
+    s.subject_code,
+    s.course_number,
     JSON_AGG(meeting_times.*) AS meeting_times
 FROM sections s
 JOIN meeting_times ON s.sequence              = meeting_times.section_sequence
              AND s.school_id            = meeting_times.school_id
              AND s.term_collection_id   = meeting_times.term_collection_id
-GROUP BY (s.sequence, s.school_id, s.term_collection_id, s.course_id)
+GROUP BY (s.sequence, s.school_id, s.term_collection_id, s.subject_code, s.course_number)
 );

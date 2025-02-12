@@ -12,7 +12,7 @@ import (
 const getMostRecentTermCollection = `-- name: GetMostRecentTermCollection :many
 SELECT  
 FROM term_collections t
-JOIN previous_full_section_collections p 
+JOIN previous_section_collections p 
                     ON t.school_id    = p.school_id
                     AND t.term_year   = p.term_year
                     AND t.term_season = p.term_season
@@ -71,13 +71,15 @@ func (q *Queries) GetSchool(ctx context.Context, schoolID string) (GetSchoolRow,
 }
 
 const getSchoolsClassesForTermOrderedBySection = `-- name: GetSchoolsClassesForTermOrderedBySection :many
-SELECT sections.sequence, sections.term_collection_id, sections.course_id, sections.school_id, sections.max_enrollment, sections.instruction_method, sections.campus, sections.enrollment, sections.primary_faculty_id, courses.id, courses.school_id, courses.subject_code, courses.number, courses.subject_description, courses.title, courses.description, courses.credit_hours, section_meetings.meeting_times
+SELECT sections.sequence, sections.term_collection_id, sections.subject_code, sections.course_number, sections.school_id, sections.max_enrollment, sections.instruction_method, sections.campus, sections.enrollment, sections.primary_faculty_id, courses.school_id, courses.subject_code, courses.number, courses.subject_description, courses.title, courses.description, courses.credit_hours, section_meetings.meeting_times
 FROM section_meetings
 JOIN sections ON sections."sequence" = section_meetings."sequence"
-              AND sections.course_id = section_meetings.course_id
+              AND sections.subject_code = section_meetings.subject_code
+              AND sections.course_number = section_meetings.course_number
               AND sections.school_id = section_meetings.school_id
               AND sections.term_collection_id = section_meetings.term_collection_id
-JOIN courses ON sections.course_id = courses.id
+JOIN courses ON sections.subject_code = courses.subject_code
+             AND sections.course_number = courses."number"
              AND sections.school_id = courses.school_id
 WHERE sections.school_id = $1
       AND sections.term_collection_id = $2
@@ -94,23 +96,6 @@ type GetSchoolsClassesForTermOrderedBySectionRow struct {
 	MeetingTimes []MeetingTime `json:"meeting_times"`
 }
 
-// SELECT sqlc.embed(sections), sqlc.embed(courses), sqlc.embed(meeting_times)
-// FROM sections
-// JOIN courses ON sections.course_id             = courses.id
-//
-//	AND sections.school_id            = courses.school_id
-//
-// JOIN meeting_times ON sections.id              = meeting_times.section_id
-//
-//	AND sections.school_id            = meeting_times.school_id
-//	AND sections.term_collection_id   = meeting_times.term_collection_id
-//
-// WHERE sections.school_id = @school_id
-//
-//	AND sections.term_collection_id = @term_collection_id
-//
-// GROUP BY sections.id
-// ;
 func (q *Queries) GetSchoolsClassesForTermOrderedBySection(ctx context.Context, arg GetSchoolsClassesForTermOrderedBySectionParams) ([]GetSchoolsClassesForTermOrderedBySectionRow, error) {
 	rows, err := q.db.Query(ctx, getSchoolsClassesForTermOrderedBySection, arg.SchoolID, arg.TermCollectionID)
 	if err != nil {
@@ -123,14 +108,14 @@ func (q *Queries) GetSchoolsClassesForTermOrderedBySection(ctx context.Context, 
 		if err := rows.Scan(
 			&i.Section.Sequence,
 			&i.Section.TermCollectionID,
-			&i.Section.CourseID,
+			&i.Section.SubjectCode,
+			&i.Section.CourseNumber,
 			&i.Section.SchoolID,
 			&i.Section.MaxEnrollment,
 			&i.Section.InstructionMethod,
 			&i.Section.Campus,
 			&i.Section.Enrollment,
 			&i.Section.PrimaryFacultyID,
-			&i.Course.ID,
 			&i.Course.SchoolID,
 			&i.Course.SubjectCode,
 			&i.Course.Number,

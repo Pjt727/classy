@@ -58,25 +58,25 @@ facualty members, and internal collection tables`,
 			logger.Error("Could not connect to db: ", err)
 			return
 		}
+		orchestrator, err := collection.GetDefaultOrchestrator()
+		if err != nil {
+			logger.Error("Could create o: orchestrator", err)
+			return
+		}
+
 		if schoolName == "" {
-			school, ok := collection.SchoolIdToSchool[schoolId]
+			school, ok := orchestrator.GetSchoolById(schoolId)
 			if ok {
 				schoolName = school.Name
 			}
 		}
 
-		service, ok := collection.SchoolIdToService[schoolId]
-		if !ok {
-			logger.Error("Unknown school id, do not know how to scrape", err)
-			return
-		}
 		// update the terms for the school
-		err = collection.UpsertSchoolTerms(ctx, *logger, db.School{
+		err = orchestrator.UpsertSchoolTerms(ctx, *logger, db.School{
 			ID:   schoolId,
 			Name: schoolName,
-		},
-			service,
-		)
+		})
+
 		if err != nil {
 			logger.Error("There was an error upserting school's terms: ", err)
 			return
@@ -118,7 +118,7 @@ facualty members, and internal collection tables`,
 		}
 
 		logger.Infof("Starting update for school %s", schoolId)
-		collection.UpdateAllSectionsOfSchool(ctx, schoolId, termCollection)
+		orchestrator.UpdateAllSectionsOfSchool(ctx, schoolId, termCollection)
 		logger.Infof("Finished update for school %s", schoolId)
 	},
 }

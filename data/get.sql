@@ -20,24 +20,15 @@ WHERE school_id = @school_id
 ;
 
 -- name: GetSchoolsClassesForTermOrderedBySection :many
--- SELECT sqlc.embed(sections), sqlc.embed(courses), sqlc.embed(meeting_times)
--- FROM sections
--- JOIN courses ON sections.course_id             = courses.id
---              AND sections.school_id            = courses.school_id
--- JOIN meeting_times ON sections.id              = meeting_times.section_id
---              AND sections.school_id            = meeting_times.school_id
---              AND sections.term_collection_id   = meeting_times.term_collection_id
--- WHERE sections.school_id = @school_id
---       AND sections.term_collection_id = @term_collection_id
--- GROUP BY sections.id
--- ;
 SELECT sqlc.embed(sections), sqlc.embed(courses), section_meetings.meeting_times
 FROM section_meetings
 JOIN sections ON sections."sequence" = section_meetings."sequence"
-              AND sections.course_id = section_meetings.course_id
+              AND sections.subject_code = section_meetings.subject_code
+              AND sections.course_number = section_meetings.course_number
               AND sections.school_id = section_meetings.school_id
               AND sections.term_collection_id = section_meetings.term_collection_id
-JOIN courses ON sections.course_id = courses.id
+JOIN courses ON sections.subject_code = courses.subject_code
+             AND sections.course_number = courses."number"
              AND sections.school_id = courses.school_id
 WHERE sections.school_id = @school_id
       AND sections.term_collection_id = @term_collection_id
@@ -45,7 +36,7 @@ WHERE sections.school_id = @school_id
 -- name: GetMostRecentTermCollection :many
 SELECT sqlc.embed(term_collections) 
 FROM term_collections t
-JOIN previous_full_section_collections p 
+JOIN previous_section_collections p 
                     ON t.school_id    = p.school_id
                     AND t.term_year   = p.term_year
                     AND t.term_season = p.term_season

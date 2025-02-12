@@ -23,12 +23,17 @@ as defined in orchestration`,
 			"job": "getSchoolTerms",
 		})
 		ctx := context.Background()
+		orchestrator, err := collection.GetDefaultOrchestrator()
+		if err != nil {
+			logger.Error("Could not get orchestrator ", err)
+			return
+		}
 		logger.Info("Starting update on schools")
-		collection.UpsertAllSchools(ctx)
+		orchestrator.UpsertAllSchools(ctx)
 		logger.Info("Finished school update")
 
 		logger.Info("Starting update on terms")
-		collection.UpsertAllTerms(ctx)
+		orchestrator.UpsertAllTerms(ctx)
 		logger.Info("Finished term update")
 	},
 }

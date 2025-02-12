@@ -12,12 +12,12 @@ WHERE school_id = @school_id
 
 -- name: StageSections :copyfrom
 INSERT INTO staging_sections 
-    (sequence, campus, course_id, 
+    (sequence, campus, subject_code, course_number,
         school_id, term_collection_id,
         enrollment, max_enrollment, instruction_method,
         primary_faculty_id, campus)
 VALUES
-    (@sequence, @campus, @course_id,
+    (@sequence, @campus, @subject_code, @course_number,
         @school_id, @term_collection_id,
         @enrollment, @max_enrollment, @instruction_method,
         @primary_faculty_id, @campus);
@@ -25,14 +25,14 @@ VALUES
 -- name: StageMeetingTimes :copyfrom
 INSERT INTO staging_meeting_times 
     (sequence, section_sequence, term_collection_id,
-        course_id, school_id, 
+        subject_code, course_number, school_id, 
         start_date, end_date, meeting_type,
         start_minutes, end_minutes, is_monday,
         is_tuesday, is_wednesday, is_thursday,
         is_friday, is_saturday, is_sunday)
 VALUES
     (@sequence, @section_sequence, @term_collection_id,
-        @course_id, @school_id, 
+        @subject_code, @course_number, @school_id, 
         @start_date, @end_date, @meeting_type,
         @start_minutes, @end_minutes, @is_monday,
         @is_tuesday, @is_wednesday, @is_thursday,
@@ -49,11 +49,11 @@ ON CONFLICT DO NOTHING;
 
 -- name: UpsertCourses :batchexec
 INSERT INTO courses
-    (id, school_id, subject_code,
+    (school_id, subject_code,
         number, subject_description, title,
         description, credit_hours)
 VALUES 
-    (@id, @school_id, @subject_code,
+    (@school_id, @subject_code,
         @number, @subject_description, @title,
         @description, @credit_hours)
 ON CONFLICT DO NOTHING;
@@ -92,24 +92,25 @@ WHERE s.term_collection_id = @term_collection_id
     FROM staging_sections ss
     WHERE ss.sequence = s.sequence
       AND ss.term_collection_id = s.term_collection_id
-      AND ss.course_id = s.course_id
+      AND ss.subject_code = s.subject_code
+      AND ss.course_number = s.course_number
       AND ss.school_id = s.school_id
   );
 
 -- name: MoveStagedSections :exec
 INSERT INTO sections 
-    (sequence, term_collection_id,
-        course_id, school_id, max_enrollment, 
+    (sequence, term_collection_id, subject_code,
+        course_number, school_id, max_enrollment, 
         instruction_method, campus, enrollment,
         primary_faculty_id)
 SELECT
-    DISTINCT ON (sequence, term_collection_id, course_id, school_id)
-    sequence, term_collection_id,
-    course_id, school_id, max_enrollment, 
+    DISTINCT ON (sequence, term_collection_id, subject_code, course_number, school_id)
+    sequence, term_collection_id, subject_code,
+    course_number, school_id, max_enrollment, 
     instruction_method, campus, enrollment,
     primary_faculty_id
 FROM staging_sections
-ON CONFLICT ("sequence", course_id, school_id, term_collection_id) DO UPDATE
+ON CONFLICT ("sequence", subject_code, course_number, school_id, term_collection_id) DO UPDATE
 SET 
     campus = EXCLUDED.campus,
     enrollment = EXCLUDED.enrollment,
@@ -132,7 +133,8 @@ WHERE mt.term_collection_id = @term_collection_id
     FROM staging_meeting_times smt
     WHERE smt."sequence" = mt."sequence"
       AND smt.term_collection_id = mt.term_collection_id
-      AND smt.course_id = mt.course_id
+      AND smt.subject_code = mt.subject_code
+      AND smt.course_number = mt.course_number
       AND smt.school_id = mt.school_id
       AND smt.section_sequence = mt.section_sequence
   )
@@ -141,22 +143,22 @@ WHERE mt.term_collection_id = @term_collection_id
 
 -- name: MoveStagedMeetingTimes :exec
 INSERT INTO meeting_times
-    (sequence, section_sequence,
-        term_collection_id, course_id, school_id, 
+    (sequence, section_sequence, subject_code,
+        term_collection_id, course_number, school_id, 
         start_date, end_date, meeting_type,
         start_minutes, end_minutes, is_monday,
         is_tuesday, is_wednesday, is_thursday,
         is_friday, is_saturday, is_sunday)
 SELECT 
-    DISTINCT ON (sequence, section_sequence, term_collection_id, course_id, school_id)
+    DISTINCT ON (sequence, section_sequence, term_collection_id, subject_code, course_number, school_id)
     sequence, section_sequence, term_collection_id,
-    course_id, school_id, 
+    subject_code, course_number, school_id, 
     start_date, end_date, meeting_type,
     start_minutes, end_minutes, is_monday,
     is_tuesday, is_wednesday, is_thursday,
     is_friday, is_saturday, is_sunday
 FROM staging_meeting_times
-ON CONFLICT ("sequence", section_sequence, course_id, school_id, term_collection_id) DO UPDATE
+ON CONFLICT ("sequence", section_sequence, subject_code, course_number, school_id, term_collection_id) DO UPDATE
 SET 
     start_date = EXCLUDED.start_date,
     end_date = EXCLUDED.end_date,

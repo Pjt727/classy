@@ -32,7 +32,8 @@ func (r iteratorForStageMeetingTimes) Values() ([]interface{}, error) {
 		r.rows[0].Sequence,
 		r.rows[0].SectionSequence,
 		r.rows[0].TermCollectionID,
-		r.rows[0].CourseID,
+		r.rows[0].SubjectCode,
+		r.rows[0].CourseNumber,
 		r.rows[0].SchoolID,
 		r.rows[0].StartDate,
 		r.rows[0].EndDate,
@@ -54,7 +55,7 @@ func (r iteratorForStageMeetingTimes) Err() error {
 }
 
 func (q *Queries) StageMeetingTimes(ctx context.Context, arg []StageMeetingTimesParams) (int64, error) {
-	return q.db.CopyFrom(ctx, []string{"staging_meeting_times"}, []string{"sequence", "section_sequence", "term_collection_id", "course_id", "school_id", "start_date", "end_date", "meeting_type", "start_minutes", "end_minutes", "is_monday", "is_tuesday", "is_wednesday", "is_thursday", "is_friday", "is_saturday", "is_sunday"}, &iteratorForStageMeetingTimes{rows: arg})
+	return q.db.CopyFrom(ctx, []string{"staging_meeting_times"}, []string{"sequence", "section_sequence", "term_collection_id", "subject_code", "course_number", "school_id", "start_date", "end_date", "meeting_type", "start_minutes", "end_minutes", "is_monday", "is_tuesday", "is_wednesday", "is_thursday", "is_friday", "is_saturday", "is_sunday"}, &iteratorForStageMeetingTimes{rows: arg})
 }
 
 // iteratorForStageSections implements pgx.CopyFromSource.
@@ -79,7 +80,8 @@ func (r iteratorForStageSections) Values() ([]interface{}, error) {
 	return []interface{}{
 		r.rows[0].Sequence,
 		r.rows[0].Campus,
-		r.rows[0].CourseID,
+		r.rows[0].SubjectCode,
+		r.rows[0].CourseNumber,
 		r.rows[0].SchoolID,
 		r.rows[0].TermCollectionID,
 		r.rows[0].Enrollment,
@@ -94,5 +96,5 @@ func (r iteratorForStageSections) Err() error {
 }
 
 func (q *Queries) StageSections(ctx context.Context, arg []StageSectionsParams) (int64, error) {
-	return q.db.CopyFrom(ctx, []string{"staging_sections"}, []string{"sequence", "campus", "course_id", "school_id", "term_collection_id", "enrollment", "max_enrollment", "instruction_method", "primary_faculty_id"}, &iteratorForStageSections{rows: arg})
+	return q.db.CopyFrom(ctx, []string{"staging_sections"}, []string{"sequence", "campus", "subject_code", "course_number", "school_id", "term_collection_id", "enrollment", "max_enrollment", "instruction_method", "primary_faculty_id"}, &iteratorForStageSections{rows: arg})
 }
