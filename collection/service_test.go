@@ -2,11 +2,14 @@ package collection
 
 import (
 	"context"
+	"math/rand"
+	"strconv"
+	"testing"
+
+	"github.com/Pjt727/classy/data"
 	"github.com/Pjt727/classy/data/db"
 	"github.com/jackc/pgx/v5/pgtype"
 	log "github.com/sirupsen/logrus"
-	"math/rand"
-	"strconv"
 )
 
 type TestService struct {
@@ -159,16 +162,31 @@ func (t TestService) GetTermCollections(
 	return []db.UpsertTermCollectionParams{}, nil
 }
 
-// func NewService(
-//     t *testing.T,
-// 	testSeed int,
-// 	sectionCount int,
-// 	courseCount int,
-// 	termCount int,
-// 	liveTermCount int,
-// ) *Service {
-//
-//
-//
-//     return s
-// }
+func TestServiceProcess(t *testing.T) {
+	TEST_SEED := 727
+	school1 := db.School{
+		ID:   "test1",
+		Name: "test 1 school",
+	}
+	testService := TestService{
+		r:              *rand.New(rand.NewSource(int64(TEST_SEED))),
+		schools:        []db.School{school1},
+		courseCount:    100,
+		professorCount: 20,
+	}
+	ctx := context.Background()
+	dbPool, err := data.NewPool(ctx)
+	if err != nil {
+		t.Error("could not get database")
+		return
+	}
+	data.ToDb()
+	o := Orchestrator{
+		serviceEntries:      []Service{testService},
+		schoolIdToService:   map[string]*Service{},
+		schoolIdToSchool:    map[string]db.School{},
+		orchestrationLogger: &log.Entry{},
+		dbPool:              dbPool,
+	}
+	o.UpsertAllTerms(ctx)
+}

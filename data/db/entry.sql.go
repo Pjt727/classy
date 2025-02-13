@@ -53,8 +53,8 @@ INSERT INTO meeting_times
         is_friday, is_saturday, is_sunday)
 SELECT 
     DISTINCT ON (sequence, section_sequence, term_collection_id, subject_code, course_number, school_id)
-    sequence, section_sequence, term_collection_id,
-    subject_code, course_number, school_id, 
+    sequence, section_sequence, subject_code, 
+    term_collection_id, course_number, school_id, 
     start_date, end_date, meeting_type,
     start_minutes, end_minutes, is_monday,
     is_tuesday, is_wednesday, is_thursday,

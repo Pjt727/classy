@@ -1,12 +1,12 @@
 SELECT * FROM terms;
 SELECT id, description FROM courses WHERE school_id = 'temple';
 SELECT * FROM schools;
-SELECT * FROM classes;
 SELECT * FROM term_collections
 WHERE school_id = 'temple';
 SELECT * FROM faculty_members;
 SELECT course_id FROM staging_sections WHERE school_id = 'temple' GROUP BY course_id;
 SELECT * FROM sections WHERE school_id = 'temple';
+SELECT * FROM sections WHERE school_id = 'marist';
 SELECT * FROM staging_meeting_times;
 SELECT * FROM meeting_times
 WHERE start_minutes != NULL

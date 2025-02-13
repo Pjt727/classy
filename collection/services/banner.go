@@ -47,7 +47,7 @@ func init() {
 			hostname:            "ssb1-reg.banner.marist.edu",
 			MaxTermCount:        100,
 			MaxSectionPageCount: 200,
-			RequestLimiter:      rate.NewLimiter(rate.Limit(100), 25),
+			RequestLimiter:      rate.NewLimiter(rate.Limit(100), 10),
 		},
 		temple.ID: {
 			school:              temple,

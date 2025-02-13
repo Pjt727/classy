@@ -65,9 +65,16 @@ func GetDefaultOrchestrator() (Orchestrator, error) {
 	if err != nil {
 		return orchestrator, err
 	}
-	for _, service := range orchestrator.serviceEntries {
-		serviceLogger := orchestrator.orchestrationLogger.WithField("service", service.GetName())
-		q := db.New(dbPool)
+
+	orchestrator.initMappings(ctx)
+
+	return orchestrator, nil
+}
+
+func (o Orchestrator) initMappings(ctx context.Context) {
+	for _, service := range o.serviceEntries {
+		serviceLogger := o.orchestrationLogger.WithField("service", service.GetName())
+		q := db.New(o.dbPool)
 		schools, err := service.ListValidSchools(*serviceLogger, ctx, q)
 		if err != nil {
 			serviceLogger.Warn("Skipping school to service mapping because error: ", err)
@@ -75,12 +82,10 @@ func GetDefaultOrchestrator() (Orchestrator, error) {
 		}
 
 		for _, school := range schools {
-			orchestrator.schoolIdToService[school.ID] = &service
-			orchestrator.schoolIdToSchool[school.ID] = school
+			o.schoolIdToService[school.ID] = &service
+			o.schoolIdToSchool[school.ID] = school
 		}
 	}
-
-	return orchestrator, nil
 }
 
 func (o Orchestrator) GetSchoolById(schoolId string) (db.School, bool) {

@@ -5,7 +5,7 @@ import (
 )
 
 // overwrites the db conn
-func ToTestDb() {
+func SetupDb() {
 	testDb := os.Getenv("TEST_DB_CONN")
 	os.Setenv("DB_CONN", testDb)
 }
