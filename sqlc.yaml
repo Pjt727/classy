@@ -15,5 +15,5 @@ sql:
           # classes view to get good pg types with json agg
           - column: "section_meetings.meeting_times"
             go_type:
-              type: "MeetingTime"
+              type: "PartialMeetingTime"
               slice: true

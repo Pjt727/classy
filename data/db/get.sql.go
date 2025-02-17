@@ -9,6 +9,32 @@ import (
 	"context"
 )
 
+const courseExists = `-- name: CourseExists :one
+SELECT CASE 
+        WHEN EXISTS (
+            SELECT 1
+            FROM courses
+            WHERE school_id = $1
+            AND subject_code = $2
+            AND number = $3
+        ) THEN true
+    ELSE false
+END
+`
+
+type CourseExistsParams struct {
+	SchoolID     string `json:"school_id"`
+	SubjectCode  string `json:"subject_code"`
+	CourseNumber string `json:"course_number"`
+}
+
+func (q *Queries) CourseExists(ctx context.Context, arg CourseExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, courseExists, arg.SchoolID, arg.SubjectCode, arg.CourseNumber)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const getMostRecentTermCollection = `-- name: GetMostRecentTermCollection :many
 SELECT  
 FROM term_collections t
@@ -52,52 +78,41 @@ func (q *Queries) GetMostRecentTermCollection(ctx context.Context) ([]GetMostRec
 	return items, nil
 }
 
-const getSchool = `-- name: GetSchool :one
-SELECT schools.id, schools.name
-FROM schools
-WHERE id = $1
-LIMIT 1
-`
-
-type GetSchoolRow struct {
-	School School `json:"school"`
-}
-
-func (q *Queries) GetSchool(ctx context.Context, schoolID string) (GetSchoolRow, error) {
-	row := q.db.QueryRow(ctx, getSchool, schoolID)
-	var i GetSchoolRow
-	err := row.Scan(&i.School.ID, &i.School.Name)
-	return i, err
-}
-
 const getSchoolsClassesForTermOrderedBySection = `-- name: GetSchoolsClassesForTermOrderedBySection :many
-SELECT sections.sequence, sections.term_collection_id, sections.subject_code, sections.course_number, sections.school_id, sections.max_enrollment, sections.instruction_method, sections.campus, sections.enrollment, sections.primary_faculty_id, courses.school_id, courses.subject_code, courses.number, courses.subject_description, courses.title, courses.description, courses.credit_hours, section_meetings.meeting_times
+SELECT sections.sequence, sections.term_collection_id, sections.subject_code, sections.course_number, sections.school_id, sections.max_enrollment, sections.instruction_method, sections.campus, sections.enrollment, sections.primary_faculty_id, section_meetings.meeting_times
 FROM section_meetings
-JOIN sections ON sections."sequence" = section_meetings."sequence"
-              AND sections.subject_code = section_meetings.subject_code
-              AND sections.course_number = section_meetings.course_number
-              AND sections.school_id = section_meetings.school_id
-              AND sections.term_collection_id = section_meetings.term_collection_id
-JOIN courses ON sections.subject_code = courses.subject_code
-             AND sections.course_number = courses."number"
-             AND sections.school_id = courses.school_id
+JOIN sections ON sections."sequence"           = section_meetings."sequence"
+              AND sections.subject_code        = section_meetings.subject_code
+              AND sections.course_number       = section_meetings.course_number
+              AND sections.school_id           = section_meetings.school_id
+              AND sections.term_collection_id  = section_meetings.term_collection_id
 WHERE sections.school_id = $1
       AND sections.term_collection_id = $2
+ORDER BY sections."sequence", sections.subject_code, sections.course_number, 
+    sections.school_id, sections.term_collection_id
+LIMIT $4
+OFFSET $3
 `
 
 type GetSchoolsClassesForTermOrderedBySectionParams struct {
 	SchoolID         string `json:"school_id"`
 	TermCollectionID string `json:"term_collection_id"`
+	Offsetvalue      int32  `json:"offsetvalue"`
+	Limitvalue       int32  `json:"limitvalue"`
 }
 
 type GetSchoolsClassesForTermOrderedBySectionRow struct {
-	Section      Section       `json:"section"`
-	Course       Course        `json:"course"`
-	MeetingTimes []MeetingTime `json:"meeting_times"`
+	Section      Section              `json:"section"`
+	MeetingTimes []PartialMeetingTime `json:"meeting_times"`
 }
 
 func (q *Queries) GetSchoolsClassesForTermOrderedBySection(ctx context.Context, arg GetSchoolsClassesForTermOrderedBySectionParams) ([]GetSchoolsClassesForTermOrderedBySectionRow, error) {
-	rows, err := q.db.Query(ctx, getSchoolsClassesForTermOrderedBySection, arg.SchoolID, arg.TermCollectionID)
+	rows, err := q.db.Query(ctx, getSchoolsClassesForTermOrderedBySection,
+		arg.SchoolID,
+		arg.TermCollectionID,
+		arg.Offsetvalue,
+		arg.Limitvalue,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -116,13 +131,6 @@ func (q *Queries) GetSchoolsClassesForTermOrderedBySection(ctx context.Context, 
 			&i.Section.Campus,
 			&i.Section.Enrollment,
 			&i.Section.PrimaryFacultyID,
-			&i.Course.SchoolID,
-			&i.Course.SubjectCode,
-			&i.Course.Number,
-			&i.Course.SubjectDescription,
-			&i.Course.Title,
-			&i.Course.Description,
-			&i.Course.CreditHours,
 			&i.MeetingTimes,
 		); err != nil {
 			return nil, err
@@ -133,37 +141,6 @@ func (q *Queries) GetSchoolsClassesForTermOrderedBySection(ctx context.Context, 
 		return nil, err
 	}
 	return items, nil
-}
-
-const getTermCollection = `-- name: GetTermCollection :one
-SELECT term_collections.id, term_collections.school_id, term_collections.year, term_collections.season, term_collections.name, term_collections.still_collecting
-FROM term_collections
-WHERE school_id = $1
-      AND id = $2
-LIMIT 1
-`
-
-type GetTermCollectionParams struct {
-	SchoolID         string `json:"school_id"`
-	TermCollectionID string `json:"term_collection_id"`
-}
-
-type GetTermCollectionRow struct {
-	TermCollection TermCollection `json:"term_collection"`
-}
-
-func (q *Queries) GetTermCollection(ctx context.Context, arg GetTermCollectionParams) (GetTermCollectionRow, error) {
-	row := q.db.QueryRow(ctx, getTermCollection, arg.SchoolID, arg.TermCollectionID)
-	var i GetTermCollectionRow
-	err := row.Scan(
-		&i.TermCollection.ID,
-		&i.TermCollection.SchoolID,
-		&i.TermCollection.Year,
-		&i.TermCollection.Season,
-		&i.TermCollection.Name,
-		&i.TermCollection.StillCollecting,
-	)
-	return i, err
 }
 
 const getTermCollectionsForSchool = `-- name: GetTermCollectionsForSchool :many
@@ -209,4 +186,46 @@ func (q *Queries) GetTermCollectionsForSchool(ctx context.Context, arg GetTermCo
 		return nil, err
 	}
 	return items, nil
+}
+
+const schoolExists = `-- name: SchoolExists :one
+SELECT CASE 
+        WHEN EXISTS (
+            SELECT 1
+            FROM schools
+            WHERE id = $1
+        ) THEN true
+    ELSE false
+END
+`
+
+func (q *Queries) SchoolExists(ctx context.Context, schoolID string) (bool, error) {
+	row := q.db.QueryRow(ctx, schoolExists, schoolID)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const termCollectionExists = `-- name: TermCollectionExists :one
+SELECT CASE 
+        WHEN EXISTS (
+            SELECT 1
+            FROM term_collections
+            WHERE school_id = $1
+            AND id = $2
+        ) THEN true
+    ELSE false
+END
+`
+
+type TermCollectionExistsParams struct {
+	SchoolID         string `json:"school_id"`
+	TermCollectionID string `json:"term_collection_id"`
+}
+
+func (q *Queries) TermCollectionExists(ctx context.Context, arg TermCollectionExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, termCollectionExists, arg.SchoolID, arg.TermCollectionID)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
 }

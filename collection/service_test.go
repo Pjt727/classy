@@ -8,6 +8,7 @@ import (
 
 	"github.com/Pjt727/classy/data"
 	"github.com/Pjt727/classy/data/db"
+	datatest "github.com/Pjt727/classy/data/test"
 	"github.com/jackc/pgx/v5/pgtype"
 	log "github.com/sirupsen/logrus"
 )
@@ -180,7 +181,7 @@ func TestServiceProcess(t *testing.T) {
 		t.Error("could not get database")
 		return
 	}
-	data.ToDb()
+	datatest.SetupDb()
 	o := Orchestrator{
 		serviceEntries:      []Service{testService},
 		schoolIdToService:   map[string]*Service{},
