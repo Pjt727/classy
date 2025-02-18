@@ -122,10 +122,10 @@ type Section struct {
 
 type SectionMeeting struct {
 	Sequence         string               `json:"sequence"`
-	SchoolID         string               `json:"school_id"`
 	TermCollectionID string               `json:"term_collection_id"`
 	SubjectCode      string               `json:"subject_code"`
 	CourseNumber     string               `json:"course_number"`
+	SchoolID         string               `json:"school_id"`
 	MeetingTimes     []PartialMeetingTime `json:"meeting_times"`
 }
 

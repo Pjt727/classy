@@ -16,10 +16,17 @@ import (
 
 func Serve() {
 	r := chi.NewRouter()
+	ctx := context.Background()
+	pool, err := data.NewPool(ctx)
+	if err != nil {
+		panic("Could not connect to database: " + err.Error())
+	}
+	getHandler := handlers.GetHandler{
+		DbPool: pool,
+	}
 	r.Use(middleware.Logger)
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("classy api running"))
-	})
+	r.Use(populatePagnation)
+	r.Get("/", getHandler.GetSchools)
 	r.Route("/{schoolID}", func(r chi.Router) {
 		r.Use(verifySchool)
 		r.Get("/terms", func(w http.ResponseWriter, r *http.Request) {
@@ -46,8 +53,7 @@ func Serve() {
 
 		r.Route("/{termCollectionID}", func(r chi.Router) {
 			r.Use(verifyTermCollection)
-			r.Use(populatePagnation)
-			r.Get("/classes", handlers.GetClasses)
+			r.Get("/classes", getHandler.GetClasses)
 		})
 	})
 	port := 3000

@@ -42,14 +42,21 @@ WHERE school_id = @school_id
       AND (season = @season OR @season IS NULL)
 ;
 
+-- name: GetSchools :many
+SELECT schools.*
+FROM schools
+LIMIT @limitValue
+OFFSET @offsetValue
+;
+
 -- name: GetSchoolsClassesForTermOrderedBySection :many
 SELECT sqlc.embed(sections), section_meetings.meeting_times
 FROM section_meetings
 JOIN sections ON sections."sequence"           = section_meetings."sequence"
+              AND sections.term_collection_id  = section_meetings.term_collection_id
               AND sections.subject_code        = section_meetings.subject_code
               AND sections.course_number       = section_meetings.course_number
               AND sections.school_id           = section_meetings.school_id
-              AND sections.term_collection_id  = section_meetings.term_collection_id
 WHERE sections.school_id = @school_id
       AND sections.term_collection_id = @term_collection_id
 ORDER BY sections."sequence", sections.subject_code, sections.course_number, 

@@ -4,11 +4,15 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/Pjt727/classy/data"
 	"github.com/Pjt727/classy/data/db"
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	log "github.com/sirupsen/logrus"
 )
+
+type GetHandler struct {
+	DbPool *pgxpool.Pool
+}
 
 type GetQueriesParam int
 
@@ -17,15 +21,32 @@ const (
 	LimitKey
 )
 
-func GetClasses(w http.ResponseWriter, r *http.Request) {
+func (h GetHandler) GetSchools(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	dbPool, err := data.NewPool(ctx)
+	q := db.New(h.DbPool)
+	schools, err := q.GetSchools(ctx, db.GetSchoolsParams{
+		Offsetvalue: ctx.Value(OffsetKey).(int32),
+		Limitvalue:  ctx.Value(LimitKey).(int32),
+	})
 	if err != nil {
-		log.Trace(err)
+		log.Trace("Could not get school rows: ", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
-	q := db.New(dbPool)
+
+	classRowsJSON, err := json.Marshal(schools)
+	if err != nil {
+		log.Trace("Could not marshal school rows", err)
+		http.Error(w, http.StatusText(500), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(classRowsJSON)
+}
+
+func (h GetHandler) GetClasses(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	q := db.New(h.DbPool)
 	classRows, err := q.GetSchoolsClassesForTermOrderedBySection(ctx,
 		db.GetSchoolsClassesForTermOrderedBySectionParams{
 			SchoolID:         chi.URLParam(r, "schoolID"),

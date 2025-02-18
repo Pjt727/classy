@@ -78,14 +78,46 @@ func (q *Queries) GetMostRecentTermCollection(ctx context.Context) ([]GetMostRec
 	return items, nil
 }
 
+const getSchools = `-- name: GetSchools :many
+SELECT schools.id, schools.name
+FROM schools
+LIMIT $2
+OFFSET $1
+`
+
+type GetSchoolsParams struct {
+	Offsetvalue int32 `json:"offsetvalue"`
+	Limitvalue  int32 `json:"limitvalue"`
+}
+
+func (q *Queries) GetSchools(ctx context.Context, arg GetSchoolsParams) ([]School, error) {
+	rows, err := q.db.Query(ctx, getSchools, arg.Offsetvalue, arg.Limitvalue)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []School
+	for rows.Next() {
+		var i School
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getSchoolsClassesForTermOrderedBySection = `-- name: GetSchoolsClassesForTermOrderedBySection :many
 SELECT sections.sequence, sections.term_collection_id, sections.subject_code, sections.course_number, sections.school_id, sections.max_enrollment, sections.instruction_method, sections.campus, sections.enrollment, sections.primary_faculty_id, section_meetings.meeting_times
 FROM section_meetings
 JOIN sections ON sections."sequence"           = section_meetings."sequence"
+              AND sections.term_collection_id  = section_meetings.term_collection_id
               AND sections.subject_code        = section_meetings.subject_code
               AND sections.course_number       = section_meetings.course_number
               AND sections.school_id           = section_meetings.school_id
-              AND sections.term_collection_id  = section_meetings.term_collection_id
 WHERE sections.school_id = $1
       AND sections.term_collection_id = $2
 ORDER BY sections."sequence", sections.subject_code, sections.course_number, 

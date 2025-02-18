@@ -32,5 +32,5 @@ SELECT CASE
     ELSE false
 END;
 
-SELECT * FROM section_meetings LIMIT 10;
+SELECT * FROM section_meetings LIMIT 200;
 SELECT * FROM meeting_times LIMIT 10;

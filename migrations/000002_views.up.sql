@@ -3,10 +3,10 @@
 CREATE VIEW section_meetings AS (
 SELECT 
     s.sequence,
-    s.school_id,
     s.term_collection_id,
     s.subject_code,
     s.course_number,
+    s.school_id,
     JSON_AGG(
         JSON_BUILD_OBJECT(
             'start_date', mt.start_date,
@@ -29,5 +29,11 @@ JOIN meeting_times mt ON s.sequence   = mt.section_sequence
              AND s.term_collection_id = mt.term_collection_id
              AND s.subject_code       = mt.subject_code
              AND s.course_number      = mt.course_number
-GROUP BY (s.sequence, s.school_id, s.term_collection_id, s.subject_code, s.course_number)
+GROUP BY (
+    s.sequence,
+    s.term_collection_id,
+    s.subject_code,
+    s.course_number,
+    s.school_id
+)
 );
