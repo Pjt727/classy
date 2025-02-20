@@ -21,6 +21,55 @@ const (
 	LimitKey
 )
 
+func (h GetHandler) GetCourses(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+	q := db.New(h.DbPool)
+	courseRows, err := q.GetCoursesForSchool(ctx, db.GetCoursesForSchoolParams{
+		SchoolID:    chi.URLParam(r, "schoolID"),
+		Offsetvalue: ctx.Value(OffsetKey).(int32),
+		Limitvalue:  ctx.Value(LimitKey).(int32),
+	})
+	if err != nil {
+		log.Trace("Could not get school rows: ", err)
+		http.Error(w, http.StatusText(500), 500)
+		return
+	}
+
+	courses, err := json.Marshal(courseRows)
+	if err != nil {
+		log.Trace("Could not marshal school rows", err)
+		http.Error(w, http.StatusText(500), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(courses)
+}
+func (h GetHandler) GetSchoolTerms(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+	q := db.New(h.DbPool)
+	termCollectionsRows, err := q.GetTermCollectionsForSchool(ctx, db.GetTermCollectionsForSchoolParams{
+		SchoolID:    chi.URLParam(r, "schoolID"),
+		Offsetvalue: ctx.Value(OffsetKey).(int32),
+		Limitvalue:  ctx.Value(LimitKey).(int32),
+	})
+	if err != nil {
+		log.Trace("Could not get school rows: ", err)
+		http.Error(w, http.StatusText(500), 500)
+		return
+	}
+
+	termCollections, err := json.Marshal(termCollectionsRows)
+	if err != nil {
+		log.Trace("Could not marshal school rows", err)
+		http.Error(w, http.StatusText(500), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(termCollections)
+}
+
 func (h GetHandler) GetSchools(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := db.New(h.DbPool)

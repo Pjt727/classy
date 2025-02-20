@@ -34,7 +34,23 @@ SELECT CASE
 END
 ;
 
+-- name: GetCoursesForSchool :many
+SELECT courses.*
+FROM courses
+WHERE school_id = @school_id
+LIMIT @limitValue
+OFFSET @offsetValue
+;
+
 -- name: GetTermCollectionsForSchool :many
+SELECT term_collections.*
+FROM term_collections 
+WHERE school_id = @school_id
+LIMIT @limitValue
+OFFSET @offsetValue
+;
+
+-- name: GetTermCollectionsForSchoolsSemester :many
 SELECT sqlc.embed(term_collections) 
 FROM term_collections 
 WHERE school_id = @school_id

@@ -35,6 +35,48 @@ func (q *Queries) CourseExists(ctx context.Context, arg CourseExistsParams) (boo
 	return column_1, err
 }
 
+const getCoursesForSchool = `-- name: GetCoursesForSchool :many
+SELECT courses.school_id, courses.subject_code, courses.number, courses.subject_description, courses.title, courses.description, courses.credit_hours
+FROM courses
+WHERE school_id = $1
+LIMIT $3
+OFFSET $2
+`
+
+type GetCoursesForSchoolParams struct {
+	SchoolID    string `json:"school_id"`
+	Offsetvalue int32  `json:"offsetvalue"`
+	Limitvalue  int32  `json:"limitvalue"`
+}
+
+func (q *Queries) GetCoursesForSchool(ctx context.Context, arg GetCoursesForSchoolParams) ([]Course, error) {
+	rows, err := q.db.Query(ctx, getCoursesForSchool, arg.SchoolID, arg.Offsetvalue, arg.Limitvalue)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Course
+	for rows.Next() {
+		var i Course
+		if err := rows.Scan(
+			&i.SchoolID,
+			&i.SubjectCode,
+			&i.Number,
+			&i.SubjectDescription,
+			&i.Title,
+			&i.Description,
+			&i.CreditHours,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMostRecentTermCollection = `-- name: GetMostRecentTermCollection :many
 SELECT  
 FROM term_collections t
@@ -176,6 +218,47 @@ func (q *Queries) GetSchoolsClassesForTermOrderedBySection(ctx context.Context, 
 }
 
 const getTermCollectionsForSchool = `-- name: GetTermCollectionsForSchool :many
+SELECT term_collections.id, term_collections.school_id, term_collections.year, term_collections.season, term_collections.name, term_collections.still_collecting
+FROM term_collections 
+WHERE school_id = $1
+LIMIT $3
+OFFSET $2
+`
+
+type GetTermCollectionsForSchoolParams struct {
+	SchoolID    string `json:"school_id"`
+	Offsetvalue int32  `json:"offsetvalue"`
+	Limitvalue  int32  `json:"limitvalue"`
+}
+
+func (q *Queries) GetTermCollectionsForSchool(ctx context.Context, arg GetTermCollectionsForSchoolParams) ([]TermCollection, error) {
+	rows, err := q.db.Query(ctx, getTermCollectionsForSchool, arg.SchoolID, arg.Offsetvalue, arg.Limitvalue)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TermCollection
+	for rows.Next() {
+		var i TermCollection
+		if err := rows.Scan(
+			&i.ID,
+			&i.SchoolID,
+			&i.Year,
+			&i.Season,
+			&i.Name,
+			&i.StillCollecting,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getTermCollectionsForSchoolsSemester = `-- name: GetTermCollectionsForSchoolsSemester :many
 SELECT term_collections.id, term_collections.school_id, term_collections.year, term_collections.season, term_collections.name, term_collections.still_collecting 
 FROM term_collections 
 WHERE school_id = $1
@@ -183,25 +266,25 @@ WHERE school_id = $1
       AND (season = $3 OR $3 IS NULL)
 `
 
-type GetTermCollectionsForSchoolParams struct {
+type GetTermCollectionsForSchoolsSemesterParams struct {
 	SchoolID string     `json:"school_id"`
 	Year     int32      `json:"year"`
 	Season   SeasonEnum `json:"season"`
 }
 
-type GetTermCollectionsForSchoolRow struct {
+type GetTermCollectionsForSchoolsSemesterRow struct {
 	TermCollection TermCollection `json:"term_collection"`
 }
 
-func (q *Queries) GetTermCollectionsForSchool(ctx context.Context, arg GetTermCollectionsForSchoolParams) ([]GetTermCollectionsForSchoolRow, error) {
-	rows, err := q.db.Query(ctx, getTermCollectionsForSchool, arg.SchoolID, arg.Year, arg.Season)
+func (q *Queries) GetTermCollectionsForSchoolsSemester(ctx context.Context, arg GetTermCollectionsForSchoolsSemesterParams) ([]GetTermCollectionsForSchoolsSemesterRow, error) {
+	rows, err := q.db.Query(ctx, getTermCollectionsForSchoolsSemester, arg.SchoolID, arg.Year, arg.Season)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetTermCollectionsForSchoolRow
+	var items []GetTermCollectionsForSchoolsSemesterRow
 	for rows.Next() {
-		var i GetTermCollectionsForSchoolRow
+		var i GetTermCollectionsForSchoolsSemesterRow
 		if err := rows.Scan(
 			&i.TermCollection.ID,
 			&i.TermCollection.SchoolID,
