@@ -16,3 +16,18 @@ type PartialMeetingTime struct {
 	IsSaturday   bool             `json:"is_saturday"`
 	IsSunday     bool             `json:"is_sunday"`
 }
+type PartialProfessor struct {
+	ID           int         `json:"id"`
+	Name         string      `json:"name"`
+	EmailAddress pgtype.Text `json:"email_address"`
+	FirstName    pgtype.Text `json:"first_name"`
+	LastName     pgtype.Text `json:"last_name"`
+}
+
+type PartialTerm struct {
+	ID              int         `json:"id"`
+	Year            int         `json:"year"`
+	Season          string      `json:"season"`
+	Name            pgtype.Text `json:"name"`
+	StillCollecting bool        `json:"still_collecting"`
+}

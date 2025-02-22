@@ -6,7 +6,9 @@ WHERE school_id = 'temple';
 SELECT * FROM faculty_members;
 SELECT * FROM sections;
 SELECT course_id FROM staging_sections WHERE school_id = 'temple' GROUP BY course_id;
-SELECT * FROM sections WHERE school_id = 'temple';
+SELECT * FROM sections WHERE school_id = 'temple' AND subject_code = 'JPNS' AND course_number = '2111';
+SELECT * FROM courses
+WHERE school_id = 'temple' AND subject_code = 'JPNS' AND number = '2111';
 SELECT * FROM sections WHERE school_id = 'marist';
 SELECT * FROM staging_meeting_times;
 SELECT * FROM meeting_times
@@ -34,3 +36,4 @@ END;
 
 SELECT * FROM section_meetings LIMIT 200;
 SELECT * FROM meeting_times LIMIT 10;
+SELECT * FROM courses;

@@ -241,7 +241,7 @@ func (o Orchestrator) UpdateAllSectionsOfSchool(ctx context.Context, schoolId st
 		return
 	}
 	// defer q.CleanupCoursesMeetingsStaging(ctx)
-	if err := (*service).StageAllClasses(*updateLogger, ctx, q, termCollection, true); err != nil {
+	if err := (*service).StageAllClasses(*updateLogger, ctx, q, termCollection, false); err != nil {
 		updateLogger.Error("Update sections aborting any staged sections/ meetings", updateLogger)
 		return
 	}

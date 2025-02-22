@@ -12,8 +12,16 @@ sql:
         sql_package: "pgx/v5"
         emit_json_tags: true
         overrides:
-          # classes view to get good pg types with json agg
+          # view to get good pg types with json agg
           - column: "section_meetings.meeting_times"
             go_type:
               type: "PartialMeetingTime"
+              slice: true
+          - column: "course_heuristic.previous_professors"
+            go_type:
+              type: "PartialProfessor"
+              slice: true
+          - column: "course_heuristic.previous_terms"
+            go_type:
+              type: "PartialTerm"
               slice: true

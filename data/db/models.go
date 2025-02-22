@@ -65,13 +65,12 @@ type Course struct {
 	CreditHours        float32     `json:"credit_hours"`
 }
 
-type FacultyMember struct {
-	ID           string      `json:"id"`
-	SchoolID     string      `json:"school_id"`
-	Name         string      `json:"name"`
-	EmailAddress pgtype.Text `json:"email_address"`
-	FirstName    pgtype.Text `json:"first_name"`
-	LastName     pgtype.Text `json:"last_name"`
+type CourseHeuristic struct {
+	SubjectCode        string             `json:"subject_code"`
+	Number             string             `json:"number"`
+	SchoolID           string             `json:"school_id"`
+	PreviousProfessors []PartialProfessor `json:"previous_professors"`
+	PreviousTerms      []PartialTerm      `json:"previous_terms"`
 }
 
 type MeetingTime struct {
@@ -102,22 +101,31 @@ type PreviousSectionCollection struct {
 	IsFull         bool               `json:"is_full"`
 }
 
+type Professor struct {
+	ID           string      `json:"id"`
+	SchoolID     string      `json:"school_id"`
+	Name         string      `json:"name"`
+	EmailAddress pgtype.Text `json:"email_address"`
+	FirstName    pgtype.Text `json:"first_name"`
+	LastName     pgtype.Text `json:"last_name"`
+}
+
 type School struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 
 type Section struct {
-	Sequence          string      `json:"sequence"`
-	TermCollectionID  string      `json:"term_collection_id"`
-	SubjectCode       string      `json:"subject_code"`
-	CourseNumber      string      `json:"course_number"`
-	SchoolID          string      `json:"school_id"`
-	MaxEnrollment     pgtype.Int4 `json:"max_enrollment"`
-	InstructionMethod pgtype.Text `json:"instruction_method"`
-	Campus            pgtype.Text `json:"campus"`
-	Enrollment        pgtype.Int4 `json:"enrollment"`
-	PrimaryFacultyID  pgtype.Text `json:"primary_faculty_id"`
+	Sequence           string      `json:"sequence"`
+	TermCollectionID   string      `json:"term_collection_id"`
+	SubjectCode        string      `json:"subject_code"`
+	CourseNumber       string      `json:"course_number"`
+	SchoolID           string      `json:"school_id"`
+	MaxEnrollment      pgtype.Int4 `json:"max_enrollment"`
+	InstructionMethod  pgtype.Text `json:"instruction_method"`
+	Campus             pgtype.Text `json:"campus"`
+	Enrollment         pgtype.Int4 `json:"enrollment"`
+	PrimaryProfessorID pgtype.Text `json:"primary_professor_id"`
 }
 
 type SectionMeeting struct {
@@ -151,16 +159,16 @@ type StagingMeetingTime struct {
 }
 
 type StagingSection struct {
-	Sequence          string      `json:"sequence"`
-	TermCollectionID  string      `json:"term_collection_id"`
-	SubjectCode       string      `json:"subject_code"`
-	CourseNumber      string      `json:"course_number"`
-	SchoolID          string      `json:"school_id"`
-	MaxEnrollment     pgtype.Int4 `json:"max_enrollment"`
-	InstructionMethod pgtype.Text `json:"instruction_method"`
-	Campus            pgtype.Text `json:"campus"`
-	Enrollment        pgtype.Int4 `json:"enrollment"`
-	PrimaryFacultyID  pgtype.Text `json:"primary_faculty_id"`
+	Sequence           string      `json:"sequence"`
+	TermCollectionID   string      `json:"term_collection_id"`
+	SubjectCode        string      `json:"subject_code"`
+	CourseNumber       string      `json:"course_number"`
+	SchoolID           string      `json:"school_id"`
+	MaxEnrollment      pgtype.Int4 `json:"max_enrollment"`
+	InstructionMethod  pgtype.Text `json:"instruction_method"`
+	Campus             pgtype.Text `json:"campus"`
+	Enrollment         pgtype.Int4 `json:"enrollment"`
+	PrimaryProfessorID pgtype.Text `json:"primary_professor_id"`
 }
 
 type Term struct {

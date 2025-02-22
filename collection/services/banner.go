@@ -180,7 +180,7 @@ type meetingsFaculty struct {
 	MeetingTime meetingTime `json:"meetingTime"`
 }
 
-type faculty struct {
+type professor struct {
 	DisplayName      string `json:"displayName"`
 	EmailAddress     string `json:"emailAddress"`
 	PrimaryIndicator bool   `json:"primaryIndicator"`
@@ -199,7 +199,7 @@ type section struct {
 	InstructionalMethod   string            `json:"instructionalMethod"`
 	OpenSection           bool              `json:"openSection"`
 	MeetingFaculty        []meetingsFaculty `json:"meetingsFaculty"`
-	Faculty               []faculty         `json:"faculty"`
+	Faculty               []professor       `json:"faculty"`
 	Credits               float32           `json:"creditHourLow"`
 	SubjectCourse         string            `json:"subjectCourse"`
 	SubjectDescription    string            `json:"subjectDescription"`
@@ -463,27 +463,27 @@ func (b *bannerSchool) insertGroupOfSections(
 
 	var dbSections []db.StageSectionsParams
 	var meetingTimes []db.StageMeetingTimesParams
-	facultyMembers := make(map[string]db.UpsertFacultyParams)
+	professors := make(map[string]db.UpsertFacultyParams)
 	courses := make(map[string]db.UpsertCoursesParams)
 	courseReferenceNumbers := make(map[string]string)
 	for _, s := range sections.Sections {
-		primaryFac := pgtype.Text{String: "", Valid: false}
+		primaryProf := pgtype.Text{String: "", Valid: false}
 		// add all fac regardless of whether they are the main teacher
-		for _, fac := range s.Faculty {
-			if fac.EmailAddress == "" {
+		for _, prof := range s.Faculty {
+			if prof.EmailAddress == "" {
 				// professors without emails do not deserve to be put in the database
 				continue
 			}
 			// using emails as PK's is not ideal 😥
-			facID := fac.EmailAddress
-			if fac.PrimaryIndicator {
-				primaryFac.String = facID
-				primaryFac.Valid = true
+			facID := prof.EmailAddress
+			if prof.PrimaryIndicator {
+				primaryProf.String = facID
+				primaryProf.Valid = true
 			}
 			// ex data
 			// "displayName": "Friedman, Carol",
 			// "emailAddress": "Carol.Friedman@marist.edu",
-			splitName := strings.Split(fac.DisplayName, ", ")
+			splitName := strings.Split(prof.DisplayName, ", ")
 			firstName := pgtype.Text{String: "", Valid: false}
 			lastName := pgtype.Text{String: "", Valid: false}
 			if len(splitName) == 2 {
@@ -496,12 +496,12 @@ func (b *bannerSchool) insertGroupOfSections(
 			facultyMember := db.UpsertFacultyParams{
 				ID:           facID,
 				SchoolID:     termCollection.SchoolID,
-				Name:         fac.DisplayName,
-				EmailAddress: pgtype.Text{String: fac.EmailAddress, Valid: true},
+				Name:         prof.DisplayName,
+				EmailAddress: pgtype.Text{String: prof.EmailAddress, Valid: true},
 				FirstName:    firstName,
 				LastName:     lastName,
 			}
-			facultyMembers[facID] = facultyMember
+			professors[facID] = facultyMember
 		}
 		courseId := s.Subject + "," + s.CourseNumber
 		sectionSequence := s.SequenceNumber
@@ -551,16 +551,16 @@ func (b *bannerSchool) insertGroupOfSections(
 
 		}
 		dbSection := db.StageSectionsParams{
-			Sequence:          sectionSequence,
-			Campus:            pgtype.Text{String: s.CampusDescription, Valid: true},
-			SubjectCode:       s.Subject,
-			CourseNumber:      s.CourseNumber,
-			SchoolID:          termCollection.SchoolID,
-			TermCollectionID:  termCollection.ID,
-			Enrollment:        pgtype.Int4{Int32: s.MaximumEnrollment, Valid: true},
-			MaxEnrollment:     pgtype.Int4{Int32: s.MaximumEnrollment, Valid: true},
-			InstructionMethod: pgtype.Text{String: s.InstructionalMethod, Valid: true},
-			PrimaryFacultyID:  primaryFac,
+			Sequence:           sectionSequence,
+			Campus:             pgtype.Text{String: s.CampusDescription, Valid: true},
+			SubjectCode:        s.Subject,
+			CourseNumber:       s.CourseNumber,
+			SchoolID:           termCollection.SchoolID,
+			TermCollectionID:   termCollection.ID,
+			Enrollment:         pgtype.Int4{Int32: s.MaximumEnrollment, Valid: true},
+			MaxEnrollment:      pgtype.Int4{Int32: s.MaximumEnrollment, Valid: true},
+			InstructionMethod:  pgtype.Text{String: s.InstructionalMethod, Valid: true},
+			PrimaryProfessorID: primaryProf,
 		}
 		course := db.UpsertCoursesParams{
 			SchoolID:           termCollection.SchoolID,
@@ -626,9 +626,9 @@ func (b *bannerSchool) insertGroupOfSections(
 		return err
 	}
 
-	batchFacultyMembers := make([]db.UpsertFacultyParams, len(facultyMembers))
+	batchFacultyMembers := make([]db.UpsertFacultyParams, len(professors))
 	i := 0
-	for _, facMem := range facultyMembers {
+	for _, facMem := range professors {
 		batchFacultyMembers[i] = facMem
 		i += 1
 	}

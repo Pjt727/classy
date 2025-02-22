@@ -34,6 +34,26 @@ SELECT CASE
 END
 ;
 
+-- name: GetCourseWithHueristics :one
+SELECT c.*, ch.previous_terms, ch.previous_professors
+FROM courses c
+INNER JOIN course_heuristic ch ON ch.number = c.number
+            AND ch.subject_code = c.subject_code
+            AND ch.school_id = c.school_id
+WHERE c.school_id = @school_id
+      AND c.subject_code = @subject_code
+      AND c.number = @course_number
+;
+
+-- name: GetCoursesForSchoolAndSubject :many
+SELECT courses.*
+FROM courses
+WHERE school_id = @school_id
+      AND subject_code = @subject_code
+LIMIT @limitValue
+OFFSET @offsetValue
+;
+
 -- name: GetCoursesForSchool :many
 SELECT courses.*
 FROM courses

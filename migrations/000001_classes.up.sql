@@ -40,7 +40,7 @@ CREATE TABLE previous_section_collections (
     PRIMARY KEY (collection_id, school_id, time_collection)
 );
 
-CREATE TABLE faculty_members (
+CREATE TABLE professors (
     id TEXT,
     school_id TEXT,
 
@@ -78,10 +78,10 @@ CREATE TABLE sections (
     instruction_method TEXT,
     campus TEXT,
     enrollment INTEGER,
-    primary_faculty_id TEXT,
+    primary_professor_id TEXT,
     FOREIGN KEY (school_id, subject_code, course_number) 
         REFERENCES courses(school_id, subject_code, number),
-    FOREIGN KEY (primary_faculty_id, school_id) REFERENCES faculty_members(id, school_id),
+    FOREIGN KEY (primary_professor_id, school_id) REFERENCES professors(id, school_id),
 
     FOREIGN KEY (term_collection_id, school_id) REFERENCES term_collections(id, school_id),
     PRIMARY KEY (sequence, term_collection_id, subject_code, course_number, school_id),
@@ -99,7 +99,7 @@ CREATE TABLE staging_sections (
     instruction_method TEXT,
     campus TEXT,
     enrollment INTEGER,
-    primary_faculty_id TEXT
+    primary_professor_id TEXT
 );
 
 CREATE TABLE meeting_times (

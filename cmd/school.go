@@ -83,7 +83,7 @@ facualty members, and internal collection tables`,
 		}
 
 		q := db.New(dbPool)
-		termCollections, err := q.GetTermCollectionsForSchool(ctx, db.GetTermCollectionsForSchoolParams{
+		termCollections, err := q.GetTermCollectionsForSchoolsSemester(ctx, db.GetTermCollectionsForSchoolsSemesterParams{
 			SchoolID: schoolId,
 			Year:     int32(termYear),
 			Season:   termSeason,

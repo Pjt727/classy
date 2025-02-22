@@ -87,7 +87,7 @@ func (r iteratorForStageSections) Values() ([]interface{}, error) {
 		r.rows[0].Enrollment,
 		r.rows[0].MaxEnrollment,
 		r.rows[0].InstructionMethod,
-		r.rows[0].PrimaryFacultyID,
+		r.rows[0].PrimaryProfessorID,
 	}, nil
 }
 
@@ -96,5 +96,5 @@ func (r iteratorForStageSections) Err() error {
 }
 
 func (q *Queries) StageSections(ctx context.Context, arg []StageSectionsParams) (int64, error) {
-	return q.db.CopyFrom(ctx, []string{"staging_sections"}, []string{"sequence", "campus", "subject_code", "course_number", "school_id", "term_collection_id", "enrollment", "max_enrollment", "instruction_method", "primary_faculty_id"}, &iteratorForStageSections{rows: arg})
+	return q.db.CopyFrom(ctx, []string{"staging_sections"}, []string{"sequence", "campus", "subject_code", "course_number", "school_id", "term_collection_id", "enrollment", "max_enrollment", "instruction_method", "primary_professor_id"}, &iteratorForStageSections{rows: arg})
 }

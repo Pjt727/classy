@@ -98,13 +98,13 @@ INSERT INTO sections
     (sequence, term_collection_id, subject_code,
         course_number, school_id, max_enrollment, 
         instruction_method, campus, enrollment,
-        primary_faculty_id)
+        primary_professor_id)
 SELECT
     DISTINCT ON (sequence, term_collection_id, subject_code, course_number, school_id)
     sequence, term_collection_id, subject_code,
     course_number, school_id, max_enrollment, 
     instruction_method, campus, enrollment,
-    primary_faculty_id
+    primary_professor_id
 FROM staging_sections
 ON CONFLICT ("sequence", subject_code, course_number, school_id, term_collection_id) DO UPDATE
 SET 
@@ -112,12 +112,12 @@ SET
     enrollment = EXCLUDED.enrollment,
     max_enrollment = EXCLUDED.max_enrollment,
     instruction_method = EXCLUDED.instruction_method,
-    primary_faculty_id = EXCLUDED.primary_faculty_id
+    primary_professor_id = EXCLUDED.primary_professor_id
 WHERE sections.campus != EXCLUDED.campus
     OR sections.enrollment != EXCLUDED.enrollment
     OR sections.max_enrollment != EXCLUDED.max_enrollment
     OR sections.instruction_method != EXCLUDED.instruction_method
-    OR sections.primary_faculty_id != EXCLUDED.primary_faculty_id
+    OR sections.primary_professor_id != EXCLUDED.primary_professor_id
 `
 
 func (q *Queries) MoveStagedSections(ctx context.Context) error {
@@ -198,16 +198,16 @@ type StageMeetingTimesParams struct {
 }
 
 type StageSectionsParams struct {
-	Sequence          string      `json:"sequence"`
-	Campus            pgtype.Text `json:"campus"`
-	SubjectCode       string      `json:"subject_code"`
-	CourseNumber      string      `json:"course_number"`
-	SchoolID          string      `json:"school_id"`
-	TermCollectionID  string      `json:"term_collection_id"`
-	Enrollment        pgtype.Int4 `json:"enrollment"`
-	MaxEnrollment     pgtype.Int4 `json:"max_enrollment"`
-	InstructionMethod pgtype.Text `json:"instruction_method"`
-	PrimaryFacultyID  pgtype.Text `json:"primary_faculty_id"`
+	Sequence           string      `json:"sequence"`
+	Campus             pgtype.Text `json:"campus"`
+	SubjectCode        string      `json:"subject_code"`
+	CourseNumber       string      `json:"course_number"`
+	SchoolID           string      `json:"school_id"`
+	TermCollectionID   string      `json:"term_collection_id"`
+	Enrollment         pgtype.Int4 `json:"enrollment"`
+	MaxEnrollment      pgtype.Int4 `json:"max_enrollment"`
+	InstructionMethod  pgtype.Text `json:"instruction_method"`
+	PrimaryProfessorID pgtype.Text `json:"primary_professor_id"`
 }
 
 const upsertSchool = `-- name: UpsertSchool :exec

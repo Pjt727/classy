@@ -29,20 +29,12 @@ func Serve() {
 	r.Get("/", getHandler.GetSchools)
 	r.Route("/{schoolID}", func(r chi.Router) {
 		r.Use(verifySchool)
-		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-
-		})
-
-		r.Get("/lastest", func(w http.ResponseWriter, r *http.Request) {
-
-		})
+		r.Get("/", getHandler.GetSchoolTerms)
 
 		r.Route("/courses", func(r chi.Router) {
 			r.Get("/", getHandler.GetCourses)
 			r.Route("/{subjectCode}", func(r chi.Router) {
-				r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-
-				})
+				r.Get("/", getHandler.GetCoursesForSubject)
 				r.Get("/{courseNumber}", func(w http.ResponseWriter, r *http.Request) {
 
 				})

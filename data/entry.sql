@@ -15,12 +15,12 @@ INSERT INTO staging_sections
     (sequence, campus, subject_code, course_number,
         school_id, term_collection_id,
         enrollment, max_enrollment, instruction_method,
-        primary_faculty_id, campus)
+        primary_professor_id, campus)
 VALUES
     (@sequence, @campus, @subject_code, @course_number,
         @school_id, @term_collection_id,
         @enrollment, @max_enrollment, @instruction_method,
-        @primary_faculty_id, @campus);
+        @primary_professor_id, @campus);
 
 -- name: StageMeetingTimes :copyfrom
 INSERT INTO staging_meeting_times 
@@ -38,8 +38,8 @@ VALUES
         @is_tuesday, @is_wednesday, @is_thursday,
         @is_friday, @is_saturday, @is_sunday);
 
--- name: UpsertFaculty :batchexec
-INSERT INTO faculty_members
+-- name: UpsertProfessor :batchexec
+INSERT INTO professors
     (id, school_id, name,
         email_address, first_name, last_name)
 VALUES
@@ -102,13 +102,13 @@ INSERT INTO sections
     (sequence, term_collection_id, subject_code,
         course_number, school_id, max_enrollment, 
         instruction_method, campus, enrollment,
-        primary_faculty_id)
+        primary_professor_id)
 SELECT
     DISTINCT ON (sequence, term_collection_id, subject_code, course_number, school_id)
     sequence, term_collection_id, subject_code,
     course_number, school_id, max_enrollment, 
     instruction_method, campus, enrollment,
-    primary_faculty_id
+    primary_professor_id
 FROM staging_sections
 ON CONFLICT ("sequence", subject_code, course_number, school_id, term_collection_id) DO UPDATE
 SET 
@@ -116,12 +116,12 @@ SET
     enrollment = EXCLUDED.enrollment,
     max_enrollment = EXCLUDED.max_enrollment,
     instruction_method = EXCLUDED.instruction_method,
-    primary_faculty_id = EXCLUDED.primary_faculty_id
+    primary_professor_id = EXCLUDED.primary_professor_id
 WHERE sections.campus != EXCLUDED.campus
     OR sections.enrollment != EXCLUDED.enrollment
     OR sections.max_enrollment != EXCLUDED.max_enrollment
     OR sections.instruction_method != EXCLUDED.instruction_method
-    OR sections.primary_faculty_id != EXCLUDED.primary_faculty_id
+    OR sections.primary_professor_id != EXCLUDED.primary_professor_id
 ;
 
 -- name: RemoveUnstagedMeetings :exec

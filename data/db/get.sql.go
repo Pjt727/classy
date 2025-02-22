@@ -7,6 +7,8 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const courseExists = `-- name: CourseExists :one
@@ -35,6 +37,52 @@ func (q *Queries) CourseExists(ctx context.Context, arg CourseExistsParams) (boo
 	return column_1, err
 }
 
+const getCourseWithHueristics = `-- name: GetCourseWithHueristics :one
+SELECT c.school_id, c.subject_code, c.number, c.subject_description, c.title, c.description, c.credit_hours, ch.previous_terms, ch.previous_professors
+FROM courses c
+INNER JOIN course_heuristic ch ON ch.number = c.number
+            AND ch.subject_code = c.subject_code
+            AND ch.school_id = c.school_id
+WHERE c.school_id = $1
+      AND c.subject_code = $2
+      AND c.number = $3
+`
+
+type GetCourseWithHueristicsParams struct {
+	SchoolID     string `json:"school_id"`
+	SubjectCode  string `json:"subject_code"`
+	CourseNumber string `json:"course_number"`
+}
+
+type GetCourseWithHueristicsRow struct {
+	SchoolID           string             `json:"school_id"`
+	SubjectCode        string             `json:"subject_code"`
+	Number             string             `json:"number"`
+	SubjectDescription pgtype.Text        `json:"subject_description"`
+	Title              pgtype.Text        `json:"title"`
+	Description        pgtype.Text        `json:"description"`
+	CreditHours        float32            `json:"credit_hours"`
+	PreviousTerms      []PartialTerm      `json:"previous_terms"`
+	PreviousProfessors []PartialProfessor `json:"previous_professors"`
+}
+
+func (q *Queries) GetCourseWithHueristics(ctx context.Context, arg GetCourseWithHueristicsParams) (GetCourseWithHueristicsRow, error) {
+	row := q.db.QueryRow(ctx, getCourseWithHueristics, arg.SchoolID, arg.SubjectCode, arg.CourseNumber)
+	var i GetCourseWithHueristicsRow
+	err := row.Scan(
+		&i.SchoolID,
+		&i.SubjectCode,
+		&i.Number,
+		&i.SubjectDescription,
+		&i.Title,
+		&i.Description,
+		&i.CreditHours,
+		&i.PreviousTerms,
+		&i.PreviousProfessors,
+	)
+	return i, err
+}
+
 const getCoursesForSchool = `-- name: GetCoursesForSchool :many
 SELECT courses.school_id, courses.subject_code, courses.number, courses.subject_description, courses.title, courses.description, courses.credit_hours
 FROM courses
@@ -51,6 +99,55 @@ type GetCoursesForSchoolParams struct {
 
 func (q *Queries) GetCoursesForSchool(ctx context.Context, arg GetCoursesForSchoolParams) ([]Course, error) {
 	rows, err := q.db.Query(ctx, getCoursesForSchool, arg.SchoolID, arg.Offsetvalue, arg.Limitvalue)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Course
+	for rows.Next() {
+		var i Course
+		if err := rows.Scan(
+			&i.SchoolID,
+			&i.SubjectCode,
+			&i.Number,
+			&i.SubjectDescription,
+			&i.Title,
+			&i.Description,
+			&i.CreditHours,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCoursesForSchoolAndSubject = `-- name: GetCoursesForSchoolAndSubject :many
+SELECT courses.school_id, courses.subject_code, courses.number, courses.subject_description, courses.title, courses.description, courses.credit_hours
+FROM courses
+WHERE school_id = $1
+      AND subject_code = $2
+LIMIT $4
+OFFSET $3
+`
+
+type GetCoursesForSchoolAndSubjectParams struct {
+	SchoolID    string `json:"school_id"`
+	SubjectCode string `json:"subject_code"`
+	Offsetvalue int32  `json:"offsetvalue"`
+	Limitvalue  int32  `json:"limitvalue"`
+}
+
+func (q *Queries) GetCoursesForSchoolAndSubject(ctx context.Context, arg GetCoursesForSchoolAndSubjectParams) ([]Course, error) {
+	rows, err := q.db.Query(ctx, getCoursesForSchoolAndSubject,
+		arg.SchoolID,
+		arg.SubjectCode,
+		arg.Offsetvalue,
+		arg.Limitvalue,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +250,7 @@ func (q *Queries) GetSchools(ctx context.Context, arg GetSchoolsParams) ([]Schoo
 }
 
 const getSchoolsClassesForTermOrderedBySection = `-- name: GetSchoolsClassesForTermOrderedBySection :many
-SELECT sections.sequence, sections.term_collection_id, sections.subject_code, sections.course_number, sections.school_id, sections.max_enrollment, sections.instruction_method, sections.campus, sections.enrollment, sections.primary_faculty_id, section_meetings.meeting_times
+SELECT sections.sequence, sections.term_collection_id, sections.subject_code, sections.course_number, sections.school_id, sections.max_enrollment, sections.instruction_method, sections.campus, sections.enrollment, sections.primary_professor_id, section_meetings.meeting_times
 FROM section_meetings
 JOIN sections ON sections."sequence"           = section_meetings."sequence"
               AND sections.term_collection_id  = section_meetings.term_collection_id
@@ -204,7 +301,7 @@ func (q *Queries) GetSchoolsClassesForTermOrderedBySection(ctx context.Context, 
 			&i.Section.InstructionMethod,
 			&i.Section.Campus,
 			&i.Section.Enrollment,
-			&i.Section.PrimaryFacultyID,
+			&i.Section.PrimaryProfessorID,
 			&i.MeetingTimes,
 		); err != nil {
 			return nil, err
