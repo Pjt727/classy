@@ -25,11 +25,10 @@ func (h GetHandler) GetCourse(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	q := db.New(h.DbPool)
-	courseRows, err := q.GetCoursesForSchoolAndSubject(ctx, db.GetCoursesForSchoolAndSubjectParams{
-		SchoolID:    chi.URLParam(r, "schoolID"),
-		SubjectCode: chi.URLParam(r, "subjectCode"),
-		Offsetvalue: ctx.Value(OffsetKey).(int32),
-		Limitvalue:  ctx.Value(LimitKey).(int32),
+	courseRows, err := q.GetCourseWithHueristics(ctx, db.GetCourseWithHueristicsParams{
+		SchoolID:     chi.URLParam(r, "schoolID"),
+		SubjectCode:  chi.URLParam(r, "subjectCode"),
+		CourseNumber: chi.URLParam(r, "courseNumber"),
 	})
 	if err != nil {
 		log.Trace("Could not get school rows: ", err)

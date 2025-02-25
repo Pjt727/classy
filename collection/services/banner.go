@@ -463,7 +463,7 @@ func (b *bannerSchool) insertGroupOfSections(
 
 	var dbSections []db.StageSectionsParams
 	var meetingTimes []db.StageMeetingTimesParams
-	professors := make(map[string]db.UpsertFacultyParams)
+	professors := make(map[string]db.UpsertProfessorParams)
 	courses := make(map[string]db.UpsertCoursesParams)
 	courseReferenceNumbers := make(map[string]string)
 	for _, s := range sections.Sections {
@@ -493,7 +493,7 @@ func (b *bannerSchool) insertGroupOfSections(
 				lastName.Valid = true
 			}
 
-			facultyMember := db.UpsertFacultyParams{
+			facultyMember := db.UpsertProfessorParams{
 				ID:           facID,
 				SchoolID:     termCollection.SchoolID,
 				Name:         prof.DisplayName,
@@ -626,13 +626,13 @@ func (b *bannerSchool) insertGroupOfSections(
 		return err
 	}
 
-	batchFacultyMembers := make([]db.UpsertFacultyParams, len(professors))
+	batchFacultyMembers := make([]db.UpsertProfessorParams, len(professors))
 	i := 0
 	for _, facMem := range professors {
 		batchFacultyMembers[i] = facMem
 		i += 1
 	}
-	buf := q.UpsertFaculty(ctx, batchFacultyMembers)
+	buf := q.UpsertProfessor(ctx, batchFacultyMembers)
 
 	var outerErr error = nil
 	buf.Exec(func(i int, err error) {

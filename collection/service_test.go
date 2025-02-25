@@ -58,9 +58,9 @@ func (t TestService) StageAllClasses(
 		}
 	}
 
-	facMembers := make([]db.UpsertFacultyParams, t.professorCount)
+	profs := make([]db.UpsertProfessorParams, t.professorCount)
 	for i := 0; i > t.professorCount; i++ {
-		facMembers[i] = db.UpsertFacultyParams{
+		profs[i] = db.UpsertProfessorParams{
 			ID:           t.randomString(20),
 			SchoolID:     t.schools[t.r.Intn(len(t.schools))].ID,
 			Name:         t.randomString(20),
@@ -75,16 +75,16 @@ func (t TestService) StageAllClasses(
 	for _, course := range courses {
 		for j := 0; j > t.r.Intn(3); j++ {
 			section := db.StageSectionsParams{
-				Sequence:          strconv.Itoa(j),
-				Campus:            pgtype.Text{String: t.randomString(1), Valid: true},
-				SubjectCode:       course.SubjectCode,
-				CourseNumber:      course.Number,
-				SchoolID:          term.SchoolID,
-				TermCollectionID:  term.ID,
-				Enrollment:        pgtype.Int4{Int32: int32(t.r.Intn(10) + 10), Valid: true},
-				MaxEnrollment:     pgtype.Int4{Int32: int32(t.r.Intn(10) + 10), Valid: true},
-				InstructionMethod: pgtype.Text{String: t.randomString(1), Valid: true},
-				PrimaryFacultyID:  pgtype.Text{String: facMembers[t.r.Intn(len(facMembers))].ID, Valid: t.r.Intn(2) == 0},
+				Sequence:           strconv.Itoa(j),
+				Campus:             pgtype.Text{String: t.randomString(1), Valid: true},
+				SubjectCode:        course.SubjectCode,
+				CourseNumber:       course.Number,
+				SchoolID:           term.SchoolID,
+				TermCollectionID:   term.ID,
+				Enrollment:         pgtype.Int4{Int32: int32(t.r.Intn(10) + 10), Valid: true},
+				MaxEnrollment:      pgtype.Int4{Int32: int32(t.r.Intn(10) + 10), Valid: true},
+				InstructionMethod:  pgtype.Text{String: t.randomString(1), Valid: true},
+				PrimaryProfessorID: pgtype.Text{String: profs[t.r.Intn(len(profs))].ID, Valid: t.r.Intn(2) == 0},
 			}
 			sections = append(sections, section)
 
@@ -125,7 +125,7 @@ func (t TestService) StageAllClasses(
 		return err
 	}
 
-	buf := q.UpsertFaculty(ctx, facMembers)
+	buf := q.UpsertProfessor(ctx, profs)
 
 	var outerErr error = nil
 	buf.Exec(func(i int, err error) {

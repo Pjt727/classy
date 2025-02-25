@@ -11,11 +11,22 @@ import (
 	"github.com/Pjt727/classy/data/db"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 	log "github.com/sirupsen/logrus"
 )
 
 func Serve() {
 	r := chi.NewRouter()
+	cors := cors.New(cors.Options{
+		AllowedOrigins:   []string{"*"}, // Allow all origins
+		AllowedMethods:   []string{"GET"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: true,
+		MaxAge:           300, // Maximum age for preflight requests
+	})
+	// Use the CORS middleware in your Chi server
+	r.Use(cors.Handler)
 	ctx := context.Background()
 	pool, err := data.NewPool(ctx)
 	if err != nil {
@@ -35,9 +46,7 @@ func Serve() {
 			r.Get("/", getHandler.GetCourses)
 			r.Route("/{subjectCode}", func(r chi.Router) {
 				r.Get("/", getHandler.GetCoursesForSubject)
-				r.Get("/{courseNumber}", func(w http.ResponseWriter, r *http.Request) {
-
-				})
+				r.Get("/{courseNumber}", getHandler.GetCourse)
 			})
 		})
 

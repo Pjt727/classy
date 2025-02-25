@@ -44,7 +44,7 @@ SELECT
     c.number,
     c.school_id,
     JSON_AGG(
-        JSON_BUILD_OBJECT(
+        DISTINCT JSONB_BUILD_OBJECT(
             'id', p.id,
             'name', p.name,
             'email_address', p.email_address,
@@ -53,7 +53,7 @@ SELECT
         )
     ) AS previous_professors,
     JSON_AGG(
-        JSON_BUILD_OBJECT(
+        DISTINCT JSONB_BUILD_OBJECT(
             'id', t.id,
             'year', t.year,
             'season', t.season,

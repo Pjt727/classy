@@ -1,6 +1,9 @@
 -- notes:
 -- can't use temp tables with sqlc so i use staging tables here
 -- regex check constraints are mainly motiviated by api route names
+
+-- migrate's drops will not delete types
+DROP TYPE IF EXISTS season_enum;
 CREATE TYPE season_enum AS ENUM ('Spring', 'Fall', 'Winter', 'Summer');
 
 CREATE TABLE schools (
@@ -89,18 +92,10 @@ CREATE TABLE sections (
 );
 
 CREATE TABLE staging_sections (
-    sequence TEXT NOT NULL,
-    term_collection_id TEXT NOT NULL,
-    subject_code TEXT NOT NULL,
-    course_number TEXT NOT NULL,
-    school_id TEXT NOT NULL,
-
-    max_enrollment INTEGER,
-    instruction_method TEXT,
-    campus TEXT,
-    enrollment INTEGER,
-    primary_professor_id TEXT
+    like sections
+    including defaults
 );
+
 
 CREATE TABLE meeting_times (
     sequence INT,
@@ -128,24 +123,7 @@ CREATE TABLE meeting_times (
 );
 
 CREATE TABLE staging_meeting_times (
-    sequence INT NOT NULL,
-    section_sequence TEXT NOT NULL,
-    term_collection_id TEXT NOT NULL,
-    subject_code TEXT NOT NULL,
-    course_number TEXT NOT NULL,
-    school_id TEXT NOT NULL,
-
-    start_date TIMESTAMP,
-    end_date TIMESTAMP,
-    meeting_type TEXT,
-    start_minutes TIME,
-    end_minutes TIME,
-    is_monday BOOLEAN NOT NULL,
-    is_tuesday BOOLEAN NOT NULL,
-    is_wednesday BOOLEAN NOT NULL,
-    is_thursday BOOLEAN NOT NULL,
-    is_friday BOOLEAN NOT NULL,
-    is_saturday BOOLEAN NOT NULL,
-    is_sunday BOOLEAN NOT NULL
+    like meeting_times
+    including defaults
 );
 

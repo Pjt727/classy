@@ -2,7 +2,7 @@ DROP TABLE IF EXISTS staging_meeting_times;
 DROP TABLE IF EXISTS staging_sections;
 DROP TABLE IF EXISTS meeting_times;
 DROP TABLE IF EXISTS sections;
-DROP TABLE IF EXISTS faculty_members;
+DROP TABLE IF EXISTS professors;
 DROP TABLE IF EXISTS courses;
 DROP TABLE IF EXISTS previous_section_collections;
 DROP TABLE IF EXISTS term_collections;
