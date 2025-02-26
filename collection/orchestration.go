@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/Pjt727/classy/collection/services"
+	"github.com/Pjt727/classy/collection/services/banner"
 	"github.com/Pjt727/classy/data"
 	"github.com/Pjt727/classy/data/db"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -55,8 +55,28 @@ type Orchestrator struct {
 func GetDefaultOrchestrator() (Orchestrator, error) {
 	ctx := context.Background()
 	dbPool, err := data.NewPool(ctx)
+
 	orchestrator := Orchestrator{
-		serviceEntries:      []Service{services.Banner},
+		serviceEntries:      []Service{banner.Service},
+		schoolIdToService:   make(map[string]*Service),
+		schoolIdToSchool:    make(map[string]db.School),
+		orchestrationLogger: log.WithFields(log.Fields{"job": "orchestration"}),
+		dbPool:              dbPool,
+	}
+	if err != nil {
+		return orchestrator, err
+	}
+
+	orchestrator.initMappings(ctx)
+
+	return orchestrator, nil
+}
+
+func CreateOrchestrator(services []Service) (Orchestrator, error) {
+	ctx := context.Background()
+	dbPool, err := data.NewPool(ctx)
+	orchestrator := Orchestrator{
+		serviceEntries:      services,
 		schoolIdToService:   make(map[string]*Service),
 		schoolIdToSchool:    make(map[string]db.School),
 		orchestrationLogger: log.WithFields(log.Fields{"job": "orchestration"}),
@@ -119,7 +139,7 @@ func (o Orchestrator) UpsertAllSchools(ctx context.Context) {
 func (o Orchestrator) UpsertSchoolTerms(ctx context.Context, logger log.Entry, school db.School) error {
 	service, ok := o.schoolIdToService[school.ID]
 	if !ok {
-		return errors.New(fmt.Sprintf("Do not know how to scrape %. No service was found.", school.ID))
+		return errors.New(fmt.Sprintf("Do not know how to scrape %s. No service was found.", school.ID))
 	}
 	tx, err := o.dbPool.Begin(ctx)
 	if err != nil {
@@ -215,13 +235,13 @@ func (o Orchestrator) UpsertAllTerms(ctx context.Context) {
 
 }
 
-func (o Orchestrator) UpdateAllSectionsOfSchool(ctx context.Context, schoolId string, termCollection db.TermCollection) {
+func (o Orchestrator) UpdateAllSectionsOfSchool(ctx context.Context, termCollection db.TermCollection) {
 	// there might be a good way to easily sandbox schoools to what they should change
 	//    could make a wrapping q client with the state of the school and then write wrappers
 	//    for each of the functions
-	service, ok := o.schoolIdToService[schoolId]
+	service, ok := o.schoolIdToService[termCollection.SchoolID]
 	updateLogger := o.orchestrationLogger.WithFields(log.Fields{
-		"school_id": schoolId,
+		"school_id": termCollection.SchoolID,
 		"season":    termCollection.Season,
 		"year":      termCollection.Year,
 	})
@@ -229,7 +249,7 @@ func (o Orchestrator) UpdateAllSectionsOfSchool(ctx context.Context, schoolId st
 		updateLogger.Error("Skipping update school... school not found")
 		return
 	}
-	school := o.schoolIdToSchool[schoolId]
+	school := o.schoolIdToSchool[termCollection.SchoolID]
 	updateLogger = o.orchestrationLogger.WithFields(log.Fields{
 		"service":        (*service).GetName(),
 		"school":         school,

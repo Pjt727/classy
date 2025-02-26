@@ -118,7 +118,7 @@ facualty members, and internal collection tables`,
 		}
 
 		logger.Infof("Starting update for school %s", schoolId)
-		orchestrator.UpdateAllSectionsOfSchool(ctx, schoolId, termCollection)
+		orchestrator.UpdateAllSectionsOfSchool(ctx, termCollection)
 		logger.Infof("Finished update for school %s", schoolId)
 	},
 }

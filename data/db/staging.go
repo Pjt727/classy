@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"sync"
 )
 
@@ -73,4 +74,69 @@ func (q *Queries) MoveStagedCoursesAndMeetings(
 		return 0, fmt.Errorf("error staging meetings %v", err)
 	}
 	return 0, nil
+}
+
+// helper to add class information
+func InsertClassData(
+	logger *log.Entry,
+	ctx context.Context,
+	q *Queries,
+	meetingTimes []StageMeetingTimesParams,
+	dbSections []StageSectionsParams,
+	professors map[string]UpsertProfessorParams,
+	courses map[string]UpsertCoursesParams,
+) error {
+
+	_, err := q.StageMeetingTimes(ctx, meetingTimes)
+	if err != nil {
+		logger.Error("Staging meetings error ", err)
+		return err
+	}
+
+	_, err = q.StageSections(ctx, dbSections)
+	if err != nil {
+		logger.Error("Staging sections error ", err)
+		return err
+	}
+
+	batchFacultyMembers := make([]UpsertProfessorParams, len(professors))
+	i := 0
+	for _, facMem := range professors {
+		batchFacultyMembers[i] = facMem
+		i += 1
+	}
+	buf := q.UpsertProfessor(ctx, batchFacultyMembers)
+
+	var outerErr error = nil
+	buf.Exec(func(i int, err error) {
+		if err != nil {
+			outerErr = err
+		}
+	})
+
+	if outerErr != nil {
+		logger.Error("Error upserting fac ", outerErr)
+		return err
+	}
+
+	batchCourses := make([]UpsertCoursesParams, len(courses))
+	i = 0
+	for _, course := range courses {
+		batchCourses[i] = course
+		i += 1
+	}
+
+	bc := q.UpsertCourses(ctx, batchCourses)
+	bc.Exec(func(i int, err error) {
+		if err != nil {
+			outerErr = err
+		}
+	})
+
+	if outerErr != nil {
+		logger.Error("Error upserting course", outerErr)
+		return outerErr
+	}
+
+	return nil
 }
