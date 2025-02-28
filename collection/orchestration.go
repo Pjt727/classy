@@ -7,7 +7,9 @@ import (
 	"sync"
 
 	"github.com/Pjt727/classy/collection/services/banner"
+
 	"github.com/Pjt727/classy/data"
+	classentry "github.com/Pjt727/classy/data/class-entry"
 	"github.com/Pjt727/classy/data/db"
 	"github.com/jackc/pgx/v5/pgxpool"
 	log "github.com/sirupsen/logrus"
@@ -22,7 +24,11 @@ type Service interface {
 	GetName() string
 
 	// get the schools for this service (only called once at the start of the program)
-	ListValidSchools(logger log.Entry, ctx context.Context, q *db.Queries) ([]db.School, error)
+	ListValidSchools(
+		logger log.Entry,
+		ctx context.Context,
+		q *classentry.EntryQueries,
+	) ([]classentry.School, error)
 
 	// Should put ALL sections / meetings in the staging table as well as make
 	//     the needed professors / courses for the sections and meeting times
@@ -31,8 +37,8 @@ type Service interface {
 	StageAllClasses(
 		logger log.Entry,
 		ctx context.Context,
-		q *db.Queries,
-		term db.TermCollection,
+		q *classentry.EntryQueries,
+		term classentry.TermCollection,
 		fullCollection bool,
 	) error
 
@@ -40,8 +46,8 @@ type Service interface {
 	GetTermCollections(
 		logger log.Entry,
 		ctx context.Context,
-		school db.School,
-	) ([]db.UpsertTermCollectionParams, error)
+		school classentry.School,
+	) ([]classentry.UpsertTermCollectionParams, error)
 }
 
 type Orchestrator struct {
@@ -94,7 +100,7 @@ func CreateOrchestrator(services []Service) (Orchestrator, error) {
 func (o Orchestrator) initMappings(ctx context.Context) {
 	for _, service := range o.serviceEntries {
 		serviceLogger := o.orchestrationLogger.WithField("service", service.GetName())
-		q := db.New(o.dbPool)
+		q := classentry.NewEntryQuery(o.dbPool)
 		schools, err := service.ListValidSchools(*serviceLogger, ctx, q)
 		if err != nil {
 			serviceLogger.Warn("Skipping school to service mapping because error: ", err)
@@ -260,7 +266,7 @@ func (o Orchestrator) UpdateAllSectionsOfSchool(ctx context.Context, termCollect
 		"school":         school,
 		"termCollection": termCollection,
 	})
-	q := db.New(o.dbPool)
+	q := classentry.NewEntryQuery(o.dbPool)
 	if err := q.DeleteCoursesMeetingsStaging(ctx, termCollection); err != nil {
 		updateLogger.Error("Could not ready staging tables", err)
 		return err
@@ -277,7 +283,8 @@ func (o Orchestrator) UpdateAllSectionsOfSchool(ctx context.Context, termCollect
 		return err
 	}
 	defer tx.Commit(ctx)
-	q = db.New(o.dbPool).WithTx(tx)
+
+	q = classentry.NewEntryQuery(o.dbPool).WithTx(tx)
 	changesCount, err := q.MoveStagedCoursesAndMeetings(ctx, termCollection)
 	if err != nil {
 		updateLogger.Error("Failed moving courses: ", err)

@@ -38,7 +38,7 @@ VALUES
         @is_tuesday, @is_wednesday, @is_thursday,
         @is_friday, @is_saturday, @is_sunday);
 
--- name: UpsertProfessor :batchexec
+-- name: UpsertProfessors :batchexec
 INSERT INTO professors
     (id, school_id, name,
         email_address, first_name, last_name)

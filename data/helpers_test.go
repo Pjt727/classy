@@ -1,4 +1,4 @@
-package dbhelpers
+package data
 
 import (
 	"os"

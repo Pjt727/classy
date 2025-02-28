@@ -5,6 +5,7 @@ sql:
     queries: 
       - "data/entry.sql"
       - "data/get.sql"
+      - "data/sync.sql"
     gen:
       go:
         package: "db"

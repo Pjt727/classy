@@ -18,14 +18,13 @@ import (
 	"golang.org/x/net/html"
 	"golang.org/x/time/rate"
 
-	"github.com/Pjt727/classy/data/db"
-	data_test "github.com/Pjt727/classy/data/test"
+	classentry "github.com/Pjt727/classy/data/class-entry"
 	"github.com/jackc/pgx/v5/pgtype"
 	log "github.com/sirupsen/logrus"
 )
 
 type bannerSchool struct {
-	school              db.School
+	school              classentry.School
 	hostname            string
 	MaxTermCount        int
 	MaxSectionPageCount int
@@ -40,8 +39,8 @@ var Service *banner
 var once sync.Once
 
 func init() {
-	marist := db.School{ID: "marist", Name: "Marist University"}
-	temple := db.School{ID: "temple", Name: "Temple University"}
+	marist := classentry.School{ID: "marist", Name: "Marist University"}
+	temple := classentry.School{ID: "temple", Name: "Temple University"}
 	schools := map[string]bannerSchool{
 		marist.ID: {
 			school:              marist,
@@ -64,9 +63,9 @@ func init() {
 func (b *banner) ListValidSchools(
 	logger log.Entry,
 	ctx context.Context,
-	q *db.Queries,
-) ([]db.School, error) {
-	schools := make([]db.School, len(b.schools))
+	q *classentry.EntryQueries,
+) ([]classentry.School, error) {
+	schools := make([]classentry.School, len(b.schools))
 	i := 0
 	for _, schoolEntry := range b.schools {
 		schools[i] = schoolEntry.school
@@ -85,9 +84,9 @@ func (b *banner) GetName() string { return "Banner" }
 func (b *banner) GetTermCollections(
 	logger log.Entry,
 	ctx context.Context,
-	school db.School,
-) ([]db.UpsertTermCollectionParams, error) {
-	var termCollection []db.UpsertTermCollectionParams
+	school classentry.School,
+) ([]classentry.UpsertTermCollectionParams, error) {
+	var termCollection []classentry.UpsertTermCollectionParams
 
 	bannerschool, err := b.getBannerSchool(school.ID)
 	if err != nil {
@@ -105,8 +104,8 @@ func (b *banner) GetTermCollections(
 func (b *banner) StageAllClasses(
 	logger log.Entry,
 	ctx context.Context,
-	q *db.Queries,
-	termCollection db.TermCollection,
+	q *classentry.EntryQueries,
+	termCollection classentry.TermCollection,
 	fullCollection bool,
 ) error {
 	logger.Info("Starting full section")
@@ -134,28 +133,28 @@ func (b *banner) getBannerSchool(schoolID string) (*bannerSchool, error) {
 	return &schoolEntry, nil
 }
 
-func termConversion(termEntry bannerTerm) (db.Term, error) {
+func termConversion(termEntry bannerTerm) (classentry.Term, error) {
 	desc := strings.ToLower(termEntry.Description)
-	var dbTerm db.Term
+	var dbTerm classentry.Term
 	if len(termEntry.Code) != 6 {
 		err := errors.New(fmt.Sprint("term not right size must be 6: ", termEntry.Code))
 		return dbTerm, err
 	}
 	year, _ := strconv.Atoi(termEntry.Code[:4])
-	var season db.SeasonEnum
+	var season classentry.SeasonEnum
 	if strings.Contains(desc, "winter") {
-		season = db.SeasonEnumWinter
+		season = classentry.SeasonEnumWinter
 	} else if strings.Contains(desc, "spring") {
-		season = db.SeasonEnumSpring
+		season = classentry.SeasonEnumSpring
 	} else if strings.Contains(desc, "summer") {
-		season = db.SeasonEnumSummer
+		season = classentry.SeasonEnumSummer
 	} else if strings.Contains(desc, "fall") {
-		season = db.SeasonEnumFall
+		season = classentry.SeasonEnumFall
 	} else {
 		err := errors.New(fmt.Sprint("invalid season section of term: ", termEntry.Code))
 		return dbTerm, err
 	}
-	dbTerm = db.Term{Year: int32(year), Season: season}
+	dbTerm = classentry.Term{Year: int32(year), Season: season}
 	return dbTerm, nil
 }
 
@@ -240,9 +239,9 @@ func toBannerTime(dbTime pgtype.Text) pgtype.Time {
 
 func (b *bannerSchool) getTerms(
 	logger log.Entry,
-) ([]db.UpsertTermCollectionParams, error) {
+) ([]classentry.UpsertTermCollectionParams, error) {
 	const MAX_TERMS_COUNT = "100"
-	var termCollection []db.UpsertTermCollectionParams
+	var termCollection []classentry.UpsertTermCollectionParams
 	hostname := b.hostname
 	req, err := http.NewRequest(
 		"GET",
@@ -286,7 +285,7 @@ func (b *bannerSchool) getTerms(
 		// the View Only appears on all terms which probably wont update
 		stillCollecting := !strings.HasSuffix(term.Description, "(View Only)")
 
-		termCollection = append(termCollection, db.UpsertTermCollectionParams{
+		termCollection = append(termCollection, classentry.UpsertTermCollectionParams{
 			ID:       term.Code,
 			SchoolID: b.school.ID,
 			Year:     t.Year,
@@ -305,8 +304,8 @@ func (b *bannerSchool) getTerms(
 func (b *bannerSchool) stageAllClasses(
 	logger log.Entry,
 	ctx context.Context,
-	q *db.Queries,
-	termCollection db.TermCollection,
+	q *classentry.EntryQueries,
+	termCollection classentry.TermCollection,
 	fullCollection bool,
 ) error {
 	termStr := termCollection.ID
@@ -441,9 +440,9 @@ func (b *bannerSchool) insertGroupOfSections(
 	logger *log.Entry,
 	sectionReq *http.Request,
 	ctx context.Context,
-	q *db.Queries,
+	q *classentry.EntryQueries,
 	client *http.Client,
-	termCollection db.TermCollection,
+	termCollection classentry.TermCollection,
 	fullCollection bool,
 ) error {
 	if err := b.RequestLimiter.Wait(context.Background()); err != nil {
@@ -499,14 +498,27 @@ func (b *bannerSchool) insertGroupOfSections(
 		wg.Wait()
 	}
 
-	err = db.InsertClassData(
+	professors := make([]classentry.UpsertProfessorsParams, len(classData.Professors))
+	i := 0
+	for _, professor := range classData.Professors {
+		professors[i] = professor
+		i += 1
+	}
+
+	courses := make([]classentry.UpsertCoursesParams, len(classData.Courses))
+	i = 0
+	for _, course := range classData.Courses {
+		courses[i] = course
+		i += 1
+	}
+
+	err = q.InsertClassData(
 		logger,
 		ctx,
-		q,
 		classData.MeetingTimes,
 		classData.DbSections,
-		classData.Professors,
-		classData.Courses,
+		professors,
+		courses,
 	)
 
 	if err != nil {
@@ -520,18 +532,18 @@ func (b *bannerSchool) insertGroupOfSections(
 }
 
 type classData struct {
-	DbSections             []db.StageSectionsParams
-	MeetingTimes           []db.StageMeetingTimesParams
-	Professors             map[string]db.UpsertProfessorParams
-	Courses                map[string]db.UpsertCoursesParams
+	DbSections             []classentry.StageSectionsParams
+	MeetingTimes           []classentry.StageMeetingTimesParams
+	Professors             map[string]classentry.UpsertProfessorsParams
+	Courses                map[string]classentry.UpsertCoursesParams
 	CourseReferenceNumbers map[string]string
 }
 
-func processSectionSearch(sectionData sectionSearch, termCollection db.TermCollection) classData {
-	var dbSections []db.StageSectionsParams
-	var meetingTimes []db.StageMeetingTimesParams
-	professors := make(map[string]db.UpsertProfessorParams)
-	courses := make(map[string]db.UpsertCoursesParams)
+func processSectionSearch(sectionData sectionSearch, termCollection classentry.TermCollection) classData {
+	var dbSections []classentry.StageSectionsParams
+	var meetingTimes []classentry.StageMeetingTimesParams
+	professors := make(map[string]classentry.UpsertProfessorsParams)
+	courses := make(map[string]classentry.UpsertCoursesParams)
 	courseReferenceNumbers := make(map[string]string)
 	for _, s := range sectionData.Sections {
 		primaryProf := pgtype.Text{String: "", Valid: false}
@@ -542,9 +554,9 @@ func processSectionSearch(sectionData sectionSearch, termCollection db.TermColle
 				continue
 			}
 			// using emails as PK's is not ideal 😥
-			facID := prof.EmailAddress
+			professorID := prof.EmailAddress
 			if prof.PrimaryIndicator {
-				primaryProf.String = facID
+				primaryProf.String = professorID
 				primaryProf.Valid = true
 			}
 			// ex data
@@ -560,15 +572,15 @@ func processSectionSearch(sectionData sectionSearch, termCollection db.TermColle
 				lastName.Valid = true
 			}
 
-			facultyMember := db.UpsertProfessorParams{
-				ID:           facID,
+			facultyMember := classentry.UpsertProfessorsParams{
+				ID:           professorID,
 				SchoolID:     termCollection.SchoolID,
 				Name:         prof.DisplayName,
 				EmailAddress: pgtype.Text{String: prof.EmailAddress, Valid: true},
 				FirstName:    firstName,
 				LastName:     lastName,
 			}
-			professors[facID] = facultyMember
+			professors[professorID] = facultyMember
 		}
 		courseId := s.Subject + "," + s.CourseNumber
 		sectionSequence := s.SequenceNumber
@@ -594,7 +606,7 @@ func processSectionSearch(sectionData sectionSearch, termCollection db.TermColle
 				endDate.Time = endDateTime
 				endDate.Valid = true
 			}
-			dbMeetingTime := db.StageMeetingTimesParams{
+			dbMeetingTime := classentry.StageMeetingTimesParams{
 				Sequence:         int32(i),
 				SectionSequence:  sectionSequence,
 				TermCollectionID: termCollection.ID,
@@ -617,7 +629,7 @@ func processSectionSearch(sectionData sectionSearch, termCollection db.TermColle
 			meetingTimes = append(meetingTimes, dbMeetingTime)
 
 		}
-		dbSection := db.StageSectionsParams{
+		dbSection := classentry.StageSectionsParams{
 			Sequence:           sectionSequence,
 			Campus:             pgtype.Text{String: s.CampusDescription, Valid: true},
 			SubjectCode:        s.Subject,
@@ -629,7 +641,7 @@ func processSectionSearch(sectionData sectionSearch, termCollection db.TermColle
 			InstructionMethod:  pgtype.Text{String: s.InstructionalMethod, Valid: true},
 			PrimaryProfessorID: primaryProf,
 		}
-		course := db.UpsertCoursesParams{
+		course := classentry.UpsertCoursesParams{
 			SchoolID:           termCollection.SchoolID,
 			SubjectCode:        s.Subject,
 			Number:             s.CourseNumber,
@@ -655,10 +667,9 @@ func processSectionSearch(sectionData sectionSearch, termCollection db.TermColle
 func (b *bannerSchool) getCourseDetails(
 	logger *log.Entry,
 	client *http.Client,
-	termCollection db.TermCollection,
+	termCollection classentry.TermCollection,
 	referenceNumber string,
 ) (*string, error) {
-	data_test.SetupDb()
 	if err := b.RequestLimiter.Wait(context.Background()); err != nil {
 		logger.Error("Limiter error:", err)
 		return nil, err

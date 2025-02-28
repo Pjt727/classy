@@ -84,7 +84,7 @@ func (b *UpsertCoursesBatchResults) Close() error {
 	return b.br.Close()
 }
 
-const upsertProfessor = `-- name: UpsertProfessor :batchexec
+const upsertProfessors = `-- name: UpsertProfessors :batchexec
 INSERT INTO professors
     (id, school_id, name,
         email_address, first_name, last_name)
@@ -94,13 +94,13 @@ VALUES
 ON CONFLICT DO NOTHING
 `
 
-type UpsertProfessorBatchResults struct {
+type UpsertProfessorsBatchResults struct {
 	br     pgx.BatchResults
 	tot    int
 	closed bool
 }
 
-type UpsertProfessorParams struct {
+type UpsertProfessorsParams struct {
 	ID           string      `json:"id"`
 	SchoolID     string      `json:"school_id"`
 	Name         string      `json:"name"`
@@ -109,7 +109,7 @@ type UpsertProfessorParams struct {
 	LastName     pgtype.Text `json:"last_name"`
 }
 
-func (q *Queries) UpsertProfessor(ctx context.Context, arg []UpsertProfessorParams) *UpsertProfessorBatchResults {
+func (q *Queries) UpsertProfessors(ctx context.Context, arg []UpsertProfessorsParams) *UpsertProfessorsBatchResults {
 	batch := &pgx.Batch{}
 	for _, a := range arg {
 		vals := []interface{}{
@@ -120,13 +120,13 @@ func (q *Queries) UpsertProfessor(ctx context.Context, arg []UpsertProfessorPara
 			a.FirstName,
 			a.LastName,
 		}
-		batch.Queue(upsertProfessor, vals...)
+		batch.Queue(upsertProfessors, vals...)
 	}
 	br := q.db.SendBatch(ctx, batch)
-	return &UpsertProfessorBatchResults{br, len(arg), false}
+	return &UpsertProfessorsBatchResults{br, len(arg), false}
 }
 
-func (b *UpsertProfessorBatchResults) Exec(f func(int, error)) {
+func (b *UpsertProfessorsBatchResults) Exec(f func(int, error)) {
 	defer b.br.Close()
 	for t := 0; t < b.tot; t++ {
 		if b.closed {
@@ -142,7 +142,7 @@ func (b *UpsertProfessorBatchResults) Exec(f func(int, error)) {
 	}
 }
 
-func (b *UpsertProfessorBatchResults) Close() error {
+func (b *UpsertProfessorsBatchResults) Close() error {
 	b.closed = true
 	return b.br.Close()
 }

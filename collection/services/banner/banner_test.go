@@ -12,8 +12,8 @@ import (
 	"github.com/Pjt727/classy/collection"
 	"github.com/Pjt727/classy/collection/projectpath"
 	"github.com/Pjt727/classy/collection/services/banner"
-	"github.com/Pjt727/classy/data/db"
-	datatest "github.com/Pjt727/classy/data/test"
+	"github.com/Pjt727/classy/data/class-entry"
+	dbhelpers "github.com/Pjt727/classy/data/test"
 	"github.com/jackc/pgx/v5/pgtype"
 	log "github.com/sirupsen/logrus"
 )
@@ -21,13 +21,13 @@ import (
 var TESTING_ASSETS_BASE_DIR = filepath.Join(projectpath.Root, "collection", "services", "banner", "test-assets")
 
 type termDirectoryLocation struct {
-	term          db.TermCollection
+	term          classentry.TermCollection
 	directoryPath string
 	jsonPaths     []string
 	currentIndex  int
 }
 
-func newTermDirectoryLocation(term db.TermCollection, directoryPath string) (termDirectoryLocation, error) {
+func newTermDirectoryLocation(term classentry.TermCollection, directoryPath string) (termDirectoryLocation, error) {
 	termDirectory := termDirectoryLocation{
 		term:          term,
 		directoryPath: directoryPath,
@@ -65,7 +65,7 @@ func (t *termDirectoryLocation) nextJsonPath() string {
 }
 
 type fileTestsSchool struct {
-	school                        db.School
+	school                        classentry.School
 	termsCollectionIDToTermForAdd map[string]*termDirectoryLocation
 }
 
@@ -80,9 +80,9 @@ func (t *fileTestsBanner) GetName() string {
 func (t *fileTestsBanner) ListValidSchools(
 	logger log.Entry,
 	ctx context.Context,
-	q *db.Queries,
-) ([]db.School, error) {
-	var schools []db.School
+	q *classentry.EntryQueries,
+) ([]classentry.School, error) {
+	var schools []classentry.School
 	for _, testSchool := range t.schoolIDToschooolForTest {
 		schools = append(schools, testSchool.school)
 	}
@@ -92,8 +92,8 @@ func (t *fileTestsBanner) ListValidSchools(
 func (t *fileTestsBanner) StageAllClasses(
 	logger log.Entry,
 	ctx context.Context,
-	q *db.Queries,
-	term db.TermCollection,
+	q *classentry.EntryQueries,
+	term classentry.TermCollection,
 	fullCollection bool,
 ) error {
 	testSchool, ok := t.schoolIDToschooolForTest[term.SchoolID]
@@ -118,14 +118,28 @@ func (t *fileTestsBanner) StageAllClasses(
 	}
 	logger.Infof("Adding %d sections from %s", len(sections.Sections), jsonPath)
 	classData := banner.ProcessSectionSearch(sections, term)
-	err = db.InsertClassData(
+
+	professors := make([]classentry.UpsertProfessorsParams, len(classData.Professors))
+	i := 0
+	for _, professor := range classData.Professors {
+		professors[i] = professor
+		i += 1
+	}
+
+	courses := make([]classentry.UpsertCoursesParams, len(classData.Courses))
+	i = 0
+	for _, course := range classData.Courses {
+		courses[i] = course
+		i += 1
+	}
+
+	err = q.InsertClassData(
 		&logger,
 		ctx,
-		q,
 		classData.MeetingTimes,
 		classData.DbSections,
-		classData.Professors,
-		classData.Courses,
+		professors,
+		courses,
 	)
 	if err != nil {
 		return err
@@ -137,12 +151,12 @@ func (t *fileTestsBanner) StageAllClasses(
 func (t *fileTestsBanner) GetTermCollections(
 	logger log.Entry,
 	ctx context.Context,
-	school db.School,
-) ([]db.UpsertTermCollectionParams, error) {
-	var termCollections []db.UpsertTermCollectionParams
+	school classentry.School,
+) ([]classentry.UpsertTermCollectionParams, error) {
+	var termCollections []classentry.UpsertTermCollectionParams
 	for _, testSchool := range t.schoolIDToschooolForTest {
 		for _, termToAdd := range testSchool.termsCollectionIDToTermForAdd {
-			termCollections = append(termCollections, db.UpsertTermCollectionParams{
+			termCollections = append(termCollections, classentry.UpsertTermCollectionParams{
 				ID:              termToAdd.term.ID,
 				SchoolID:        termToAdd.term.SchoolID,
 				Year:            termToAdd.term.Year,
@@ -157,16 +171,16 @@ func (t *fileTestsBanner) GetTermCollections(
 }
 
 func TestBannerFileInput(t *testing.T) {
-	err := datatest.SetupDb()
+	err := dbhelpers.SetupDb()
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	maristSchool := db.School{
+	maristSchool := classentry.School{
 		ID:   "marist",
 		Name: "Marist University",
 	}
-	termCollection := db.TermCollection{
+	termCollection := classentry.TermCollection{
 		ID:       "202440",
 		SchoolID: maristSchool.ID,
 		Year:     2024,

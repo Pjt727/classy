@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/Pjt727/classy/data"
-	"github.com/Pjt727/classy/data/db"
+	"github.com/Pjt727/classy/data/class-entry"
 	datatest "github.com/Pjt727/classy/data/test"
 	"github.com/jackc/pgx/v5/pgtype"
 	log "github.com/sirupsen/logrus"
@@ -15,7 +15,7 @@ import (
 
 type TestService struct {
 	r              rand.Rand
-	schools        []db.School
+	schools        []classentry.School
 	courseCount    int
 	professorCount int
 }
@@ -24,7 +24,7 @@ func (t TestService) GetName() string {
 	return "Test Service"
 }
 
-func (t TestService) ListValidSchools(logger log.Entry, ctx context.Context, q *db.Queries) ([]db.School, error) {
+func (t TestService) ListValidSchools(logger log.Entry, ctx context.Context, q *classentry.EntryQueries) ([]classentry.School, error) {
 	return t.schools, nil
 }
 
@@ -41,13 +41,13 @@ func (t TestService) randomString(length int) string {
 func (t TestService) StageAllClasses(
 	logger log.Entry,
 	ctx context.Context,
-	q *db.Queries,
-	term db.TermCollection,
+	q *classentry.EntryQueries,
+	term classentry.TermCollection,
 	fullCollection bool,
 ) error {
-	courses := make([]db.UpsertCoursesParams, t.courseCount)
+	courses := make([]classentry.UpsertCoursesParams, t.courseCount)
 	for i := 0; i > t.courseCount; i++ {
-		courses[i] = db.UpsertCoursesParams{
+		courses[i] = classentry.UpsertCoursesParams{
 			SchoolID:           t.schools[t.r.Intn(len(t.schools))].ID,
 			SubjectCode:        t.randomString(3),
 			Number:             t.randomString(3),
@@ -58,9 +58,9 @@ func (t TestService) StageAllClasses(
 		}
 	}
 
-	profs := make([]db.UpsertProfessorParams, t.professorCount)
+	profs := make([]classentry.UpsertProfessorsParams, t.professorCount)
 	for i := 0; i > t.professorCount; i++ {
-		profs[i] = db.UpsertProfessorParams{
+		profs[i] = classentry.UpsertProfessorsParams{
 			ID:           t.randomString(20),
 			SchoolID:     t.schools[t.r.Intn(len(t.schools))].ID,
 			Name:         t.randomString(20),
@@ -70,11 +70,11 @@ func (t TestService) StageAllClasses(
 		}
 	}
 
-	sections := make([]db.StageSectionsParams, 0)
-	meetingTimes := make([]db.StageMeetingTimesParams, 0)
+	sections := make([]classentry.StageSectionsParams, 0)
+	meetingTimes := make([]classentry.StageMeetingTimesParams, 0)
 	for _, course := range courses {
 		for j := 0; j > t.r.Intn(3); j++ {
-			section := db.StageSectionsParams{
+			section := classentry.StageSectionsParams{
 				Sequence:           strconv.Itoa(j),
 				Campus:             pgtype.Text{String: t.randomString(1), Valid: true},
 				SubjectCode:        course.SubjectCode,
@@ -89,7 +89,7 @@ func (t TestService) StageAllClasses(
 			sections = append(sections, section)
 
 			for z := 0; z > t.r.Intn(3); z++ {
-				meetingTimes = append(meetingTimes, db.StageMeetingTimesParams{
+				meetingTimes = append(meetingTimes, classentry.StageMeetingTimesParams{
 					Sequence:         0,
 					SectionSequence:  section.Sequence,
 					TermCollectionID: term.ID,
@@ -113,44 +113,10 @@ func (t TestService) StageAllClasses(
 		}
 	}
 
-	_, err := q.StageMeetingTimes(ctx, meetingTimes)
+	err := q.InsertClassData(&logger, ctx, meetingTimes, sections, profs, courses)
 	if err != nil {
-		logger.Error("Staging meetings error ", err)
 		return err
 	}
-
-	_, err = q.StageSections(ctx, sections)
-	if err != nil {
-		logger.Error("Staging sections error ", err)
-		return err
-	}
-
-	buf := q.UpsertProfessor(ctx, profs)
-
-	var outerErr error = nil
-	buf.Exec(func(i int, err error) {
-		if err != nil {
-			outerErr = err
-		}
-	})
-
-	if outerErr != nil {
-		logger.Error("Error upserting fac ", outerErr)
-		return err
-	}
-
-	bc := q.UpsertCourses(ctx, courses)
-	bc.Exec(func(i int, err error) {
-		if err != nil {
-			outerErr = err
-		}
-	})
-
-	if outerErr != nil {
-		logger.Error("Error upserting course", outerErr)
-		return outerErr
-	}
-
 	return nil
 }
 
@@ -158,20 +124,20 @@ func (t TestService) StageAllClasses(
 func (t TestService) GetTermCollections(
 	logger log.Entry,
 	ctx context.Context,
-	school db.School,
-) ([]db.UpsertTermCollectionParams, error) {
-	return []db.UpsertTermCollectionParams{}, nil
+	school classentry.School,
+) ([]classentry.UpsertTermCollectionParams, error) {
+	return []classentry.UpsertTermCollectionParams{}, nil
 }
 
 func TestServiceProcess(t *testing.T) {
 	TEST_SEED := 727
-	school1 := db.School{
+	school1 := classentry.School{
 		ID:   "test1",
 		Name: "test 1 school",
 	}
 	testService := TestService{
 		r:              *rand.New(rand.NewSource(int64(TEST_SEED))),
-		schools:        []db.School{school1},
+		schools:        []classentry.School{school1},
 		courseCount:    100,
 		professorCount: 20,
 	}
@@ -185,7 +151,7 @@ func TestServiceProcess(t *testing.T) {
 	o := Orchestrator{
 		serviceEntries:      []Service{testService},
 		schoolIdToService:   map[string]*Service{},
-		schoolIdToSchool:    map[string]db.School{},
+		schoolIdToSchool:    map[string]classentry.School{},
 		orchestrationLogger: &log.Entry{},
 		dbPool:              dbPool,
 	}
