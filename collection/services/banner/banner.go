@@ -19,6 +19,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/Pjt727/classy/data/db"
+	data_test "github.com/Pjt727/classy/data/test"
 	"github.com/jackc/pgx/v5/pgtype"
 	log "github.com/sirupsen/logrus"
 )
@@ -196,6 +197,7 @@ type section struct {
 	CourseTitle           string            `json:"courseTitle"`
 	SeatsAvailable        int32             `json:"seatsAvailable"`
 	MaximumEnrollment     int32             `json:"maximumEnrollment"`
+	Enrollment            int32             `json:"enrollment"`
 	InstructionalMethod   string            `json:"instructionalMethod"`
 	OpenSection           bool              `json:"openSection"`
 	MeetingFaculty        []meetingsFaculty `json:"meetingsFaculty"`
@@ -466,8 +468,8 @@ func (b *bannerSchool) insertGroupOfSections(
 	if fullCollection {
 		var wg sync.WaitGroup
 		var mu sync.Mutex
-		wg.Add(len(classData.courseReferenceNumbers))
-		for courseId, referenceNumber := range classData.courseReferenceNumbers {
+		wg.Add(len(classData.CourseReferenceNumbers))
+		for courseId, referenceNumber := range classData.CourseReferenceNumbers {
 			go func() {
 				defer wg.Done()
 				courseDesc, err := b.getCourseDetails(
@@ -484,12 +486,12 @@ func (b *bannerSchool) insertGroupOfSections(
 				}
 				mu.Lock()
 				defer mu.Unlock()
-				course := classData.courses[courseId]
+				course := classData.Courses[courseId]
 				course.Description = pgtype.Text{
 					String: strings.TrimSpace(strings.TrimSpace(*courseDesc)),
 					Valid:  true,
 				}
-				classData.courses[courseId] = course
+				classData.Courses[courseId] = course
 
 			}()
 		}
@@ -501,10 +503,10 @@ func (b *bannerSchool) insertGroupOfSections(
 		logger,
 		ctx,
 		q,
-		classData.meetingTimes,
-		classData.dbSections,
-		classData.professors,
-		classData.courses,
+		classData.MeetingTimes,
+		classData.DbSections,
+		classData.Professors,
+		classData.Courses,
 	)
 
 	if err != nil {
@@ -512,17 +514,17 @@ func (b *bannerSchool) insertGroupOfSections(
 		return err
 	}
 
-	logger.Infof("Successfully added %d sections and their related information", len(classData.dbSections))
+	logger.Infof("Successfully added %d sections and their related information", len(classData.DbSections))
 
 	return nil
 }
 
 type classData struct {
-	dbSections             []db.StageSectionsParams
-	meetingTimes           []db.StageMeetingTimesParams
-	professors             map[string]db.UpsertProfessorParams
-	courses                map[string]db.UpsertCoursesParams
-	courseReferenceNumbers map[string]string
+	DbSections             []db.StageSectionsParams
+	MeetingTimes           []db.StageMeetingTimesParams
+	Professors             map[string]db.UpsertProfessorParams
+	Courses                map[string]db.UpsertCoursesParams
+	CourseReferenceNumbers map[string]string
 }
 
 func processSectionSearch(sectionData sectionSearch, termCollection db.TermCollection) classData {
@@ -622,7 +624,7 @@ func processSectionSearch(sectionData sectionSearch, termCollection db.TermColle
 			CourseNumber:       s.CourseNumber,
 			SchoolID:           termCollection.SchoolID,
 			TermCollectionID:   termCollection.ID,
-			Enrollment:         pgtype.Int4{Int32: s.MaximumEnrollment, Valid: true},
+			Enrollment:         pgtype.Int4{Int32: s.Enrollment, Valid: true},
 			MaxEnrollment:      pgtype.Int4{Int32: s.MaximumEnrollment, Valid: true},
 			InstructionMethod:  pgtype.Text{String: s.InstructionalMethod, Valid: true},
 			PrimaryProfessorID: primaryProf,
@@ -642,11 +644,11 @@ func processSectionSearch(sectionData sectionSearch, termCollection db.TermColle
 		dbSections = append(dbSections, dbSection)
 	}
 	return classData{
-		dbSections:             dbSections,
-		meetingTimes:           meetingTimes,
-		professors:             professors,
-		courses:                courses,
-		courseReferenceNumbers: courseReferenceNumbers,
+		DbSections:             dbSections,
+		MeetingTimes:           meetingTimes,
+		Professors:             professors,
+		Courses:                courses,
+		CourseReferenceNumbers: courseReferenceNumbers,
 	}
 }
 
@@ -656,6 +658,7 @@ func (b *bannerSchool) getCourseDetails(
 	termCollection db.TermCollection,
 	referenceNumber string,
 ) (*string, error) {
+	data_test.SetupDb()
 	if err := b.RequestLimiter.Wait(context.Background()); err != nil {
 		logger.Error("Limiter error:", err)
 		return nil, err

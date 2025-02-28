@@ -1,4 +1,3 @@
-DROP TYPE IF EXISTS sync_kind;
 CREATE TYPE sync_kind AS ENUM ('update', 'delete', 'insert');
 
 CREATE TABLE historic_class_information (
@@ -19,8 +18,9 @@ CREATE TYPE sync_change AS (
     relevant_fields jsonb
 );
 
-CREATE OR REPLACE FUNCTION ordered_set_transition(state internal, next_element sync_change)
-RETURNS internal
+
+CREATE OR REPLACE FUNCTION ordered_set_transition(state sync_change, next_element sync_change)
+RETURNS sync_change
 AS $$
 DECLARE
     current_sync_kind sync_kind;
@@ -30,12 +30,15 @@ DECLARE
 BEGIN
     next_sync_kind := next_element.sync_action;
     next_relevant_fields := next_element.relevant_fields;
-    IF STATE = NULL THEN
+
+    -- Handle NULL state
+    IF state IS NULL THEN
         IF next_sync_kind != 'insert' THEN
             RAISE EXCEPTION 'operation after next must be insert';
         END IF;
         RETURN next_element;
     END IF;
+
     current_sync_kind := (state).sync_action;
     current_relevant_fields := (state).relevant_fields;
 
@@ -50,6 +53,7 @@ BEGIN
         ELSIF next_sync_kind = 'delete' THEN
             RETURN NULL;
         END IF;
+
     -- update + insert = impossible
     -- update + update = new update with updated fields
     -- update + delete = no operation (null)
@@ -61,6 +65,7 @@ BEGIN
         ELSIF next_sync_kind = 'delete' THEN
             RETURN NULL;
         END IF;
+
     -- delete + insert = just do the insert
     -- delete + update = impossible
     -- delete + delete = impossible
@@ -73,16 +78,13 @@ BEGIN
             RAISE EXCEPTION 'Cannot have two deletes in a row';
         END IF;
     END IF;
-
-    -- If no combination is needed, just return the next element
-    RETURN next_element;
+    RAISE EXCEPTION 'Unexpect enum';
 END;
 $$ LANGUAGE plpgsql;
 
-
-CREATE AGGREGATE combined_json (sync_change ORDER BY anyelement)
+-- Define the aggregate
+CREATE AGGREGATE combined_json (sync_change)
 (
     sfunc = ordered_set_transition,
-    stype = internal
+    stype = sync_change
 );
-

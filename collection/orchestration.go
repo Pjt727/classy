@@ -113,11 +113,11 @@ func (o Orchestrator) GetSchoolById(schoolId string) (db.School, bool) {
 	return school, ok
 }
 
-func (o Orchestrator) UpsertAllSchools(ctx context.Context) {
+func (o Orchestrator) UpsertAllSchools(ctx context.Context) error {
 	tx, err := o.dbPool.Begin(ctx)
 	if err != nil {
 		o.orchestrationLogger.Error("Couldn't begin transaction", err)
-		return
+		return err
 	}
 	q := db.New(o.dbPool).WithTx(tx)
 	for _, school := range o.schoolIdToSchool {
@@ -130,13 +130,15 @@ func (o Orchestrator) UpsertAllSchools(ctx context.Context) {
 		if err != nil {
 			o.orchestrationLogger.Error("Couldn't add school", err)
 			tx.Rollback(ctx)
-			return
+			return err
 		}
 	}
 	tx.Commit(ctx)
+	return nil
 }
 
 func (o Orchestrator) UpsertSchoolTerms(ctx context.Context, logger log.Entry, school db.School) error {
+	logger.Info("starting collection and db addition of colleciton terms")
 	service, ok := o.schoolIdToService[school.ID]
 	if !ok {
 		return errors.New(fmt.Sprintf("Do not know how to scrape %s. No service was found.", school.ID))
@@ -147,9 +149,9 @@ func (o Orchestrator) UpsertSchoolTerms(ctx context.Context, logger log.Entry, s
 	}
 	defer tx.Commit(ctx)
 	q := db.New(tx)
-	logger.Tracef(`starting collection terms`)
+	logger.Tracef(`starting collection from service of terms`)
 	termCollections, err := (*service).GetTermCollections(logger, ctx, school)
-	logger.Tracef(`finished collection terms`)
+	logger.Tracef(`finished collecting %d collection terms`, len(termCollections))
 	if err != nil {
 		logger.Trace(`propagating commit err: `, err)
 		tx.Rollback(ctx)
@@ -195,12 +197,12 @@ func (o Orchestrator) UpsertSchoolTerms(ctx context.Context, logger log.Entry, s
 	if err != nil {
 		return err
 	}
-	logger.Tracef(`finished adding %d collection terms to db`, len(termCollections))
+	logger.Infof(`finished adding %d collection terms to db`, len(termCollections))
 	tx.Commit(ctx)
 	return nil
 }
 
-func (o Orchestrator) UpsertAllTerms(ctx context.Context) {
+func (o Orchestrator) UpsertAllTerms(ctx context.Context) error {
 	var wg sync.WaitGroup
 	errCh := make(chan error)
 	numberOfWorkers := len(o.schoolIdToService)
@@ -232,10 +234,13 @@ func (o Orchestrator) UpsertAllTerms(ctx context.Context) {
 	}
 
 	o.orchestrationLogger.Infof(`Added %d school's terms successfully`, numberOfWorkers-errorCount)
-
+	if errorCount > 0 {
+		return errors.New(fmt.Sprintf("There were %d school errors", errorCount))
+	}
+	return nil
 }
 
-func (o Orchestrator) UpdateAllSectionsOfSchool(ctx context.Context, termCollection db.TermCollection) {
+func (o Orchestrator) UpdateAllSectionsOfSchool(ctx context.Context, termCollection db.TermCollection) error {
 	// there might be a good way to easily sandbox schoools to what they should change
 	//    could make a wrapping q client with the state of the school and then write wrappers
 	//    for each of the functions
@@ -247,7 +252,7 @@ func (o Orchestrator) UpdateAllSectionsOfSchool(ctx context.Context, termCollect
 	})
 	if !ok {
 		updateLogger.Error("Skipping update school... school not found")
-		return
+		return errors.New(fmt.Sprintf("Could not find service for shool id %s", termCollection.SchoolID))
 	}
 	school := o.schoolIdToSchool[termCollection.SchoolID]
 	updateLogger = o.orchestrationLogger.WithFields(log.Fields{
@@ -258,18 +263,18 @@ func (o Orchestrator) UpdateAllSectionsOfSchool(ctx context.Context, termCollect
 	q := db.New(o.dbPool)
 	if err := q.DeleteCoursesMeetingsStaging(ctx, termCollection); err != nil {
 		updateLogger.Error("Could not ready staging tables", err)
-		return
+		return err
 	}
 	// defer q.CleanupCoursesMeetingsStaging(ctx)
 	if err := (*service).StageAllClasses(*updateLogger, ctx, q, termCollection, false); err != nil {
-		updateLogger.Error("Update sections aborting any staged sections/ meetings", updateLogger)
-		return
+		updateLogger.Error("Update sections failed aborting any staged sections/ meetings", err)
+		return err
 	}
 	tx, err := o.dbPool.Begin(ctx)
 
 	if err != nil {
 		updateLogger.Error("couldn't begin transaction: ", err)
-		return
+		return err
 	}
 	defer tx.Commit(ctx)
 	q = db.New(o.dbPool).WithTx(tx)
@@ -277,7 +282,8 @@ func (o Orchestrator) UpdateAllSectionsOfSchool(ctx context.Context, termCollect
 	if err != nil {
 		updateLogger.Error("Failed moving courses: ", err)
 		tx.Rollback(ctx)
-		return
+		return err
 	}
 	updateLogger.Infof("updated %d meetings and sections", changesCount)
+	return nil
 }

@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 
+	"github.com/Pjt727/classy/collection/projectpath"
 	"github.com/joho/godotenv"
 	log "github.com/sirupsen/logrus"
 
@@ -18,10 +20,11 @@ var (
 )
 
 func init() {
-	err := godotenv.Load()
+
+	err := godotenv.Load(filepath.Join(projectpath.Root, ".env"))
 
 	if err != nil {
-		panic("Error loading .env file")
+		panic(fmt.Sprint("Error loading .env file: ", err))
 	}
 }
 

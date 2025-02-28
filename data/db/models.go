@@ -55,6 +55,49 @@ func (ns NullSeasonEnum) Value() (driver.Value, error) {
 	return string(ns.SeasonEnum), nil
 }
 
+type SyncKind string
+
+const (
+	SyncKindUpdate SyncKind = "update"
+	SyncKindDelete SyncKind = "delete"
+	SyncKindInsert SyncKind = "insert"
+)
+
+func (e *SyncKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SyncKind(s)
+	case string:
+		*e = SyncKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SyncKind: %T", src)
+	}
+	return nil
+}
+
+type NullSyncKind struct {
+	SyncKind SyncKind `json:"sync_kind"`
+	Valid    bool     `json:"valid"` // Valid is true if SyncKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSyncKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.SyncKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SyncKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSyncKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SyncKind), nil
+}
+
 type Course struct {
 	SchoolID           string      `json:"school_id"`
 	SubjectCode        string      `json:"subject_code"`
@@ -71,6 +114,16 @@ type CourseHeuristic struct {
 	SchoolID           string             `json:"school_id"`
 	PreviousProfessors []PartialProfessor `json:"previous_professors"`
 	PreviousTerms      []PartialTerm      `json:"previous_terms"`
+}
+
+type HistoricClassInformation struct {
+	SchoolID       string             `json:"school_id"`
+	TableName      string             `json:"table_name"`
+	CompositeHash  string             `json:"composite_hash"`
+	InputAt        pgtype.Timestamptz `json:"input_at"`
+	PkFields       []byte             `json:"pk_fields"`
+	SyncAction     NullSyncKind       `json:"sync_action"`
+	RelevantFields []byte             `json:"relevant_fields"`
 }
 
 type MeetingTime struct {

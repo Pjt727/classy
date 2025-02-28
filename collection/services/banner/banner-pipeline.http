@@ -25,7 +25,7 @@ GET https://{{hostname}}/StudentRegistrationSsb/ssb/term/termSelection?mode=sear
 POST https://{{hostname}}/StudentRegistrationSsb/ssb/term/search?mode=search
 Content-Type: application/x-www-form-urlencoded
 Accept: application/json
-Cookie: JSESSIONID={{REQUEST_SEARCH_PAGE.response.cookies.JSESSIONID.value}};
+Cookie: JSESSIONID={{REQUEST_SEARCH_PAGE.response.cookies.JSESSIONID.value}}
 
 term={{term}}
 
