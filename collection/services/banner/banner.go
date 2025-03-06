@@ -462,7 +462,7 @@ func (b *bannerSchool) insertGroupOfSections(
 		logger.Error("Error decoding sections: ", err)
 		return err
 	}
-	classData := processSectionSearch(sections, termCollection)
+	classData := processSectionSearch(sections)
 
 	// add all of the coures
 	if fullCollection {
@@ -540,7 +540,7 @@ type classData struct {
 	CourseReferenceNumbers map[string]string
 }
 
-func processSectionSearch(sectionData sectionSearch, termCollection classentry.TermCollection) classData {
+func processSectionSearch(sectionData sectionSearch) classData {
 	var sections []classentry.Section
 	var meetingTimes []classentry.MeetingTime
 	professors := make(map[string]classentry.Professor)

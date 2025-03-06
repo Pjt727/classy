@@ -32,7 +32,9 @@ type EntryQueries struct {
 
 func (q *EntryQueries) WithTx(tx pgx.Tx) *EntryQueries {
 	return &EntryQueries{
-		q: q.q.WithTx(tx),
+		q:                q.q.WithTx(tx),
+		schoolID:         q.schoolID,
+		termCollectionID: q.termCollectionID,
 	}
 }
 

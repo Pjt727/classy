@@ -8,7 +8,7 @@ import (
 
 	"github.com/Pjt727/classy/data"
 	"github.com/Pjt727/classy/data/class-entry"
-	datatest "github.com/Pjt727/classy/data/test"
+	datatest "github.com/Pjt727/classy/data/testdb"
 	"github.com/jackc/pgx/v5/pgtype"
 	log "github.com/sirupsen/logrus"
 )

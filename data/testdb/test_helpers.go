@@ -1,4 +1,4 @@
-package dbhelpers
+package testdb
 
 import (
 	"os"

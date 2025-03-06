@@ -117,6 +117,7 @@ SET
     max_enrollment = EXCLUDED.max_enrollment,
     instruction_method = EXCLUDED.instruction_method,
     primary_professor_id = EXCLUDED.primary_professor_id
+-- reducing write locks makes this way faster
 WHERE sections.campus != EXCLUDED.campus
     OR sections.enrollment != EXCLUDED.enrollment
     OR sections.max_enrollment != EXCLUDED.max_enrollment
@@ -172,6 +173,7 @@ SET
     is_friday = EXCLUDED.is_friday,
     is_saturday = EXCLUDED.is_saturday,
     is_sunday = EXCLUDED.is_sunday
+-- reducing write locks makes this way faster
 WHERE meeting_times.start_date != EXCLUDED.start_date
     OR meeting_times.end_date != EXCLUDED.end_date
     OR meeting_times.meeting_type != EXCLUDED.meeting_type
