@@ -24,7 +24,7 @@ func (t TestService) GetName() string {
 	return "Test Service"
 }
 
-func (t TestService) ListValidSchools(logger log.Entry, ctx context.Context, q *classentry.EntryQueries) ([]classentry.School, error) {
+func (t TestService) ListValidSchools(logger log.Entry, ctx context.Context) ([]classentry.School, error) {
 	return t.schools, nil
 }
 
@@ -42,13 +42,13 @@ func (t TestService) StageAllClasses(
 	logger log.Entry,
 	ctx context.Context,
 	q *classentry.EntryQueries,
-	term classentry.TermCollection,
+	schoolID string,
+	termCollection classentry.TermCollection,
 	fullCollection bool,
 ) error {
-	courses := make([]classentry.UpsertCoursesParams, t.courseCount)
+	courses := make([]classentry.Course, t.courseCount)
 	for i := 0; i > t.courseCount; i++ {
-		courses[i] = classentry.UpsertCoursesParams{
-			SchoolID:           t.schools[t.r.Intn(len(t.schools))].ID,
+		courses[i] = classentry.Course{
 			SubjectCode:        t.randomString(3),
 			Number:             t.randomString(3),
 			SubjectDescription: pgtype.Text{String: t.randomString(8), Valid: t.r.Intn(2) == 0},
@@ -58,11 +58,10 @@ func (t TestService) StageAllClasses(
 		}
 	}
 
-	profs := make([]classentry.UpsertProfessorsParams, t.professorCount)
+	profs := make([]classentry.Professor, t.professorCount)
 	for i := 0; i > t.professorCount; i++ {
-		profs[i] = classentry.UpsertProfessorsParams{
+		profs[i] = classentry.Professor{
 			ID:           t.randomString(20),
-			SchoolID:     t.schools[t.r.Intn(len(t.schools))].ID,
 			Name:         t.randomString(20),
 			EmailAddress: pgtype.Text{String: t.randomString(20), Valid: t.r.Intn(5) == 0},
 			FirstName:    pgtype.Text{String: t.randomString(20), Valid: t.r.Intn(3) == 0},
@@ -70,17 +69,15 @@ func (t TestService) StageAllClasses(
 		}
 	}
 
-	sections := make([]classentry.StageSectionsParams, 0)
-	meetingTimes := make([]classentry.StageMeetingTimesParams, 0)
+	sections := make([]classentry.Section, 0)
+	meetingTimes := make([]classentry.MeetingTime, 0)
 	for _, course := range courses {
 		for j := 0; j > t.r.Intn(3); j++ {
-			section := classentry.StageSectionsParams{
+			section := classentry.Section{
 				Sequence:           strconv.Itoa(j),
 				Campus:             pgtype.Text{String: t.randomString(1), Valid: true},
 				SubjectCode:        course.SubjectCode,
 				CourseNumber:       course.Number,
-				SchoolID:           term.SchoolID,
-				TermCollectionID:   term.ID,
 				Enrollment:         pgtype.Int4{Int32: int32(t.r.Intn(10) + 10), Valid: true},
 				MaxEnrollment:      pgtype.Int4{Int32: int32(t.r.Intn(10) + 10), Valid: true},
 				InstructionMethod:  pgtype.Text{String: t.randomString(1), Valid: true},
@@ -89,25 +86,23 @@ func (t TestService) StageAllClasses(
 			sections = append(sections, section)
 
 			for z := 0; z > t.r.Intn(3); z++ {
-				meetingTimes = append(meetingTimes, classentry.StageMeetingTimesParams{
-					Sequence:         0,
-					SectionSequence:  section.Sequence,
-					TermCollectionID: term.ID,
-					SubjectCode:      course.SubjectCode,
-					CourseNumber:     course.Number,
-					SchoolID:         term.SchoolID,
-					StartDate:        pgtype.Timestamp{},
-					EndDate:          pgtype.Timestamp{},
-					MeetingType:      pgtype.Text{},
-					StartMinutes:     pgtype.Time{},
-					EndMinutes:       pgtype.Time{},
-					IsMonday:         t.r.Intn(2) == 0,
-					IsTuesday:        t.r.Intn(2) == 0,
-					IsWednesday:      t.r.Intn(2) == 0,
-					IsThursday:       t.r.Intn(2) == 0,
-					IsFriday:         t.r.Intn(2) == 0,
-					IsSaturday:       t.r.Intn(2) == 0,
-					IsSunday:         t.r.Intn(2) == 0,
+				meetingTimes = append(meetingTimes, classentry.MeetingTime{
+					Sequence:        0,
+					SectionSequence: section.Sequence,
+					SubjectCode:     course.SubjectCode,
+					CourseNumber:    course.Number,
+					StartDate:       pgtype.Timestamp{},
+					EndDate:         pgtype.Timestamp{},
+					MeetingType:     pgtype.Text{},
+					StartMinutes:    pgtype.Time{},
+					EndMinutes:      pgtype.Time{},
+					IsMonday:        t.r.Intn(2) == 0,
+					IsTuesday:       t.r.Intn(2) == 0,
+					IsWednesday:     t.r.Intn(2) == 0,
+					IsThursday:      t.r.Intn(2) == 0,
+					IsFriday:        t.r.Intn(2) == 0,
+					IsSaturday:      t.r.Intn(2) == 0,
+					IsSunday:        t.r.Intn(2) == 0,
 				})
 			}
 		}
@@ -125,8 +120,8 @@ func (t TestService) GetTermCollections(
 	logger log.Entry,
 	ctx context.Context,
 	school classentry.School,
-) ([]classentry.UpsertTermCollectionParams, error) {
-	return []classentry.UpsertTermCollectionParams{}, nil
+) ([]classentry.TermCollection, error) {
+	return []classentry.TermCollection{}, nil
 }
 
 func TestServiceProcess(t *testing.T) {

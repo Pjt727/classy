@@ -64,5 +64,4 @@ AND m.section_sequence = '111';
 
 SELECT composite_hash, combined_json((sync_action, relevant_fields)::sync_change ORDER BY input_at)
 FROM historic_class_information 
-WHERE input_at > @last_sync_time
 GROUP BY composite_hash;

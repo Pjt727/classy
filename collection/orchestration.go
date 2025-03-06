@@ -27,7 +27,6 @@ type Service interface {
 	ListValidSchools(
 		logger log.Entry,
 		ctx context.Context,
-		q *classentry.EntryQueries,
 	) ([]classentry.School, error)
 
 	// Should put ALL sections / meetings in the staging table as well as make
@@ -38,7 +37,8 @@ type Service interface {
 		logger log.Entry,
 		ctx context.Context,
 		q *classentry.EntryQueries,
-		term classentry.TermCollection,
+		schoolID string,
+		termCollection classentry.TermCollection,
 		fullCollection bool,
 	) error
 
@@ -47,7 +47,7 @@ type Service interface {
 		logger log.Entry,
 		ctx context.Context,
 		school classentry.School,
-	) ([]classentry.UpsertTermCollectionParams, error)
+	) ([]classentry.TermCollection, error)
 }
 
 type Orchestrator struct {
@@ -100,8 +100,7 @@ func CreateOrchestrator(services []Service) (Orchestrator, error) {
 func (o Orchestrator) initMappings(ctx context.Context) {
 	for _, service := range o.serviceEntries {
 		serviceLogger := o.orchestrationLogger.WithField("service", service.GetName())
-		q := classentry.NewEntryQuery(o.dbPool)
-		schools, err := service.ListValidSchools(*serviceLogger, ctx, q)
+		schools, err := service.ListValidSchools(*serviceLogger, ctx)
 		if err != nil {
 			serviceLogger.Warn("Skipping school to service mapping because error: ", err)
 			continue
@@ -168,8 +167,8 @@ func (o Orchestrator) UpsertSchoolTerms(ctx context.Context, logger log.Entry, s
 	terms := make([]db.UpsertTermParams, len(termCollections))
 	for i, termCollection := range termCollections {
 		terms[i] = db.UpsertTermParams{
-			Year:   termCollection.Year,
-			Season: termCollection.Season,
+			Year:   termCollection.Term.Year,
+			Season: termCollection.Term.Season,
 		}
 	}
 
@@ -192,7 +191,19 @@ func (o Orchestrator) UpsertSchoolTerms(ctx context.Context, logger log.Entry, s
 		return err
 	}
 
-	dtc := q.UpsertTermCollection(ctx, termCollections)
+	dbTermCollections := make([]db.UpsertTermCollectionParams, len(termCollections))
+	for i, t := range termCollections {
+		dbTermCollections[i] = db.UpsertTermCollectionParams{
+			ID:              t.ID,
+			SchoolID:        school.ID,
+			Year:            t.Term.Year,
+			Season:          t.Term.Season,
+			Name:            t.Name,
+			StillCollecting: t.StillCollecting,
+		}
+	}
+
+	dtc := q.UpsertTermCollection(ctx, dbTermCollections)
 	dtc.Exec(func(i int, e error) {
 		if e != nil {
 			tx.Rollback(ctx)
@@ -266,13 +277,22 @@ func (o Orchestrator) UpdateAllSectionsOfSchool(ctx context.Context, termCollect
 		"school":         school,
 		"termCollection": termCollection,
 	})
-	q := classentry.NewEntryQuery(o.dbPool)
-	if err := q.DeleteCoursesMeetingsStaging(ctx, termCollection); err != nil {
+	q := classentry.NewEntryQuery(o.dbPool, termCollection.SchoolID, &termCollection.ID)
+	classEntryTermCollection := classentry.TermCollection{
+		ID: termCollection.ID,
+		Term: classentry.Term{
+			Year:   termCollection.Year,
+			Season: termCollection.Season,
+		},
+		Name:            termCollection.Name,
+		StillCollecting: termCollection.StillCollecting,
+	}
+	if err := q.DeleteCoursesMeetingsStaging(ctx, classEntryTermCollection); err != nil {
 		updateLogger.Error("Could not ready staging tables", err)
 		return err
 	}
 	// defer q.CleanupCoursesMeetingsStaging(ctx)
-	if err := (*service).StageAllClasses(*updateLogger, ctx, q, termCollection, false); err != nil {
+	if err := (*service).StageAllClasses(*updateLogger, ctx, q, school.ID, classEntryTermCollection, false); err != nil {
 		updateLogger.Error("Update sections failed aborting any staged sections/ meetings", err)
 		return err
 	}
@@ -284,8 +304,8 @@ func (o Orchestrator) UpdateAllSectionsOfSchool(ctx context.Context, termCollect
 	}
 	defer tx.Commit(ctx)
 
-	q = classentry.NewEntryQuery(o.dbPool).WithTx(tx)
-	changesCount, err := q.MoveStagedCoursesAndMeetings(ctx, termCollection)
+	q = q.WithTx(tx)
+	changesCount, err := q.MoveStagedCoursesAndMeetings(ctx, classEntryTermCollection)
 	if err != nil {
 		updateLogger.Error("Failed moving courses: ", err)
 		tx.Rollback(ctx)

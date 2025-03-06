@@ -13,6 +13,7 @@ import (
 	"github.com/Pjt727/classy/collection/projectpath"
 	"github.com/Pjt727/classy/collection/services/banner"
 	"github.com/Pjt727/classy/data/class-entry"
+	"github.com/Pjt727/classy/data/db"
 	dbhelpers "github.com/Pjt727/classy/data/test"
 	"github.com/jackc/pgx/v5/pgtype"
 	log "github.com/sirupsen/logrus"
@@ -80,7 +81,6 @@ func (t *fileTestsBanner) GetName() string {
 func (t *fileTestsBanner) ListValidSchools(
 	logger log.Entry,
 	ctx context.Context,
-	q *classentry.EntryQueries,
 ) ([]classentry.School, error) {
 	var schools []classentry.School
 	for _, testSchool := range t.schoolIDToschooolForTest {
@@ -93,16 +93,21 @@ func (t *fileTestsBanner) StageAllClasses(
 	logger log.Entry,
 	ctx context.Context,
 	q *classentry.EntryQueries,
-	term classentry.TermCollection,
+	schoolID string,
+	termCollection classentry.TermCollection,
 	fullCollection bool,
 ) error {
-	testSchool, ok := t.schoolIDToschooolForTest[term.SchoolID]
+	testSchool, ok := t.schoolIDToschooolForTest[schoolID]
 	if !ok {
 		return errors.New(fmt.Sprint("Could not find school ", testSchool.school.ID))
 	}
-	testTerm, ok := testSchool.termsCollectionIDToTermForAdd[term.ID]
+	testTerm, ok := testSchool.termsCollectionIDToTermForAdd[termCollection.ID]
 	if !ok {
-		return errors.New(fmt.Sprintf("Could not find term test term for term collection id %s with school id %s", term.ID, term.SchoolID))
+		return errors.New(fmt.Sprintf(
+			"Could not find term test term for term collection id %s with school id %s",
+			termCollection.ID,
+			schoolID,
+		))
 	}
 	jsonPath := testTerm.nextJsonPath()
 	// read all of the json files in the directory as section search json results
@@ -117,16 +122,16 @@ func (t *fileTestsBanner) StageAllClasses(
 		return err
 	}
 	logger.Infof("Adding %d sections from %s", len(sections.Sections), jsonPath)
-	classData := banner.ProcessSectionSearch(sections, term)
+	classData := banner.ProcessSectionSearch(sections, termCollection)
 
-	professors := make([]classentry.UpsertProfessorsParams, len(classData.Professors))
+	professors := make([]classentry.Professor, len(classData.Professors))
 	i := 0
 	for _, professor := range classData.Professors {
 		professors[i] = professor
 		i += 1
 	}
 
-	courses := make([]classentry.UpsertCoursesParams, len(classData.Courses))
+	courses := make([]classentry.Course, len(classData.Courses))
 	i = 0
 	for _, course := range classData.Courses {
 		courses[i] = course
@@ -137,7 +142,7 @@ func (t *fileTestsBanner) StageAllClasses(
 		&logger,
 		ctx,
 		classData.MeetingTimes,
-		classData.DbSections,
+		classData.Sections,
 		professors,
 		courses,
 	)
@@ -152,15 +157,16 @@ func (t *fileTestsBanner) GetTermCollections(
 	logger log.Entry,
 	ctx context.Context,
 	school classentry.School,
-) ([]classentry.UpsertTermCollectionParams, error) {
-	var termCollections []classentry.UpsertTermCollectionParams
+) ([]classentry.TermCollection, error) {
+	var termCollections []classentry.TermCollection
 	for _, testSchool := range t.schoolIDToschooolForTest {
 		for _, termToAdd := range testSchool.termsCollectionIDToTermForAdd {
-			termCollections = append(termCollections, classentry.UpsertTermCollectionParams{
-				ID:              termToAdd.term.ID,
-				SchoolID:        termToAdd.term.SchoolID,
-				Year:            termToAdd.term.Year,
-				Season:          termToAdd.term.Season,
+			termCollections = append(termCollections, classentry.TermCollection{
+				ID: termToAdd.term.ID,
+				Term: classentry.Term{
+					Year:   termToAdd.term.Term.Year,
+					Season: termToAdd.term.Term.Season,
+				},
 				Name:            termToAdd.term.Name,
 				StillCollecting: termToAdd.term.StillCollecting,
 			})
@@ -181,10 +187,11 @@ func TestBannerFileInput(t *testing.T) {
 		Name: "Marist University",
 	}
 	termCollection := classentry.TermCollection{
-		ID:       "202440",
-		SchoolID: maristSchool.ID,
-		Year:     2024,
-		Season:   "Fall",
+		ID: "202440",
+		Term: classentry.Term{
+			Year:   2024,
+			Season: "Fall",
+		},
 		Name: pgtype.Text{
 			String: "Fall 2024",
 			Valid:  true,
@@ -231,7 +238,15 @@ func TestBannerFileInput(t *testing.T) {
 	// upload all 13 of the json for the particular school
 
 	for i := 0; i < 13; i++ {
-		err = orch.UpdateAllSectionsOfSchool(context.Background(), termCollection)
+		dbTermCollection := db.TermCollection{
+			ID:              termCollection.ID,
+			SchoolID:        maristSchool.ID,
+			Year:            termCollection.Term.Year,
+			Season:          termCollection.Term.Season,
+			Name:            termCollection.Name,
+			StillCollecting: termCollection.StillCollecting,
+		}
+		err = orch.UpdateAllSectionsOfSchool(context.Background(), dbTermCollection)
 		if err != nil {
 			t.Error(err)
 			return

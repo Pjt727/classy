@@ -63,7 +63,6 @@ func init() {
 func (b *banner) ListValidSchools(
 	logger log.Entry,
 	ctx context.Context,
-	q *classentry.EntryQueries,
 ) ([]classentry.School, error) {
 	schools := make([]classentry.School, len(b.schools))
 	i := 0
@@ -85,8 +84,8 @@ func (b *banner) GetTermCollections(
 	logger log.Entry,
 	ctx context.Context,
 	school classentry.School,
-) ([]classentry.UpsertTermCollectionParams, error) {
-	var termCollection []classentry.UpsertTermCollectionParams
+) ([]classentry.TermCollection, error) {
+	var termCollection []classentry.TermCollection
 
 	bannerschool, err := b.getBannerSchool(school.ID)
 	if err != nil {
@@ -105,11 +104,12 @@ func (b *banner) StageAllClasses(
 	logger log.Entry,
 	ctx context.Context,
 	q *classentry.EntryQueries,
+	schoolID string,
 	termCollection classentry.TermCollection,
 	fullCollection bool,
 ) error {
 	logger.Info("Starting full section")
-	bannerSchool, err := b.getBannerSchool(termCollection.SchoolID)
+	bannerSchool, err := b.getBannerSchool(schoolID)
 	if err != nil {
 		logger.Error("Error getting school entry: ", err)
 		return err
@@ -239,9 +239,9 @@ func toBannerTime(dbTime pgtype.Text) pgtype.Time {
 
 func (b *bannerSchool) getTerms(
 	logger log.Entry,
-) ([]classentry.UpsertTermCollectionParams, error) {
+) ([]classentry.TermCollection, error) {
 	const MAX_TERMS_COUNT = "100"
-	var termCollection []classentry.UpsertTermCollectionParams
+	var termCollection []classentry.TermCollection
 	hostname := b.hostname
 	req, err := http.NewRequest(
 		"GET",
@@ -285,11 +285,12 @@ func (b *bannerSchool) getTerms(
 		// the View Only appears on all terms which probably wont update
 		stillCollecting := !strings.HasSuffix(term.Description, "(View Only)")
 
-		termCollection = append(termCollection, classentry.UpsertTermCollectionParams{
-			ID:       term.Code,
-			SchoolID: b.school.ID,
-			Year:     t.Year,
-			Season:   t.Season,
+		termCollection = append(termCollection, classentry.TermCollection{
+			ID: term.Code,
+			Term: classentry.Term{
+				Year:   t.Year,
+				Season: t.Season,
+			},
 			Name: pgtype.Text{
 				String: term.Description,
 				Valid:  true,
@@ -498,14 +499,14 @@ func (b *bannerSchool) insertGroupOfSections(
 		wg.Wait()
 	}
 
-	professors := make([]classentry.UpsertProfessorsParams, len(classData.Professors))
+	professors := make([]classentry.Professor, len(classData.Professors))
 	i := 0
 	for _, professor := range classData.Professors {
 		professors[i] = professor
 		i += 1
 	}
 
-	courses := make([]classentry.UpsertCoursesParams, len(classData.Courses))
+	courses := make([]classentry.Course, len(classData.Courses))
 	i = 0
 	for _, course := range classData.Courses {
 		courses[i] = course
@@ -516,7 +517,7 @@ func (b *bannerSchool) insertGroupOfSections(
 		logger,
 		ctx,
 		classData.MeetingTimes,
-		classData.DbSections,
+		classData.Sections,
 		professors,
 		courses,
 	)
@@ -526,24 +527,24 @@ func (b *bannerSchool) insertGroupOfSections(
 		return err
 	}
 
-	logger.Infof("Successfully added %d sections and their related information", len(classData.DbSections))
+	logger.Infof("Successfully added %d sections and their related information", len(classData.Sections))
 
 	return nil
 }
 
 type classData struct {
-	DbSections             []classentry.StageSectionsParams
-	MeetingTimes           []classentry.StageMeetingTimesParams
-	Professors             map[string]classentry.UpsertProfessorsParams
-	Courses                map[string]classentry.UpsertCoursesParams
+	Sections               []classentry.Section
+	MeetingTimes           []classentry.MeetingTime
+	Professors             map[string]classentry.Professor
+	Courses                map[string]classentry.Course
 	CourseReferenceNumbers map[string]string
 }
 
 func processSectionSearch(sectionData sectionSearch, termCollection classentry.TermCollection) classData {
-	var dbSections []classentry.StageSectionsParams
-	var meetingTimes []classentry.StageMeetingTimesParams
-	professors := make(map[string]classentry.UpsertProfessorsParams)
-	courses := make(map[string]classentry.UpsertCoursesParams)
+	var sections []classentry.Section
+	var meetingTimes []classentry.MeetingTime
+	professors := make(map[string]classentry.Professor)
+	courses := make(map[string]classentry.Course)
 	courseReferenceNumbers := make(map[string]string)
 	for _, s := range sectionData.Sections {
 		primaryProf := pgtype.Text{String: "", Valid: false}
@@ -572,9 +573,8 @@ func processSectionSearch(sectionData sectionSearch, termCollection classentry.T
 				lastName.Valid = true
 			}
 
-			facultyMember := classentry.UpsertProfessorsParams{
+			facultyMember := classentry.Professor{
 				ID:           professorID,
-				SchoolID:     termCollection.SchoolID,
 				Name:         prof.DisplayName,
 				EmailAddress: pgtype.Text{String: prof.EmailAddress, Valid: true},
 				FirstName:    firstName,
@@ -606,43 +606,38 @@ func processSectionSearch(sectionData sectionSearch, termCollection classentry.T
 				endDate.Time = endDateTime
 				endDate.Valid = true
 			}
-			dbMeetingTime := classentry.StageMeetingTimesParams{
-				Sequence:         int32(i),
-				SectionSequence:  sectionSequence,
-				TermCollectionID: termCollection.ID,
-				SubjectCode:      s.Subject,
-				CourseNumber:     s.CourseNumber,
-				SchoolID:         termCollection.SchoolID,
-				StartDate:        startDate,
-				EndDate:          endDate,
-				MeetingType:      pgtype.Text{String: meetingTime.MeetingType, Valid: true},
-				StartMinutes:     toBannerTime(meetingTime.StartTime),
-				EndMinutes:       toBannerTime(meetingTime.EndTime),
-				IsMonday:         meetingTime.Monday,
-				IsTuesday:        meetingTime.Tuesday,
-				IsWednesday:      meetingTime.Wednesday,
-				IsThursday:       meetingTime.Thursday,
-				IsFriday:         meetingTime.Friday,
-				IsSaturday:       meetingTime.Saturday,
-				IsSunday:         meetingTime.Sunday,
+			dbMeetingTime := classentry.MeetingTime{
+				Sequence:        int32(i),
+				SectionSequence: sectionSequence,
+				SubjectCode:     s.Subject,
+				CourseNumber:    s.CourseNumber,
+				StartDate:       startDate,
+				EndDate:         endDate,
+				MeetingType:     pgtype.Text{String: meetingTime.MeetingType, Valid: true},
+				StartMinutes:    toBannerTime(meetingTime.StartTime),
+				EndMinutes:      toBannerTime(meetingTime.EndTime),
+				IsMonday:        meetingTime.Monday,
+				IsTuesday:       meetingTime.Tuesday,
+				IsWednesday:     meetingTime.Wednesday,
+				IsThursday:      meetingTime.Thursday,
+				IsFriday:        meetingTime.Friday,
+				IsSaturday:      meetingTime.Saturday,
+				IsSunday:        meetingTime.Sunday,
 			}
 			meetingTimes = append(meetingTimes, dbMeetingTime)
 
 		}
-		dbSection := classentry.StageSectionsParams{
+		dbSection := classentry.Section{
 			Sequence:           sectionSequence,
 			Campus:             pgtype.Text{String: s.CampusDescription, Valid: true},
 			SubjectCode:        s.Subject,
 			CourseNumber:       s.CourseNumber,
-			SchoolID:           termCollection.SchoolID,
-			TermCollectionID:   termCollection.ID,
 			Enrollment:         pgtype.Int4{Int32: s.Enrollment, Valid: true},
 			MaxEnrollment:      pgtype.Int4{Int32: s.MaximumEnrollment, Valid: true},
 			InstructionMethod:  pgtype.Text{String: s.InstructionalMethod, Valid: true},
 			PrimaryProfessorID: primaryProf,
 		}
-		course := classentry.UpsertCoursesParams{
-			SchoolID:           termCollection.SchoolID,
+		course := classentry.Course{
 			SubjectCode:        s.Subject,
 			Number:             s.CourseNumber,
 			SubjectDescription: pgtype.Text{String: s.SubjectDescription, Valid: true},
@@ -653,10 +648,10 @@ func processSectionSearch(sectionData sectionSearch, termCollection classentry.T
 		}
 		courses[courseId] = course
 		courseReferenceNumbers[courseId] = s.CourseReferenceNumber
-		dbSections = append(dbSections, dbSection)
+		sections = append(sections, dbSection)
 	}
 	return classData{
-		DbSections:             dbSections,
+		Sections:               sections,
 		MeetingTimes:           meetingTimes,
 		Professors:             professors,
 		Courses:                courses,
