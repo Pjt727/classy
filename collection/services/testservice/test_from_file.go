@@ -4,10 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Pjt727/classy/data/class-entry"
-	log "github.com/sirupsen/logrus"
 	"os"
 	"path/filepath"
+
+	"github.com/Pjt727/classy/collection"
+	"github.com/Pjt727/classy/data/class-entry"
+	"github.com/Pjt727/classy/data/db"
+	"github.com/jackc/pgx/v5/pgtype"
+	log "github.com/sirupsen/logrus"
 )
 
 type ClassData struct {
@@ -20,7 +24,7 @@ type ClassData struct {
 type termDirectory struct {
 	term          classentry.TermCollection
 	directoryPath string
-	jsonPaths     []string
+	filesPaths    []string
 	currentIndex  int
 }
 
@@ -29,7 +33,7 @@ func newTermDirectoryLocation(term classentry.TermCollection, directoryPath stri
 		term:          term,
 		directoryPath: directoryPath,
 		currentIndex:  0,
-		jsonPaths:     []string{},
+		filesPaths:    []string{},
 	}
 	files, err := os.ReadDir(directoryPath)
 	if err != nil {
@@ -39,12 +43,12 @@ func newTermDirectoryLocation(term classentry.TermCollection, directoryPath stri
 		if file.IsDir() {
 			continue
 		}
-		termDirectory.jsonPaths = append(
-			termDirectory.jsonPaths,
+		termDirectory.filesPaths = append(
+			termDirectory.filesPaths,
 			filepath.Join(directoryPath, file.Name()),
 		)
 	}
-	if len(termDirectory.jsonPaths) == 0 {
+	if len(termDirectory.filesPaths) == 0 {
 		return termDirectory, errors.New(fmt.Sprintf("Directory %s must at least one json file in them", directoryPath))
 	}
 
@@ -53,9 +57,9 @@ func newTermDirectoryLocation(term classentry.TermCollection, directoryPath stri
 
 // cycles through json files in the path
 func (t *termDirectory) nextJsonPath() string {
-	nextPath := t.jsonPaths[t.currentIndex]
+	nextPath := t.filesPaths[t.currentIndex]
 	t.currentIndex += 1
-	if t.currentIndex >= len(t.jsonPaths) {
+	if t.currentIndex >= len(t.filesPaths) {
 		t.currentIndex = 0
 	}
 	return nextPath
@@ -75,6 +79,29 @@ type TermDirectoryEntry struct {
 	SchoolID       string
 	TermCollection classentry.TermCollection
 	FilePath       string
+}
+
+// helper function to quickly define term collections
+func NewTermCollection(id string, season classentry.SeasonEnum, year int32) classentry.TermCollection {
+	termName := fmt.Sprintf(
+		"%s %d",
+		season,
+		year,
+	)
+
+	return classentry.TermCollection{
+		ID: id,
+		Term: classentry.Term{
+			Year:   year,
+			Season: season,
+		},
+		Name: pgtype.Text{
+			String: termName,
+			Valid:  true,
+		},
+		StillCollecting: true,
+	}
+
 }
 
 // Entries must be unique on the termcollection for each school
@@ -213,4 +240,44 @@ func (t *FileTestService) GetTermCollections(
 	}
 
 	return termCollections, nil
+}
+
+// adds class data from every files as well as the needs schools
+//
+//	and terms for the classdata
+func (t *FileTestService) RunThroughOrchestrator() error {
+
+	orch, err := collection.CreateOrchestrator([]collection.Service{t})
+	if err != nil {
+		return err
+	}
+	err = orch.UpsertAllSchools(context.Background())
+	if err != nil {
+		return err
+	}
+	err = orch.UpsertAllTerms(context.Background())
+	if err != nil {
+		return err
+	}
+
+	for schoolID, fileTest := range t.schoolIDToSchooolForTest {
+		for collectionID, termDirectory := range fileTest.termsCollectionIDToTermForAdd {
+			dbTermCollection := db.TermCollection{
+				ID:              collectionID,
+				SchoolID:        schoolID,
+				Year:            termDirectory.term.Term.Year,
+				Season:          termDirectory.term.Term.Season,
+				Name:            termDirectory.term.Name,
+				StillCollecting: true,
+			}
+			for range termDirectory.filesPaths {
+				err = orch.UpdateAllSectionsOfSchool(context.Background(), dbTermCollection)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
 }

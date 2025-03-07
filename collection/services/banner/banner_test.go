@@ -1,19 +1,15 @@
 package banner_test
 
 import (
-	"context"
 	"encoding/json"
 	"path/filepath"
 	"testing"
 
-	"github.com/Pjt727/classy/collection"
 	"github.com/Pjt727/classy/collection/projectpath"
 	"github.com/Pjt727/classy/collection/services/banner"
 	"github.com/Pjt727/classy/collection/services/testservice"
 	"github.com/Pjt727/classy/data/class-entry"
-	"github.com/Pjt727/classy/data/db"
 	dbhelpers "github.com/Pjt727/classy/data/testdb"
-	"github.com/jackc/pgx/v5/pgtype"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -55,24 +51,12 @@ func TestBannerFileInput(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	termCollection := classentry.TermCollection{
-		ID: "202440",
-		Term: classentry.Term{
-			Year:   2024,
-			Season: "Fall",
-		},
-		Name: pgtype.Text{
-			String: "Fall 2024",
-			Valid:  true,
-		},
-		StillCollecting: false,
-	}
 
 	fileTestsBanner, err := testservice.NewService(
 		[]testservice.TermDirectoryEntry{
 			{
 				SchoolID:       schoolID,
-				TermCollection: termCollection,
+				TermCollection: testservice.NewTermCollection("202440", "Fall", 2024),
 				FilePath:       filepath.Join(TESTING_ASSETS_BASE_DIR, "marist-fall-2024"),
 			},
 		},
@@ -83,37 +67,10 @@ func TestBannerFileInput(t *testing.T) {
 		return
 	}
 
-	orch, err := collection.CreateOrchestrator([]collection.Service{&fileTestsBanner})
-	if err != nil {
-		t.Error(err)
-		return
-	}
-	err = orch.UpsertAllSchools(context.Background())
-	if err != nil {
-		t.Error(err)
-		return
-	}
-	err = orch.UpsertAllTerms(context.Background())
-	if err != nil {
-		t.Error(err)
-		return
-	}
+	err = fileTestsBanner.RunThroughOrchestrator()
 
-	// upload all 13 of the json for the particular school
-
-	for i := 0; i < 13; i++ {
-		dbTermCollection := db.TermCollection{
-			ID:              termCollection.ID,
-			SchoolID:        schoolID,
-			Year:            termCollection.Term.Year,
-			Season:          termCollection.Term.Season,
-			Name:            termCollection.Name,
-			StillCollecting: termCollection.StillCollecting,
-		}
-		err = orch.UpdateAllSectionsOfSchool(context.Background(), dbTermCollection)
-		if err != nil {
-			t.Error(err)
-			return
-		}
+	if err != nil {
+		t.Error(err)
+		return
 	}
 }
