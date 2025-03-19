@@ -75,3 +75,25 @@ GROUP BY (
     c.school_id
 )
 );
+
+
+CREATE VIEW sync_diffs AS (
+SELECT h1.table_name,
+       h1.input_at,
+       h1.composite_hash,
+       jsonb_set(h1.pk_fields::jsonb, '{school_id}', to_jsonb(h1.school_id), true) AS updated_pk_fields, 
+       (SELECT combined_json(
+               (h2.sync_action, h2.relevant_fields)::sync_change
+               ORDER BY h2.input_at
+       )
+       FROM historic_class_information h2
+       WHERE h2.school_id = h1.school_id
+             AND h2.table_name = h1.table_name
+             AND h2.composite_hash = h1.composite_hash
+             AND h2.input_at >= h1.input_at
+       ) AS _foo -- my treesitter does not like this
+FROM 
+    historic_class_information h1
+);
+
+

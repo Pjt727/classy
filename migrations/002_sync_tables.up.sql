@@ -33,9 +33,6 @@ BEGIN
 
     -- Handle NULL state
     IF state IS NULL THEN
-        IF next_sync_kind != 'insert' THEN
-            RAISE EXCEPTION 'operation after next must be insert';
-        END IF;
         RETURN next_element;
     END IF;
 
@@ -51,7 +48,7 @@ BEGIN
         ELSIF next_sync_kind = 'update' THEN
             RETURN ROW('insert', current_relevant_fields || next_relevant_fields)::sync_change;
         ELSIF next_sync_kind = 'delete' THEN
-            RETURN NULL;
+            RETURN ROW('delete', jsonb_build_object())::sync_change;
         END IF;
 
     -- update + insert = impossible
@@ -63,7 +60,7 @@ BEGIN
         ELSIF next_sync_kind = 'update' THEN
             RETURN ROW('update', current_relevant_fields || next_relevant_fields)::sync_change;
         ELSIF next_sync_kind = 'delete' THEN
-            RETURN NULL;
+            RETURN ROW('delete', jsonb_build_object())::sync_change;
         END IF;
 
     -- delete + insert = just do the insert

@@ -51,11 +51,14 @@ type Service interface {
 }
 
 type Orchestrator struct {
-	serviceEntries      []Service
-	schoolIdToService   map[string]*Service
-	schoolIdToSchool    map[string]db.School
-	orchestrationLogger *log.Entry
-	dbPool              *pgxpool.Pool
+	serviceEntries []Service
+	// it would not be good if the same term collection was being
+	//    collected by multiple workers at the same time
+	termCollectionStagingLocks map[db.TermCollection]bool
+	schoolIdToService          map[string]*Service
+	schoolIdToSchool           map[string]db.School
+	orchestrationLogger        *log.Entry
+	dbPool                     *pgxpool.Pool
 }
 
 func GetDefaultOrchestrator() (Orchestrator, error) {
@@ -63,11 +66,12 @@ func GetDefaultOrchestrator() (Orchestrator, error) {
 	dbPool, err := data.NewPool(ctx)
 
 	orchestrator := Orchestrator{
-		serviceEntries:      []Service{banner.Service},
-		schoolIdToService:   make(map[string]*Service),
-		schoolIdToSchool:    make(map[string]db.School),
-		orchestrationLogger: log.WithFields(log.Fields{"job": "orchestration"}),
-		dbPool:              dbPool,
+		serviceEntries:             []Service{banner.Service},
+		termCollectionStagingLocks: map[db.TermCollection]bool{},
+		schoolIdToService:          make(map[string]*Service),
+		schoolIdToSchool:           make(map[string]db.School),
+		orchestrationLogger:        log.WithFields(log.Fields{"job": "orchestration"}),
+		dbPool:                     dbPool,
 	}
 	if err != nil {
 		return orchestrator, err
@@ -82,11 +86,12 @@ func CreateOrchestrator(services []Service) (Orchestrator, error) {
 	ctx := context.Background()
 	dbPool, err := data.NewPool(ctx)
 	orchestrator := Orchestrator{
-		serviceEntries:      services,
-		schoolIdToService:   make(map[string]*Service),
-		schoolIdToSchool:    make(map[string]db.School),
-		orchestrationLogger: log.WithFields(log.Fields{"job": "orchestration"}),
-		dbPool:              dbPool,
+		serviceEntries:             services,
+		termCollectionStagingLocks: map[db.TermCollection]bool{},
+		schoolIdToService:          make(map[string]*Service),
+		schoolIdToSchool:           make(map[string]db.School),
+		orchestrationLogger:        log.WithFields(log.Fields{"job": "orchestration"}),
+		dbPool:                     dbPool,
 	}
 	if err != nil {
 		return orchestrator, err
@@ -258,6 +263,13 @@ func (o Orchestrator) UpsertAllTerms(ctx context.Context) error {
 }
 
 func (o Orchestrator) UpdateAllSectionsOfSchool(ctx context.Context, termCollection db.TermCollection) error {
+	// take care of locking until this is done
+	if _, ok := o.termCollectionStagingLocks[termCollection]; ok {
+		return errors.New(fmt.Sprint("Already updating a section for this term collection ", termCollection))
+	}
+	o.termCollectionStagingLocks[termCollection] = true
+	defer delete(o.termCollectionStagingLocks, termCollection)
+
 	// there might be a good way to easily sandbox schoools to what they should change
 	//    could make a wrapping q client with the state of the school and then write wrappers
 	//    for each of the functions

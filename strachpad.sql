@@ -65,3 +65,51 @@ AND m.section_sequence = '111';
 SELECT composite_hash, combined_json((sync_action, relevant_fields)::sync_change ORDER BY input_at)
 FROM historic_class_information 
 GROUP BY composite_hash;
+
+
+SELECT 
+       jsonb_set(pk_fields, '{school_id}', school_id, true), 
+       combined_json(
+            (sync_action, relevant_fields)::sync_change
+            ORDER BY input_at
+        )
+FROM historic_class_information 
+GROUP BY table_name, composite_hash, pk_fields;
+
+SELECT composite_hash
+       pk_fields::jsonb ||, '{school_id}', school_id::text, true, 
+       combined_json(
+            (sync_action, relevant_fields)::sync_change
+            ORDER BY input_at
+        )
+FROM historic_class_information 
+GROUP BY table_name, composite_hash, pk_fields;
+
+SELECT composite_hash, COUNT(*) AS foo FROM historic_class_information
+WHERE sync_action = 'insert'
+GROUP BY composite_hash
+ORDER BY foo
+;
+
+SELECT * FROM historic_class_information
+WHERE composite_hash = '0e413370cf3d5f66a930a3de58bb7c69';
+
+SELECT * FROM historic_class_information
+WHERE composite_hash = '0b0ee6deb5a7cc5cbe35cdd838aee6bb'
+ORDER BY input_at;
+
+
+-- 6380
+SELECT jsonb_set(pk_fields::jsonb, '{school_id}', to_jsonb(school_id), true) AS updated_pk_fields, 
+    (combined_json(
+            (sync_action, relevant_fields)::sync_change
+            ORDER BY input_at
+    ))
+FROM 
+    historic_class_information 
+GROUP BY 
+    composite_hash, 
+    updated_pk_fields
+;
+
+SELECT  * FROM sync_diffs WHERE input_at = '2025-03-19 22:29:05.546344+09';
