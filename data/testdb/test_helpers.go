@@ -18,6 +18,7 @@ func SetupDb() error {
 	if err != nil {
 		return err
 	}
+	m.Force(4)
 	err = m.Down()
 	if err != nil {
 		return err

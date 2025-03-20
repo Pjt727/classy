@@ -2,13 +2,14 @@ package collection
 
 import (
 	"context"
+	dbhelpers "github.com/Pjt727/classy/data/testdb"
 	"math/rand"
 	"strconv"
 	"testing"
 
-	"github.com/Pjt727/classy/data"
+	// "github.com/Pjt727/classy/data"
 	"github.com/Pjt727/classy/data/class-entry"
-	datatest "github.com/Pjt727/classy/data/testdb"
+	// datatest "github.com/Pjt727/classy/data/testdb"
 	"github.com/jackc/pgx/v5/pgtype"
 	log "github.com/sirupsen/logrus"
 )
@@ -125,30 +126,36 @@ func (t TestService) GetTermCollections(
 }
 
 func TestServiceProcess(t *testing.T) {
-	TEST_SEED := 727
-	school1 := classentry.School{
-		ID:   "test1",
-		Name: "test 1 school",
-	}
-	testService := TestService{
-		r:              *rand.New(rand.NewSource(int64(TEST_SEED))),
-		schools:        []classentry.School{school1},
-		courseCount:    100,
-		professorCount: 20,
-	}
-	ctx := context.Background()
-	dbPool, err := data.NewPool(ctx)
+	err := dbhelpers.SetupDb()
 	if err != nil {
-		t.Error("could not get database")
+		t.Error(err)
 		return
 	}
-	datatest.SetupDb()
-	o := Orchestrator{
-		serviceEntries:      []Service{testService},
-		schoolIdToService:   map[string]*Service{},
-		schoolIdToSchool:    map[string]classentry.School{},
-		orchestrationLogger: &log.Entry{},
-		dbPool:              dbPool,
-	}
-	o.UpsertAllTerms(ctx)
+	// test not updated in favor of just using service tests
+	// TEST_SEED := 727
+	// school1 := classentry.School{
+	// 	ID:   "test1",
+	// 	Name: "test 1 school",
+	// }
+	// testService := TestService{
+	// 	r:              *rand.New(rand.NewSource(int64(TEST_SEED))),
+	// 	schools:        []classentry.School{school1},
+	// 	courseCount:    100,
+	// 	professorCount: 20,
+	// }
+	// ctx := context.Background()
+	// dbPool, err := data.NewPool(ctx)
+	// if err != nil {
+	// 	t.Error("could not get database")
+	// 	return
+	// }
+	// datatest.SetupDb()
+	// o := Orchestrator{
+	// 	serviceEntries:      []Service{testService},
+	// 	schoolIdToService:   map[string]*Service{},
+	// 	schoolIdToSchool:    map[string]classentry.School{},
+	// 	orchestrationLogger: &log.Entry{},
+	// 	dbPool:              dbPool,
+	// }
+	// o.UpsertAllTerms(ctx)
 }

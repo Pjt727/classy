@@ -12,25 +12,20 @@ import (
 )
 
 const getLastestSyncChanges = `-- name: GetLastestSyncChanges :many
-SELECT table_name,
-       jsonb_set(pk_fields::jsonb, '{school_id}', to_jsonb(school_id), true) AS updated_pk_fields, 
-       (combined_json(
-               (sync_action, relevant_fields)::sync_change
-               ORDER BY input_at
-       )) AS sync_changes
-FROM 
-    historic_class_information 
-WHERE input_at > $1
-GROUP BY 
-    table_name,
-    composite_hash, 
-    updated_pk_fields
+SELECT table_name, updated_pk_fields AS pk_fields, sync_action, relevant_fields 
+FROM sync_diffs WHERE (school_id, table_name, composite_hash, updated_input_at) IN (
+    SELECT s.school_id, s.table_name, s.composite_hash, MIN(s.updated_input_at)
+    FROM sync_diffs s
+    WHERE s.updated_input_at > $1
+    GROUP BY s.school_id, s.table_name, s.composite_hash
+)
 `
 
 type GetLastestSyncChangesRow struct {
-	TableName       string      `json:"table_name"`
-	UpdatedPkFields []byte      `json:"updated_pk_fields"`
-	SyncChanges     interface{} `json:"sync_changes"`
+	TableName      string                 `json:"table_name"`
+	PkFields       map[string]interface{} `json:"pk_fields"`
+	SyncAction     string                 `json:"sync_action"`
+	RelevantFields map[string]interface{} `json:"relevant_fields"`
 }
 
 func (q *Queries) GetLastestSyncChanges(ctx context.Context, lastSyncTime pgtype.Timestamptz) ([]GetLastestSyncChangesRow, error) {
@@ -42,7 +37,12 @@ func (q *Queries) GetLastestSyncChanges(ctx context.Context, lastSyncTime pgtype
 	var items []GetLastestSyncChangesRow
 	for rows.Next() {
 		var i GetLastestSyncChangesRow
-		if err := rows.Scan(&i.TableName, &i.UpdatedPkFields, &i.SyncChanges); err != nil {
+		if err := rows.Scan(
+			&i.TableName,
+			&i.PkFields,
+			&i.SyncAction,
+			&i.RelevantFields,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

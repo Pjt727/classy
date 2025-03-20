@@ -31,3 +31,8 @@ type PartialTerm struct {
 	Name            pgtype.Text `json:"name"`
 	StillCollecting bool        `json:"still_collecting"`
 }
+
+type SyncChange struct {
+	SyncKind       SyncKind `json:"sync_kinds"`
+	RelevantFields []byte   `json:"relevant_fields"`
+}

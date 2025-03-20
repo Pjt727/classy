@@ -3,9 +3,14 @@ RETURNS TRIGGER AS $$
 DECLARE
     _pk_fields JSONB;
     _relevant_fields JSONB;
+    _hash_text TEXT;
     _sync_action sync_kind;
     _pk_columns TEXT[];
 BEGIN
+    -- hash collisions would be isolated on table and school and
+    --  would be excedingly rare it is likely no feasible combination
+    --  of key values would ever produce a collision
+
     -- Determine the primary key columns for the table
     SELECT array_agg(column_name::TEXT)
     INTO _pk_columns
@@ -31,6 +36,10 @@ BEGIN
                      FROM jsonb_each(to_jsonb(NEW))
                      WHERE key = ANY(_pk_columns)
                      AND key <> 'school_id';
+        _hash_text := STRING_AGG(key || '%' || value, '%%' ORDER BY key)
+                FROM jsonb_each(to_jsonb(NEW))
+                WHERE key = ANY(_pk_columns)
+                AND key <> 'school_id';
     ELSIF TG_OP = 'UPDATE' THEN
         _sync_action := 'update';
         _relevant_fields := jsonb_object_agg(new_data.key, new_data.value) FROM (
@@ -44,6 +53,10 @@ BEGIN
                      FROM jsonb_each(to_jsonb(NEW))
                      WHERE key = ANY(_pk_columns)
                      AND key <> 'school_id';
+        _hash_text := STRING_AGG(key || '%' || value, '%%' ORDER BY key)
+                FROM jsonb_each(to_jsonb(NEW))
+                WHERE key = ANY(_pk_columns)
+                AND key <> 'school_id';
     ELSIF TG_OP = 'DELETE' THEN
         _sync_action := 'delete';
         _relevant_fields := NULL;
@@ -51,6 +64,10 @@ BEGIN
                      FROM jsonb_each(to_jsonb(OLD))
                      WHERE key = ANY(_pk_columns)
                      AND key <> 'school_id';
+        _hash_text := STRING_AGG(key || '%%' || value, '%%' ORDER BY key)
+                FROM jsonb_each(to_jsonb(OLD))
+                WHERE key = ANY(_pk_columns)
+                AND key <> 'school_id';
     END IF;
 
     -- Insert into historic_class_information
@@ -65,10 +82,7 @@ BEGIN
     ) VALUES (
         COALESCE(NEW.school_id, OLD.school_id),
         TG_TABLE_NAME,
-        -- hash collisions would be isolated on table and school and
-        --  would be excedingly rare it is likely no feasible combination
-        --  of key values would ever produce a collision
-        md5(_pk_fields::text), -- Hash of the primary key fields
+        md5(_hash_text::text),
         NOW(), -- Current timestamp
         _pk_fields,
         _sync_action,

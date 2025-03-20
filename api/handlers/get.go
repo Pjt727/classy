@@ -31,14 +31,14 @@ func (h GetHandler) GetCourse(w http.ResponseWriter, r *http.Request) {
 		CourseNumber: chi.URLParam(r, "courseNumber"),
 	})
 	if err != nil {
-		log.Trace("Could not get school rows: ", err)
+		log.Error("Could not get school rows: ", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
 
 	courses, err := json.Marshal(courseRows)
 	if err != nil {
-		log.Trace("Could not marshal school rows", err)
+		log.Error("Could not marshal school rows", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
@@ -57,14 +57,14 @@ func (h GetHandler) GetCoursesForSubject(w http.ResponseWriter, r *http.Request)
 		Limitvalue:  ctx.Value(LimitKey).(int32),
 	})
 	if err != nil {
-		log.Trace("Could not get school rows: ", err)
+		log.Error("Could not get school rows: ", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
 
 	courses, err := json.Marshal(courseRows)
 	if err != nil {
-		log.Trace("Could not marshal school rows", err)
+		log.Error("Could not marshal school rows", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
@@ -82,14 +82,14 @@ func (h GetHandler) GetCourses(w http.ResponseWriter, r *http.Request) {
 		Limitvalue:  ctx.Value(LimitKey).(int32),
 	})
 	if err != nil {
-		log.Trace("Could not get school rows: ", err)
+		log.Error("Could not get school rows: ", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
 
 	courses, err := json.Marshal(courseRows)
 	if err != nil {
-		log.Trace("Could not marshal school rows", err)
+		log.Error("Could not marshal school rows", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
@@ -106,14 +106,14 @@ func (h GetHandler) GetSchoolTerms(w http.ResponseWriter, r *http.Request) {
 		Limitvalue:  ctx.Value(LimitKey).(int32),
 	})
 	if err != nil {
-		log.Trace("Could not get school rows: ", err)
+		log.Error("Could not get school rows: ", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
 
 	termCollections, err := json.Marshal(termCollectionsRows)
 	if err != nil {
-		log.Trace("Could not marshal school rows", err)
+		log.Error("Could not marshal school rows", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
@@ -129,14 +129,14 @@ func (h GetHandler) GetSchools(w http.ResponseWriter, r *http.Request) {
 		Limitvalue:  ctx.Value(LimitKey).(int32),
 	})
 	if err != nil {
-		log.Trace("Could not get school rows: ", err)
+		log.Error("Could not get school rows: ", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
 
 	classRowsJSON, err := json.Marshal(schools)
 	if err != nil {
-		log.Trace("Could not marshal school rows", err)
+		log.Error("Could not marshal school rows", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
@@ -156,14 +156,14 @@ func (h GetHandler) GetClasses(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if err != nil {
-		log.Trace("Could not get class rows: ", err)
+		log.Error("Could not get class rows: ", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
 
 	classRowsJSON, err := json.Marshal(classRows)
 	if err != nil {
-		log.Trace("Could not marshal class rows", err)
+		log.Error("Could not marshal class rows", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}

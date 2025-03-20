@@ -112,4 +112,4 @@ GROUP BY
     updated_pk_fields
 ;
 
-SELECT  * FROM sync_diffs WHERE input_at = '2025-03-19 22:29:05.546344+09';
+SELECT * FROM sync_diffs;

@@ -1,4 +1,5 @@
-local regularDbPath = "postgresql://postgres@/classy"
+-- local regularDbPath = "postgresql://postgres@/classy"
+local regularDbPath = "postgresql://postgres@/classytest"
 local testDbPath = "postgresql://postgres@/classytest"
 vim.g.db = regularDbPath
 function LocalSwitchDatabase()

@@ -225,10 +225,13 @@ type StagingSection struct {
 }
 
 type SyncDiff struct {
-	TableName       string      `json:"table_name"`
-	Max             interface{} `json:"max"`
-	UpdatedPkFields []byte      `json:"updated_pk_fields"`
-	Foo             interface{} `json:"_foo"`
+	TableName       string                 `json:"table_name"`
+	UpdatedInputAt  pgtype.Timestamptz     `json:"updated_input_at"`
+	CompositeHash   string                 `json:"composite_hash"`
+	SchoolID        string                 `json:"school_id"`
+	UpdatedPkFields map[string]interface{} `json:"updated_pk_fields"`
+	SyncAction      string                 `json:"sync_action"`
+	RelevantFields  map[string]interface{} `json:"relevant_fields"`
 }
 
 type Term struct {
