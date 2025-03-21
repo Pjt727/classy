@@ -34,13 +34,14 @@ CREATE TABLE term_collections (
 );
 
 CREATE TABLE previous_section_collections (
+    id SERIAL PRIMARY KEY,
+
     school_id TEXT,
-    collection_id TEXT,
-    time_collection TIMESTAMP WITH TIME ZONE,
+    term_collection_id TEXT,
+    time_of_collection TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     is_full BOOL NOT NULL,
 
-    FOREIGN KEY (collection_id, school_id) REFERENCES term_collections(id, school_id),
-    PRIMARY KEY (collection_id, school_id, time_collection)
+    FOREIGN KEY (term_collection_id, school_id) REFERENCES term_collections(id, school_id)
 );
 
 CREATE TABLE professors (

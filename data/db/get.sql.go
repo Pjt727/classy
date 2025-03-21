@@ -182,7 +182,7 @@ JOIN previous_section_collections p
                     AND t.term_year   = p.term_year
                     AND t.term_season = p.term_season
                     AND t.season_kind = p.season_kind
-ORDER BY p.time_collection DESC
+ORDER BY p.time_of_collection DESC
 LIMIT 1
 `
 

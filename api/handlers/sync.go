@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/Pjt727/classy/data/db"
@@ -14,6 +15,11 @@ import (
 
 type SyncHandler struct {
 	DbPool *pgxpool.Pool
+}
+
+type SyncResult struct {
+	syncData   []db.GetLastestSyncChangesRow
+	lastUpdate pgtype.Timestamptz
 }
 
 func (h SyncHandler) SyncAllFromDate(w http.ResponseWriter, r *http.Request) {
@@ -37,22 +43,49 @@ func (h SyncHandler) SyncAllFromDate(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	q := db.New(h.DbPool)
-	syncChangeRows, err := q.GetLastestSyncChanges(ctx, pgtype.Timestamptz{
-		Time:  t,
-		Valid: true,
-	})
-	if err != nil {
-		log.Error("Could not get lastest sync rows: ", err)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	errCh := make(chan error, 2)
+	var syncChangeRows []db.GetLastestSyncChangesRow
+	go func() {
+		defer wg.Done()
+		var err error
+		syncChangeRows, err = q.GetLastestSyncChanges(ctx, pgtype.Timestamptz{
+			Time:  t,
+			Valid: true,
+		})
+		if err != nil {
+			log.Error("Could not get lastest sync rows: ", err)
+			return
+		}
+
+	}()
+	var lastUpdate pgtype.Timestamptz
+	go func() {
+		defer wg.Done()
+		var err error
+		lastUpdate, err = q.GetLastSyncTime(ctx)
+		if err != nil {
+			log.Error("Could not get lastest sync rows: ", err)
+			return
+		}
+
+	}()
+	wg.Wait()
+	if len(errCh) > 0 {
 		http.Error(w, http.StatusText(500), 500)
-		return
 	}
 
-	courses, err := json.Marshal(syncChangeRows)
+	result := SyncResult{
+		syncData:   syncChangeRows,
+		lastUpdate: lastUpdate,
+	}
+	resultJson, err := json.Marshal(result)
 	if err != nil {
 		log.Error("Could not marshal school rows", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(courses)
+	w.Write(resultJson)
 }

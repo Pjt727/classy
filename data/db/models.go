@@ -148,10 +148,11 @@ type MeetingTime struct {
 }
 
 type PreviousSectionCollection struct {
-	SchoolID       string             `json:"school_id"`
-	CollectionID   string             `json:"collection_id"`
-	TimeCollection pgtype.Timestamptz `json:"time_collection"`
-	IsFull         bool               `json:"is_full"`
+	ID               int32              `json:"id"`
+	SchoolID         pgtype.Text        `json:"school_id"`
+	TermCollectionID pgtype.Text        `json:"term_collection_id"`
+	TimeOfCollection pgtype.Timestamptz `json:"time_of_collection"`
+	IsFull           bool               `json:"is_full"`
 }
 
 type Professor struct {

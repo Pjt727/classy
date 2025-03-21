@@ -1,8 +1,8 @@
 CREATE OR REPLACE FUNCTION log_historic_class_information()
 RETURNS TRIGGER AS $$
 DECLARE
-    _pk_fields JSONB;
     _relevant_fields JSONB;
+    _pk_fields JSONB;
     _hash_text TEXT;
     _sync_action sync_kind;
     _pk_columns TEXT[];
@@ -34,8 +34,7 @@ BEGIN
                     WHERE NOT key = ANY(_pk_columns);
         _pk_fields := jsonb_object_agg(key, value) -- Extract only PK fields
                      FROM jsonb_each(to_jsonb(NEW))
-                     WHERE key = ANY(_pk_columns)
-                     AND key <> 'school_id';
+                     WHERE key = ANY(_pk_columns);
         _hash_text := STRING_AGG(key || '%' || value, '%%' ORDER BY key)
                 FROM jsonb_each(to_jsonb(NEW))
                 WHERE key = ANY(_pk_columns)
@@ -51,8 +50,7 @@ BEGIN
         WHERE new_data.value IS DISTINCT FROM old_data.value;
         _pk_fields := jsonb_object_agg(key, value) -- Extract only PK fields
                      FROM jsonb_each(to_jsonb(NEW))
-                     WHERE key = ANY(_pk_columns)
-                     AND key <> 'school_id';
+                     WHERE key = ANY(_pk_columns);
         _hash_text := STRING_AGG(key || '%' || value, '%%' ORDER BY key)
                 FROM jsonb_each(to_jsonb(NEW))
                 WHERE key = ANY(_pk_columns)
@@ -62,15 +60,12 @@ BEGIN
         _relevant_fields := NULL;
         _pk_fields := jsonb_object_agg(key, value) -- Extract only PK fields
                      FROM jsonb_each(to_jsonb(OLD))
-                     WHERE key = ANY(_pk_columns)
-                     AND key <> 'school_id';
+                     WHERE key = ANY(_pk_columns);
         _hash_text := STRING_AGG(key || '%%' || value, '%%' ORDER BY key)
                 FROM jsonb_each(to_jsonb(OLD))
-                WHERE key = ANY(_pk_columns)
-                AND key <> 'school_id';
+                WHERE key = ANY(_pk_columns);
     END IF;
 
-    -- Insert into historic_class_information
     INSERT INTO historic_class_information (
         school_id,
         table_name,
@@ -80,7 +75,7 @@ BEGIN
         sync_action,
         relevant_fields
     ) VALUES (
-        COALESCE(NEW.school_id, OLD.school_id),
+        COALESCE(OLD.school_id, NEW.school_id),
         TG_TABLE_NAME,
         md5(_hash_text::text),
         NOW(), -- Current timestamp

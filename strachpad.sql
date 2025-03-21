@@ -3,6 +3,7 @@ SELECT id, description FROM courses WHERE school_id = 'temple';
 SELECT * FROM schools;
 SELECT * FROM term_collections
 WHERE school_id = 'temple';
+
 SELECT * FROM faculty_members;
 SELECT * FROM sections;
 SELECT course_id FROM staging_sections WHERE school_id = 'temple' GROUP BY course_id;
@@ -92,11 +93,16 @@ ORDER BY foo
 ;
 
 SELECT * FROM historic_class_information
-WHERE composite_hash = '0e413370cf3d5f66a930a3de58bb7c69';
+WHERE composite_hash = 'a8a3507fb542ee24f994bc5a0035719a';
 
 SELECT * FROM historic_class_information
-WHERE composite_hash = '0b0ee6deb5a7cc5cbe35cdd838aee6bb'
+WHERE composite_hash = '09b6cdcafe1e6be24b6512f4fa62e782';
+
+SELECT * FROM historic_class_information WHERE sync_action = 'delete';
+-- WHERE composite_hash = 'a8a3507fb542ee24f994bc5a0035719a'
 ORDER BY input_at;
+
+SELECT * FROM sections WHERE course_number = '120L' AND subject_code = 'ENG' AND sequence = '105';
 
 
 -- 6380
@@ -112,4 +118,14 @@ GROUP BY
     updated_pk_fields
 ;
 
-SELECT * FROM sync_diffs;
+SELECT * FROM sync_diffs WHERE composite_hash NOT IN ('09b6cdcafe1e6be24b6512f4fa62e782', 'a8a3507fb542ee24f994bc5a0035719a');
+
+
+SELECT table_name, sync_action, composite_hash, relevant_fields
+FROM sync_diffs WHERE (school_id, table_name, composite_hash, updated_input_at) IN (
+    SELECT s.school_id, s.table_name, s.composite_hash, MIN(s.updated_input_at)
+    FROM sync_diffs s
+    WHERE s.updated_input_at > '2020-03-19 22:29:05.546344+09'
+    AND relevant_fields IS NULL
+    GROUP BY s.school_id, s.table_name, s.composite_hash
+);

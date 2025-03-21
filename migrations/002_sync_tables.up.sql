@@ -6,7 +6,6 @@ CREATE TABLE historic_class_information (
     composite_hash TEXT,
     input_at TIMESTAMP WITH TIME ZONE,
 
-    -- this does not include the school_id
     pk_fields jsonb,
     sync_action sync_kind,
     relevant_fields jsonb,
