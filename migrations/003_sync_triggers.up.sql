@@ -25,20 +25,16 @@ BEGIN
             AND constraint_type = 'PRIMARY KEY'
       );
     -- turn the pk_fields into a json to be stored
-
-    -- Determine the operation type
+    _pk_fields := jsonb_object_agg(key, value)
+                 FROM jsonb_each(to_jsonb(COALESCE(NEW, OLD)))
+                 WHERE key = ANY(_pk_columns);
+    _hash_text := STRING_AGG(key || '%' || value, '%%' ORDER BY key)
+            FROM jsonb_each(_pk_fields);
     IF TG_OP = 'INSERT' THEN
         _sync_action := 'insert';
         _relevant_fields := jsonb_object_agg(key, value)
                     FROM jsonb_each(to_jsonb(NEW))
                     WHERE NOT key = ANY(_pk_columns);
-        _pk_fields := jsonb_object_agg(key, value) -- Extract only PK fields
-                     FROM jsonb_each(to_jsonb(NEW))
-                     WHERE key = ANY(_pk_columns);
-        _hash_text := STRING_AGG(key || '%' || value, '%%' ORDER BY key)
-                FROM jsonb_each(to_jsonb(NEW))
-                WHERE key = ANY(_pk_columns)
-                AND key <> 'school_id';
     ELSIF TG_OP = 'UPDATE' THEN
         _sync_action := 'update';
         _relevant_fields := jsonb_object_agg(new_data.key, new_data.value) FROM (
@@ -51,19 +47,9 @@ BEGIN
         _pk_fields := jsonb_object_agg(key, value) -- Extract only PK fields
                      FROM jsonb_each(to_jsonb(NEW))
                      WHERE key = ANY(_pk_columns);
-        _hash_text := STRING_AGG(key || '%' || value, '%%' ORDER BY key)
-                FROM jsonb_each(to_jsonb(NEW))
-                WHERE key = ANY(_pk_columns)
-                AND key <> 'school_id';
     ELSIF TG_OP = 'DELETE' THEN
         _sync_action := 'delete';
         _relevant_fields := NULL;
-        _pk_fields := jsonb_object_agg(key, value) -- Extract only PK fields
-                     FROM jsonb_each(to_jsonb(OLD))
-                     WHERE key = ANY(_pk_columns);
-        _hash_text := STRING_AGG(key || '%%' || value, '%%' ORDER BY key)
-                FROM jsonb_each(to_jsonb(OLD))
-                WHERE key = ANY(_pk_columns);
     END IF;
 
     INSERT INTO historic_class_information (
@@ -78,18 +64,13 @@ BEGIN
         COALESCE(OLD.school_id, NEW.school_id),
         TG_TABLE_NAME,
         md5(_hash_text::text),
-        NOW(), -- Current timestamp
+        NOW(),
         _pk_fields,
         _sync_action,
         _relevant_fields
     );
 
-    -- Return appropriate value based on operation
-    IF TG_OP = 'DELETE' THEN
-        RETURN OLD;
-    ELSE
-        RETURN NEW;
-    END IF;
+    RETURN COALESCE(NEW, OLD);
 END;
 $$ LANGUAGE plpgsql;
 

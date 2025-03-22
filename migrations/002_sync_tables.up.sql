@@ -59,7 +59,7 @@ BEGIN
         ELSIF next_sync_kind = 'update' THEN
             RETURN ROW('update', current_relevant_fields || next_relevant_fields)::sync_change;
         ELSIF next_sync_kind = 'delete' THEN
-            RETURN ROW('delete', jsonb_build_object())::sync_change;
+            RETURN NULL;
         END IF;
 
     -- delete + insert = just do the insert

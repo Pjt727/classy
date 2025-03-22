@@ -77,8 +77,8 @@ func (h SyncHandler) SyncAllFromDate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result := SyncResult{
-		syncData:   syncChangeRows,
-		lastUpdate: lastUpdate,
+		SyncData:   syncChangeRows,
+		LastUpdate: lastUpdate,
 	}
 	resultJson, err := json.Marshal(result)
 	if err != nil {

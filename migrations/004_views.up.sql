@@ -105,8 +105,6 @@ SELECT h1.table_name,
        ).relevant_fields AS relevant_fields
 FROM 
     historic_class_information h1
--- temp fix to work on syncs
-WHERE composite_hash NOT IN ('09b6cdcafe1e6be24b6512f4fa62e782', 'a8a3507fb542ee24f994bc5a0035719a')
 ORDER BY h1.input_at
 );
 

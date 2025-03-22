@@ -118,7 +118,7 @@ GROUP BY
     updated_pk_fields
 ;
 
-SELECT * FROM sync_diffs WHERE composite_hash NOT IN ('09b6cdcafe1e6be24b6512f4fa62e782', 'a8a3507fb542ee24f994bc5a0035719a');
+SELECT * FROM sync_diffs
 
 
 SELECT table_name, sync_action, composite_hash, relevant_fields
@@ -126,6 +126,22 @@ FROM sync_diffs WHERE (school_id, table_name, composite_hash, updated_input_at) 
     SELECT s.school_id, s.table_name, s.composite_hash, MIN(s.updated_input_at)
     FROM sync_diffs s
     WHERE s.updated_input_at > '2020-03-19 22:29:05.546344+09'
-    AND relevant_fields IS NULL
     GROUP BY s.school_id, s.table_name, s.composite_hash
 );
+
+SELECT * FROM historic_class_information
+WHERE composite_hash = '6827feb7f0b2c688fdd358d14e45de47';
+
+SELECT tgname, tgrelid, tgisinternal, tgenabled
+FROM pg_trigger
+WHERE tgname LIKE '%_trigger';
+
+SELECT composite_hash
+FROM historic_class_information
+WHERE sync_action = 'delete'
+AND composite_hash NOT IN (
+    SELECT composite_hash
+    FROM historic_class_information
+    WHERE sync_action IN ('insert', 'update')
+);
+

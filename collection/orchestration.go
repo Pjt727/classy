@@ -299,7 +299,7 @@ func (o Orchestrator) UpdateAllSectionsOfSchool(ctx context.Context, termCollect
 		Name:            termCollection.Name,
 		StillCollecting: termCollection.StillCollecting,
 	}
-	if err := q.DeleteCoursesMeetingsStaging(ctx, classEntryTermCollection); err != nil {
+	if err := q.DeleteSectionsMeetingsStaging(ctx, classEntryTermCollection); err != nil {
 		updateLogger.Error("Could not ready staging tables", err)
 		return err
 	}

@@ -45,7 +45,7 @@ func (q *EntryQueries) WithTx(tx pgx.Tx) *EntryQueries {
 // if those triggers did not matter then we would simply delete all respective meeting / section data
 //    and use copy from or batch inserts directly on the table
 
-func (q *EntryQueries) DeleteCoursesMeetingsStaging(ctx context.Context, termCollection TermCollection) error {
+func (q *EntryQueries) DeleteSectionsMeetingsStaging(ctx context.Context, termCollection TermCollection) error {
 	errCh := make(chan error, 2)
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -82,19 +82,19 @@ func (q *EntryQueries) MoveStagedCoursesAndMeetings(
 	ctx context.Context,
 	termCollection TermCollection,
 ) (int, error) {
-	err := q.q.RemoveUnstagedSections(ctx, db.RemoveUnstagedSectionsParams{
-		TermCollectionID: termCollection.ID,
-		SchoolID:         q.schoolID,
-	})
-	if err != nil {
-		return 0, fmt.Errorf("error unstaging sections %v", err)
-	}
-	err = q.q.RemoveUnstagedMeetings(ctx, db.RemoveUnstagedMeetingsParams{
+	err := q.q.RemoveUnstagedMeetings(ctx, db.RemoveUnstagedMeetingsParams{
 		TermCollectionID: termCollection.ID,
 		SchoolID:         q.schoolID,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("error unstaging meeting %v", err)
+	}
+	err = q.q.RemoveUnstagedSections(ctx, db.RemoveUnstagedSectionsParams{
+		TermCollectionID: termCollection.ID,
+		SchoolID:         q.schoolID,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("error unstaging sections %v", err)
 	}
 	err = q.q.MoveStagedSections(ctx)
 	if err != nil {
