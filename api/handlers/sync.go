@@ -18,8 +18,8 @@ type SyncHandler struct {
 }
 
 type SyncResult struct {
-	syncData   []db.GetLastestSyncChangesRow
-	lastUpdate pgtype.Timestamptz
+	SyncData   []db.GetLastestSyncChangesRow `json:"sync_data"`
+	LastUpdate pgtype.Timestamptz            `json:"last_update"`
 }
 
 func (h SyncHandler) SyncAllFromDate(w http.ResponseWriter, r *http.Request) {
