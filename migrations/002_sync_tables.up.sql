@@ -1,15 +1,16 @@
 CREATE TYPE sync_kind AS ENUM ('update', 'delete', 'insert');
 
 CREATE TABLE historic_class_information (
+    sequence SERIAL PRIMARY KEY,
+
     school_id TEXT,
     table_name TEXT,
     composite_hash TEXT,
-    input_at TIMESTAMP WITH TIME ZONE,
 
+    input_at TIMESTAMP WITH TIME ZONE,
     pk_fields jsonb,
     sync_action sync_kind,
-    relevant_fields jsonb,
-    PRIMARY KEY (school_id, table_name, composite_hash, input_at)
+    relevant_fields jsonb
 );
 
 CREATE TYPE sync_change AS (

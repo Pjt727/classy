@@ -12,7 +12,7 @@ import (
 )
 
 const getLastSyncTime = `-- name: GetLastSyncTime :one
-SELECT MAX(updated_input_at)::timestamptz FROM sync_diffs
+SELECT MAX(updated_input_at)::timestamptz FROM historic_class_information
 `
 
 func (q *Queries) GetLastSyncTime(ctx context.Context) (pgtype.Timestamptz, error) {
@@ -22,25 +22,51 @@ func (q *Queries) GetLastSyncTime(ctx context.Context) (pgtype.Timestamptz, erro
 	return column_1, err
 }
 
+const getLastSyncTimesForTerm = `-- name: GetLastSyncTimesForTerm :one
+SELECT table_name, MAX(updated_input_at)::timestamptz 
+FROM historic_class_information
+WHERE school_id = $1
+      AND (relevant_fields->'term_collection_id' IS NULL 
+            OR relevant_fields->'term_collection_id' = $2)
+GROUP BY table_name
+`
+
+type GetLastSyncTimesForTermParams struct {
+	SchoolID         pgtype.Text `json:"school_id"`
+	TermCollectionID []byte      `json:"term_collection_id"`
+}
+
+type GetLastSyncTimesForTermRow struct {
+	TableName pgtype.Text        `json:"table_name"`
+	Column2   pgtype.Timestamptz `json:"column_2"`
+}
+
+func (q *Queries) GetLastSyncTimesForTerm(ctx context.Context, arg GetLastSyncTimesForTermParams) (GetLastSyncTimesForTermRow, error) {
+	row := q.db.QueryRow(ctx, getLastSyncTimesForTerm, arg.SchoolID, arg.TermCollectionID)
+	var i GetLastSyncTimesForTermRow
+	err := row.Scan(&i.TableName, &i.Column2)
+	return i, err
+}
+
 const getLastestSyncChanges = `-- name: GetLastestSyncChanges :many
 SELECT table_name, updated_pk_fields AS pk_fields, sync_action, relevant_fields
 FROM sync_diffs WHERE (school_id, table_name, composite_hash, updated_input_at) IN (
     SELECT s.school_id, s.table_name, s.composite_hash, MIN(s.updated_input_at)
     FROM sync_diffs s
-    WHERE s.updated_input_at > $1
+    WHERE s.sequence > $1
     GROUP BY s.school_id, s.table_name, s.composite_hash
 )
 `
 
 type GetLastestSyncChangesRow struct {
-	TableName      string                 `json:"table_name"`
+	TableName      pgtype.Text            `json:"table_name"`
 	PkFields       map[string]interface{} `json:"pk_fields"`
 	SyncAction     string                 `json:"sync_action"`
 	RelevantFields map[string]interface{} `json:"relevant_fields"`
 }
 
-func (q *Queries) GetLastestSyncChanges(ctx context.Context, lastSyncTime pgtype.Timestamptz) ([]GetLastestSyncChangesRow, error) {
-	rows, err := q.db.Query(ctx, getLastestSyncChanges, lastSyncTime)
+func (q *Queries) GetLastestSyncChanges(ctx context.Context, lastSequence int32) ([]GetLastestSyncChangesRow, error) {
+	rows, err := q.db.Query(ctx, getLastestSyncChanges, lastSequence)
 	if err != nil {
 		return nil, err
 	}
@@ -48,6 +74,69 @@ func (q *Queries) GetLastestSyncChanges(ctx context.Context, lastSyncTime pgtype
 	var items []GetLastestSyncChangesRow
 	for rows.Next() {
 		var i GetLastestSyncChangesRow
+		if err := rows.Scan(
+			&i.TableName,
+			&i.PkFields,
+			&i.SyncAction,
+			&i.RelevantFields,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getLastestSyncChangesForTerm = `-- name: GetLastestSyncChangesForTerm :many
+SELECT table_name, updated_pk_fields AS pk_fields, sync_action, relevant_fields
+FROM sync_diffs
+WHERE sequence IN (
+    SELECT MIN(h.sequence)
+    FROM historic_class_information h
+    WHERE EXISTS (
+        SELECT 1
+        FROM 
+            UNNEST($1::string[]) WITH ORDINALITY AS term_collection_id,
+            UNNEST($2::int[]) WITH ORDINALITY AS seq
+        WHERE h.term_collection_id = term_collection_id AND h.sequence > seq
+    )
+    GROUP BY h.school_id, h.table_name, h.composite_hash
+) OR sequence IN (
+    SELECT MIN(h.sequence)
+    FROM historic_class_information h
+    WHERE h.term_collection_id IS NULL AND h.sequence > $3
+    GROUP BY h.school_id, h.table_name, h.composite_hash
+)
+`
+
+type GetLastestSyncChangesForTermParams struct {
+	TermCollectionIds  []string `json:"term_collection_ids"`
+	LastTermSequences  []int32  `json:"last_term_sequences"`
+	LastCommonSequence int32    `json:"last_common_sequence"`
+}
+
+type GetLastestSyncChangesForTermRow struct {
+	TableName      pgtype.Text            `json:"table_name"`
+	PkFields       map[string]interface{} `json:"pk_fields"`
+	SyncAction     string                 `json:"sync_action"`
+	RelevantFields map[string]interface{} `json:"relevant_fields"`
+}
+
+// The strategy of this query is get the next sync diff which is after
+//
+//	the last sync
+func (q *Queries) GetLastestSyncChangesForTerm(ctx context.Context, arg GetLastestSyncChangesForTermParams) ([]GetLastestSyncChangesForTermRow, error) {
+	rows, err := q.db.Query(ctx, getLastestSyncChangesForTerm, arg.TermCollectionIds, arg.LastTermSequences, arg.LastCommonSequence)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetLastestSyncChangesForTermRow
+	for rows.Next() {
+		var i GetLastestSyncChangesForTermRow
 		if err := rows.Scan(
 			&i.TableName,
 			&i.PkFields,

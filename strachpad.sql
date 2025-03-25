@@ -118,7 +118,7 @@ GROUP BY
     updated_pk_fields
 ;
 
-SELECT * FROM sync_diffs
+SELECT * FROM historic_class_information;
 
 
 SELECT table_name, sync_action, composite_hash, relevant_fields
@@ -145,3 +145,4 @@ AND composite_hash NOT IN (
     WHERE sync_action IN ('insert', 'update')
 );
 
+select * from sync_diffs

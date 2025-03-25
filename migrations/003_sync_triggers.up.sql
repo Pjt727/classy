@@ -4,6 +4,7 @@ DECLARE
     _relevant_fields JSONB;
     _pk_fields JSONB;
     _hash_text TEXT;
+    _school_id TEXT;
     _sync_action sync_kind;
     _pk_columns TEXT[];
 BEGIN
@@ -27,7 +28,9 @@ BEGIN
     -- turn the pk_fields into a json to be stored
     _pk_fields := jsonb_object_agg(key, value)
                  FROM jsonb_each(to_jsonb(COALESCE(NEW, OLD)))
-                 WHERE key = ANY(_pk_columns);
+                 WHERE key = ANY(_pk_columns)
+                     AND key != 'school_id'
+                 ;
     _hash_text := STRING_AGG(key || '%' || value, '%%' ORDER BY key)
             FROM jsonb_each(_pk_fields);
     IF TG_OP = 'INSERT' THEN
@@ -52,6 +55,13 @@ BEGIN
         _relevant_fields := NULL;
     END IF;
 
+    -- school's id is just "id"
+    IF TG_TABLE_NAME = 'schools' THEN
+        _school_id = COALESCE(NEW.id, OLD.id);
+    ELSE
+        _school_id = COALESCE(OLD.school_id, NEW.school_id);
+    END IF;
+
     INSERT INTO historic_class_information (
         school_id,
         table_name,
@@ -61,7 +71,7 @@ BEGIN
         sync_action,
         relevant_fields
     ) VALUES (
-        COALESCE(OLD.school_id, NEW.school_id),
+        _school_id,
         TG_TABLE_NAME,
         md5(_hash_text::text),
         NOW(),
@@ -74,27 +84,32 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER term_collections_trigger
+CREATE TRIGGER historic_log
+AFTER INSERT OR UPDATE OR DELETE ON schools
+FOR EACH ROW
+EXECUTE FUNCTION log_historic_class_information();
+
+CREATE TRIGGER historic_log
 AFTER INSERT OR UPDATE OR DELETE ON term_collections
 FOR EACH ROW
 EXECUTE FUNCTION log_historic_class_information();
 
-CREATE TRIGGER professors_trigger
+CREATE TRIGGER historic_log
 AFTER INSERT OR UPDATE OR DELETE ON professors
 FOR EACH ROW
 EXECUTE FUNCTION log_historic_class_information();
 
-CREATE TRIGGER courses_trigger
+CREATE TRIGGER historic_log
 AFTER INSERT OR UPDATE OR DELETE ON courses
 FOR EACH ROW
 EXECUTE FUNCTION log_historic_class_information();
 
-CREATE TRIGGER sections_trigger
+CREATE TRIGGER historic_log
 AFTER INSERT OR UPDATE OR DELETE ON sections
 FOR EACH ROW
 EXECUTE FUNCTION log_historic_class_information();
 
-CREATE TRIGGER meeting_times_trigger
+CREATE TRIGGER historic_log
 AFTER INSERT OR UPDATE OR DELETE ON meeting_times
 FOR EACH ROW
 EXECUTE FUNCTION log_historic_class_information();
