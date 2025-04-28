@@ -118,6 +118,22 @@ func (o Orchestrator) initMappings(ctx context.Context) {
 	}
 }
 
+type SchoolWithService struct {
+	School      db.School
+	ServiceName string
+}
+
+func (o Orchestrator) GetSchoolsWithService() []SchoolWithService {
+	schools := make([]SchoolWithService, 0)
+	for schoolId, service := range o.schoolIdToService {
+		schools = append(schools, SchoolWithService{
+			School:      o.schoolIdToSchool[schoolId],
+			ServiceName: (*service).GetName(),
+		})
+	}
+	return schools
+}
+
 func (o Orchestrator) GetSchoolById(schoolId string) (db.School, bool) {
 	school, ok := o.schoolIdToSchool[schoolId]
 	return school, ok

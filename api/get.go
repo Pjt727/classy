@@ -124,7 +124,7 @@ func populatePagnation(next http.Handler) http.Handler {
 		if queryOffset != "" {
 			newOffset, err := strconv.Atoi(queryOffset)
 			if err != nil {
-				http.Error(w, http.StatusText(400)+": Invalid query offset param", 400)
+				http.Error(w, "Invalid query offset param", http.StatusBadRequest)
 				return
 			}
 			offset = newOffset
@@ -133,7 +133,7 @@ func populatePagnation(next http.Handler) http.Handler {
 		if queryLimit != "" {
 			setLimit, err := strconv.Atoi(queryLimit)
 			if err != nil {
-				http.Error(w, http.StatusText(400)+": Invalid query limit param", 400)
+				http.Error(w, "Invalid query limit param", http.StatusBadRequest)
 				return
 			}
 			limit = setLimit

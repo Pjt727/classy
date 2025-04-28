@@ -18,7 +18,8 @@ func populateSyncRoutes(r *chi.Router) error {
 		DbPool: pool,
 	}
 
-	(*r).Get("/all", syncHandler.SyncAllFromDate)
+	(*r).Get("/all", syncHandler.SyncAll)
+	(*r).Get("/schools/terms", syncHandler.SyncTerms)
 
 	return nil
 }

@@ -6,6 +6,7 @@ sql:
       - "data/entry.sql"
       - "data/get.sql"
       - "data/sync.sql"
+      - "data/manage.sql"
     gen:
       go:
         package: "db"

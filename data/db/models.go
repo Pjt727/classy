@@ -118,12 +118,12 @@ type CourseHeuristic struct {
 
 type HistoricClassInformation struct {
 	Sequence       int32              `json:"sequence"`
-	SchoolID       pgtype.Text        `json:"school_id"`
-	TableName      pgtype.Text        `json:"table_name"`
-	CompositeHash  pgtype.Text        `json:"composite_hash"`
+	SchoolID       string             `json:"school_id"`
+	TableName      string             `json:"table_name"`
+	CompositeHash  string             `json:"composite_hash"`
 	InputAt        pgtype.Timestamptz `json:"input_at"`
 	PkFields       []byte             `json:"pk_fields"`
-	SyncAction     NullSyncKind       `json:"sync_action"`
+	SyncAction     SyncKind           `json:"sync_action"`
 	RelevantFields []byte             `json:"relevant_fields"`
 }
 
@@ -228,10 +228,10 @@ type StagingSection struct {
 
 type SyncDiff struct {
 	Sequence        int32                  `json:"sequence"`
-	TableName       pgtype.Text            `json:"table_name"`
+	TableName       string                 `json:"table_name"`
 	UpdatedInputAt  pgtype.Timestamptz     `json:"updated_input_at"`
-	CompositeHash   pgtype.Text            `json:"composite_hash"`
-	SchoolID        pgtype.Text            `json:"school_id"`
+	CompositeHash   string                 `json:"composite_hash"`
+	SchoolID        string                 `json:"school_id"`
 	UpdatedPkFields map[string]interface{} `json:"updated_pk_fields"`
 	SyncAction      string                 `json:"sync_action"`
 	RelevantFields  map[string]interface{} `json:"relevant_fields"`
