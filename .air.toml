@@ -2,9 +2,9 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-  bin = "./tmp/main"
-  cmd = "templ generate && sqlc generate && go build -o ./tmp/main . && go mod tidy"
-  delay = 30
+  bin = "./tmp/main app serve"
+  cmd = "templ generate && sqlc generate && go build -o ./tmp/main"
+  delay = 60
   exclude_dir = ["assets", "tmp", "vendor", "data/db"]
   exclude_file = [ "go.mod", "go.sum"]
   exclude_regex = [".*_templ.go", ".*sql.go"]
@@ -34,4 +34,4 @@ tmp_dir = "tmp"
 [proxy]
   enabled = true
   proxy_port = 8383
-  app_port = 8282
+  app_port = 3000

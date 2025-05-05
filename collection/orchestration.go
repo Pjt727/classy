@@ -61,12 +61,19 @@ type Orchestrator struct {
 	dbPool                     *pgxpool.Pool
 }
 
+var DefaultEnabledServices []Service
+
+func init() {
+	// might change to be determined by env variables
+	DefaultEnabledServices = []Service{banner.Service}
+}
+
 func GetDefaultOrchestrator() (Orchestrator, error) {
 	ctx := context.Background()
 	dbPool, err := data.NewPool(ctx)
 
 	orchestrator := Orchestrator{
-		serviceEntries:             []Service{banner.Service},
+		serviceEntries:             DefaultEnabledServices,
 		termCollectionStagingLocks: map[db.TermCollection]bool{},
 		schoolIdToService:          make(map[string]*Service),
 		schoolIdToSchool:           make(map[string]db.School),
@@ -82,7 +89,10 @@ func GetDefaultOrchestrator() (Orchestrator, error) {
 	return orchestrator, nil
 }
 
-func CreateOrchestrator(services []Service) (Orchestrator, error) {
+func CreateOrchestrator(services []Service, logger *log.Entry) (Orchestrator, error) {
+	if logger == nil {
+		logger = log.WithFields(log.Fields{"job": "orchestration"})
+	}
 	ctx := context.Background()
 	dbPool, err := data.NewPool(ctx)
 	orchestrator := Orchestrator{
@@ -90,7 +100,7 @@ func CreateOrchestrator(services []Service) (Orchestrator, error) {
 		termCollectionStagingLocks: map[db.TermCollection]bool{},
 		schoolIdToService:          make(map[string]*Service),
 		schoolIdToSchool:           make(map[string]db.School),
-		orchestrationLogger:        log.WithFields(log.Fields{"job": "orchestration"}),
+		orchestrationLogger:        logger,
 		dbPool:                     dbPool,
 	}
 	if err != nil {

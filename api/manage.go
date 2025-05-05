@@ -9,17 +9,18 @@ import (
 )
 
 func populateManagementRoutes(r *chi.Router) error {
+
 	ctx := context.Background()
 	pool, err := data.NewPool(ctx)
 	if err != nil {
 		return err
 	}
-	syncHandler := handlers.SyncHandler{
+	h := handlers.ManageHandler{
 		DbPool: pool,
 	}
 
-	(*r).Get("/all", syncHandler.SyncAll)
-	(*r).Get("/schools/terms", syncHandler.SyncTerms)
+	(*r).Get("/", h.DashboardHome)
+	(*r).Post("/", h.NewOrchestrator)
 
 	return nil
 }

@@ -10,7 +10,7 @@ CREATE TABLE historic_class_information (
     input_at TIMESTAMP WITH TIME ZONE,
     pk_fields jsonb NOT NULL,
     sync_action sync_kind NOT NULL,
-    relevant_fields jsonb NOT NULL
+    relevant_fields jsonb
 );
 
 CREATE TYPE sync_change AS (

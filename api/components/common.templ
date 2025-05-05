@@ -1,5 +1,28 @@
 package components
 
-templ DashBoard() {
-	<div>Hello world</div>
+templ Dashboard() {
+	<html>
+		<head>
+			<link rel="stylesheet" href="/static/milligram.css"/>
+			<title>Manage</title>
+		</head>
+		<body class="container">
+			<h1>Add a new orchestrator</h1>
+			<div>
+				@NewOrchestrator()
+			</div>
+			<script src="/static/htmx.js"></script>
+		</body>
+	</html>
+}
+
+templ NewOrchestrator() {
+	<form hx-post="manage">
+		<label for="name">Name:</label>
+		<input type="text" id="name" name="name" value="Orchestrator"/>
+		<label for="showLogs">Show Logs?</label>
+		<input type="checkbox" id="showLogs" name="showLogs" checked/>
+		<br/>
+		<button type="submit">Submit</button>
+	</form>
 }

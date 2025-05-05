@@ -247,7 +247,7 @@ func (t *FileTestService) GetTermCollections(
 //	and terms for the classdata
 func (t *FileTestService) RunThroughOrchestrator() error {
 
-	orch, err := collection.CreateOrchestrator([]collection.Service{t})
+	orch, err := collection.CreateOrchestrator([]collection.Service{t}, nil)
 	if err != nil {
 		return err
 	}
