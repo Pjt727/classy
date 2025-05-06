@@ -26,3 +26,25 @@ vim.api.nvim_create_autocmd("BufWritePost", {
 		end, 60)
 	end,
 })
+
+-- css completions
+-- Project-specific HTML/CSS configuration
+vim.g.html_css = {
+	-- handlers = {
+	-- 	definition = {
+	-- 		bind = "gd",
+	-- 	},
+	-- 	hover = {
+	-- 		bind = "K",
+	-- 		wrap = true,
+	-- 		border = "none",
+	-- 		position = "cursor",
+	-- 	},
+	-- },
+	-- documentation = {
+	-- 	auto_show = true,
+	-- },
+	style_sheets = {
+		-- "../static/milligram.css",
+	},
+}

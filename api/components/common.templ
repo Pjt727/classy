@@ -1,23 +1,48 @@
 package components
 
-templ Dashboard() {
+import (
+	"fmt"
+	"github.com/Pjt727/classy/collection"
+)
+
+type ManagementOrchestrator struct {
+	O    collection.Orchestrator
+	Name string
+}
+
+func id(idValue string) string {
+	return fmt.Sprintf("#%s", idValue)
+}
+
+var orchTable = "managementOrchestrators"
+var notificationStack = "notifications"
+
+templ Dashboard(orchestrators []ManagementOrchestrator) {
 	<html>
 		<head>
-			<link rel="stylesheet" href="/static/milligram.css"/>
+			<link rel="stylesheet" href="static/milligram.css"/>
 			<title>Manage</title>
+			<style>
+    </style>
 		</head>
+		<div id={ notificationStack }></div>
 		<body class="container">
 			<h1>Add a new orchestrator</h1>
 			<div>
 				@NewOrchestrator()
 			</div>
 			<script src="/static/htmx.js"></script>
+			<table id={ orchTable }>
+				for _, orchestrator := range orchestrators {
+					@ManageOrchestratorList(orchestrator)
+				}
+			</table>
 		</body>
 	</html>
 }
 
 templ NewOrchestrator() {
-	<form hx-post="manage">
+	<form hx-post="manage" hx-swap="beforeend" hx-target={ id(orchTable) }>
 		<label for="name">Name:</label>
 		<input type="text" id="name" name="name" value="Orchestrator"/>
 		<label for="showLogs">Show Logs?</label>
@@ -25,4 +50,48 @@ templ NewOrchestrator() {
 		<br/>
 		<button type="submit">Submit</button>
 	</form>
+}
+
+templ ManageOrchestratorList(orchestrator ManagementOrchestrator) {
+	<template>
+		<tr>
+			<td></td>
+			{ orchestrator.Name }
+			<td></td>
+		</tr>
+	</template>
+}
+
+type NotificationType string
+
+const (
+	NotifyError   NotificationType = "Error"
+	NotifySuccess NotificationType = "Success"
+	NotifyWarning NotificationType = "Warning"
+)
+
+templ Notification(notificationType NotificationType, message string) {
+	{{ var bgColor string }}
+	switch notificationType {
+		case NotifyError:
+			{{ bgColor = "#dc3545" }}
+		case NotifySuccess:
+			{{ bgColor = "#28a745" }}
+		case NotifyWarning:
+			{{ bgColor = "#ffc107" }}
+		default:
+			{{ bgColor = "#6c757d" }}
+	}
+	<div hx-swap-oob={ "beforeend:" + id(notificationStack) }>
+		<div
+			style={ "position: fixed; top: 20px; right: 20px;" , fmt.Sprintf("background-color: %s;",
+        bgColor), "color: white; padding: 10px; border-radius: 5px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.2); z-index: 1000;" }
+		>
+			<p style="margin: 0;">{ message }</p>
+			<button
+				style="float: right; background: none; border: none; color: white; cursor: pointer; font-size: 16px;"
+				onclick="this.parentNode.style.display='none';"
+			>&times;</button>
+		</div>
+	</div>
 }

@@ -8,23 +8,26 @@ import (
 	"github.com/Pjt727/classy/collection"
 	"github.com/Pjt727/classy/data/db"
 
-	// "github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	log "github.com/sirupsen/logrus"
 )
 
-type managementOrchestrator struct {
-	o    collection.Orchestrator
-	name string
-}
-
-var orchestrators []managementOrchestrator = make([]managementOrchestrator, 0)
+var orchestrators []components.ManagementOrchestrator = make([]components.ManagementOrchestrator, 0)
 
 type ManageHandler struct {
 	DbPool *pgxpool.Pool
 }
 
+func ErrorAsHtmlMessage(w http.ResponseWriter, r *http.Request, message string) {
+	err := components.Notification(components.NotifyError, message).Render(r.Context(), w)
+	if err != nil {
+		http.Error(w, "Failed to render notification", http.StatusInternalServerError)
+		return
+	}
+}
+
 func (h ManageHandler) DashboardHome(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 	// servicesForSchools := h.Orchestrator.GetSchoolsWithService()
 
@@ -33,16 +36,16 @@ func (h ManageHandler) DashboardHome(w http.ResponseWriter, r *http.Request) {
 	err := q.GetPreviousCollections(ctx)
 	if err != nil {
 		log.Error("Could not get school rows: ", err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		ErrorAsHtmlMessage(w, r, "Database not working")
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	err = components.Dashboard().Render(r.Context(), w)
+	err = components.Dashboard(orchestrators).Render(r.Context(), w)
 
 	if err != nil {
 		log.Error("Could not render template: ", err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		ErrorAsHtmlMessage(w, r, "Dashboard could not be rendered")
 		return
 	}
 
@@ -54,28 +57,31 @@ type NewOrchestratorData struct {
 }
 
 func (h ManageHandler) NewOrchestrator(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	var data NewOrchestratorData
 	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
 		log.Error("Error decoding post: ", err)
-		http.Error(w, "Invlaid parameters", http.StatusBadRequest)
+		ErrorAsHtmlMessage(w, r, "Invlaid parameters")
 		return
 	}
 	newOrchestrator, err := collection.CreateOrchestrator(collection.DefaultEnabledServices, nil)
-	newOrchestrator.GetSchoolById("marist")
+	managementOrchestrator := components.ManagementOrchestrator{
+		O:    newOrchestrator,
+		Name: data.name,
+	}
 
 	if err != nil {
-		http.Error(w, "Error creating orchestrator", http.StatusBadRequest)
+		log.Error("Error decoding post: ", err)
+		ErrorAsHtmlMessage(w, r, "Invlaid parameters: %s")
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-
-	err = components.Dashboard().Render(r.Context(), w)
+	err = components.ManageOrchestratorList(managementOrchestrator).Render(r.Context(), w)
 
 	if err != nil {
 		log.Error("Could not render template: ", err)
-		http.Error(w, http.StatusText(500), 500)
+		ErrorAsHtmlMessage(w, r, "Could not render orchestrator")
 		return
 	}
 }

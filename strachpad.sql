@@ -145,4 +145,9 @@ AND composite_hash NOT IN (
     WHERE sync_action IN ('insert', 'update')
 );
 
-select * from sync_diffs
+select * from sync_diffs;
+
+
+select * from sections where sections.primary_professor_id = 'Lauren.Yanks1@marist.edu';
+
+

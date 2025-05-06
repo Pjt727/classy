@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-
 	"github.com/Pjt727/classy/api/handlers"
 	"github.com/Pjt727/classy/data"
 	"github.com/go-chi/chi/v5"
