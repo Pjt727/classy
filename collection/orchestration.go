@@ -51,7 +51,7 @@ type Service interface {
 }
 
 type Orchestrator struct {
-	serviceEntries []Service
+	serviceEntries map[string]Service
 	// it would not be good if the same term collection was being
 	//    collected by multiple workers at the same time
 	termCollectionStagingLocks map[db.TermCollection]bool
@@ -64,7 +64,7 @@ type Orchestrator struct {
 var DefaultEnabledServices []Service
 
 func init() {
-	// might change to be determined by env variables
+	// might change to be determined by env variables or accesible resources
 	DefaultEnabledServices = []Service{banner.Service}
 }
 
@@ -72,8 +72,13 @@ func GetDefaultOrchestrator() (Orchestrator, error) {
 	ctx := context.Background()
 	dbPool, err := data.NewPool(ctx)
 
+	serviceEntries := make(map[string]Service, 0)
+	for _, service := range DefaultEnabledServices {
+		serviceEntries[service.GetName()] = service
+	}
+
 	orchestrator := Orchestrator{
-		serviceEntries:             DefaultEnabledServices,
+		serviceEntries:             serviceEntries,
 		termCollectionStagingLocks: map[db.TermCollection]bool{},
 		schoolIdToService:          make(map[string]*Service),
 		schoolIdToSchool:           make(map[string]db.School),
@@ -95,8 +100,14 @@ func CreateOrchestrator(services []Service, logger *log.Entry) (Orchestrator, er
 	}
 	ctx := context.Background()
 	dbPool, err := data.NewPool(ctx)
+
+	serviceEntries := make(map[string]Service, 0)
+	for _, service := range services {
+		serviceEntries[service.GetName()] = service
+	}
+
 	orchestrator := Orchestrator{
-		serviceEntries:             services,
+		serviceEntries:             serviceEntries,
 		termCollectionStagingLocks: map[db.TermCollection]bool{},
 		schoolIdToService:          make(map[string]*Service),
 		schoolIdToSchool:           make(map[string]db.School),
@@ -173,7 +184,101 @@ func (o Orchestrator) UpsertAllSchools(ctx context.Context) error {
 	return nil
 }
 
+// uses the "best" service for the job
 func (o Orchestrator) UpsertSchoolTerms(ctx context.Context, logger log.Entry, school db.School) error {
+	logger.Info("starting collection and db addition of colleciton terms")
+	service, ok := o.schoolIdToService[school.ID]
+	if !ok {
+		return errors.New(fmt.Sprintf("Do not know how to scrape %s. No service was found.", school.ID))
+	}
+	o.UpsertSchoolTermsWithService(ctx, logger, school, (*service).GetName())
+	return nil
+}
+
+// uses the specified service for the job
+func (o Orchestrator) UpsertSchoolTermsWithService(
+	ctx context.Context,
+	logger log.Entry,
+	school db.School,
+	serviceName string,
+) error {
+	logger.Info("starting collection and db addition of colleciton terms")
+	service, ok := o.serviceEntries[serviceName]
+	if !ok {
+		return errors.New(fmt.Sprintf("The service `%s` was not found.", serviceName))
+	}
+	tx, err := o.dbPool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Commit(ctx)
+	q := db.New(tx)
+	logger.Tracef(`starting collection from service of terms`)
+	termCollections, err := service.GetTermCollections(logger, ctx, school)
+	logger.Tracef(`finished collecting %d collection terms`, len(termCollections))
+	if err != nil {
+		logger.Trace(`propagating commit err: `, err)
+		tx.Rollback(ctx)
+		return err
+	}
+
+	logger.Tracef(`starting adding collection terms to db`)
+	terms := make([]db.UpsertTermParams, len(termCollections))
+	for i, termCollection := range termCollections {
+		terms[i] = db.UpsertTermParams{
+			Year:   termCollection.Term.Year,
+			Season: termCollection.Term.Season,
+		}
+	}
+
+	if err := q.UpsertSchool(ctx, db.UpsertSchoolParams{
+		ID:   school.ID,
+		Name: school.Name,
+	}); err != nil {
+		return err
+	}
+
+	dt := q.UpsertTerm(ctx, terms)
+	dt.Exec(func(i int, e error) {
+		if e != nil {
+			tx.Rollback(ctx)
+			err = e
+			return
+		}
+	})
+	if err != nil {
+		return err
+	}
+
+	dbTermCollections := make([]db.UpsertTermCollectionParams, len(termCollections))
+	for i, t := range termCollections {
+		dbTermCollections[i] = db.UpsertTermCollectionParams{
+			ID:              t.ID,
+			SchoolID:        school.ID,
+			Year:            t.Term.Year,
+			Season:          t.Term.Season,
+			Name:            t.Name,
+			StillCollecting: t.StillCollecting,
+		}
+	}
+
+	dtc := q.UpsertTermCollection(ctx, dbTermCollections)
+	dtc.Exec(func(i int, e error) {
+		if e != nil {
+			tx.Rollback(ctx)
+			err = e
+			return
+		}
+	})
+	if err != nil {
+		return err
+	}
+	logger.Infof(`finished adding %d collection terms to db`, len(termCollections))
+	tx.Commit(ctx)
+	return nil
+}
+
+func (o Orchestrator) UpsertSchoolServiceTerms(ctx context.Context, logger log.Entry, school db.School) error {
 	logger.Info("starting collection and db addition of colleciton terms")
 	service, ok := o.schoolIdToService[school.ID]
 	if !ok {
@@ -351,4 +456,40 @@ func (o Orchestrator) UpdateAllSectionsOfSchool(ctx context.Context, termCollect
 	}
 	updateLogger.Infof("updated %d meetings and sections", changesCount)
 	return nil
+}
+
+func (o Orchestrator) ListRunningCollections() []db.TermCollection {
+	collections := make([]db.TermCollection, 0)
+
+	for collection, isValid := range o.termCollectionStagingLocks {
+		// the hashmap is used as a set but check anyways I guees
+		if !isValid {
+			continue
+		}
+		collections = append(collections, collection)
+	}
+	return collections
+}
+
+func (o Orchestrator) GetTerms(
+	ctx context.Context,
+	serviceName string,
+	schoolID string,
+) ([]classentry.TermCollection, error) {
+	service, ok := o.serviceEntries[serviceName]
+	if !ok {
+		return []classentry.TermCollection{}, errors.New("Service not found")
+	}
+	school, ok := o.GetSchoolById(schoolID)
+	if !ok {
+		return []classentry.TermCollection{}, errors.New("School ID not found")
+	}
+	termCollections, err := service.GetTermCollections(*o.orchestrationLogger, ctx, school)
+
+	if err != nil {
+		o.orchestrationLogger.Error("There")
+		return []classentry.TermCollection{}, err
+	}
+
+	return termCollections, nil
 }

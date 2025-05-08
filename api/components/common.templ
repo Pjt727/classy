@@ -1,97 +1,196 @@
 package components
 
 import (
-	"fmt"
-	"github.com/Pjt727/classy/collection"
+"fmt"
+"github.com/Pjt727/classy/collection"
+"github.com/Pjt727/classy/data/class-entry"
+"github.com/Pjt727/classy/data/db"
+"strconv"
 )
 
 type ManagementOrchestrator struct {
-	O    collection.Orchestrator
-	Name string
+O collection.Orchestrator
+Name string
+label int
 }
 
 func id(idValue string) string {
-	return fmt.Sprintf("#%s", idValue)
+return fmt.Sprintf("#%s", idValue)
 }
 
 var orchTable = "managementOrchestrators"
 var notificationStack = "notifications"
 
-templ Dashboard(orchestrators []ManagementOrchestrator) {
-	<html>
-		<head>
-			<link rel="stylesheet" href="static/milligram.css"/>
-			<title>Manage</title>
-			<style>
+templ Base() {
+<html>
+
+<head>
+    <link rel="stylesheet" href="/static/milligram.css" />
+    <title>Manage</title>
+    <style>
     </style>
-		</head>
-		<div id={ notificationStack }></div>
-		<body class="container">
-			<h1>Add a new orchestrator</h1>
-			<div>
-				@NewOrchestrator()
-			</div>
-			<script src="/static/htmx.js"></script>
-			<table id={ orchTable }>
-				for _, orchestrator := range orchestrators {
-					@ManageOrchestratorList(orchestrator)
-				}
-			</table>
-		</body>
-	</html>
+</head>
+<div id={ notificationStack } class="container float-right"
+    style="position: fixed; top: 20px; right: 20px; width: 30%;"></div>
+
+<body class="container">
+    { children... }
+    <script src="/static/htmx.js"></script>
+</body>
+
+</html>
+}
+
+templ Dashboard(orchestrators map[int]ManagementOrchestrator) {
+@Base() {
+<h1>Add a new orchestrator</h1>
+<div>
+    @NewOrchestrator()
+</div>
+@ManageOrchestrators(orchestrators)
+}
 }
 
 templ NewOrchestrator() {
-	<form hx-post="manage" hx-swap="beforeend" hx-target={ id(orchTable) }>
-		<label for="name">Name:</label>
-		<input type="text" id="name" name="name" value="Orchestrator"/>
-		<label for="showLogs">Show Logs?</label>
-		<input type="checkbox" id="showLogs" name="showLogs" checked/>
-		<br/>
-		<button type="submit">Submit</button>
-	</form>
+<form hx-post="/manage" hx-swap="outerHTML">
+    <label for="name">Name:</label>
+    <input type="text" id="name" name="name" value="Orchestrator" />
+    <br />
+    <button type="submit">Submit</button>
+</form>
 }
 
-templ ManageOrchestratorList(orchestrator ManagementOrchestrator) {
-	<template>
-		<tr>
-			<td></td>
-			{ orchestrator.Name }
-			<td></td>
-		</tr>
-	</template>
+templ ManageOrchestrators(orchestrators map[int]ManagementOrchestrator) {
+<table id={ orchTable } hx-swap-oob="true">
+    <tbody>
+        for l, orch := range orchestrators {
+        <tr>
+            <td>{ orch.Name }</td>
+            <td><a href={ templ.SafeURL(fmt.Sprintf("/manage/%d", l)) }>View Activity</a></td>
+        </tr>
+        }
+    </tbody>
+</table>
 }
 
 type NotificationType string
 
 const (
-	NotifyError   NotificationType = "Error"
-	NotifySuccess NotificationType = "Success"
-	NotifyWarning NotificationType = "Warning"
+NotifyError NotificationType = "Error"
+NotifySuccess NotificationType = "Success"
+NotifyWarning NotificationType = "Warning"
 )
 
 templ Notification(notificationType NotificationType, message string) {
-	{{ var bgColor string }}
-	switch notificationType {
-		case NotifyError:
-			{{ bgColor = "#dc3545" }}
-		case NotifySuccess:
-			{{ bgColor = "#28a745" }}
-		case NotifyWarning:
-			{{ bgColor = "#ffc107" }}
-		default:
-			{{ bgColor = "#6c757d" }}
-	}
-	<div hx-swap-oob={ "beforeend:" + id(notificationStack) }>
-		<div
-			style={ "position: fixed; top: 20px; right: 20px;" , fmt.Sprintf("background-color: %s;",
-        bgColor), "color: white; padding: 10px; border-radius: 5px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.2); z-index: 1000;" }
-		>
-			<p style="margin: 0;">{ message }</p>
-			<button
-				style="float: right; background: none; border: none; color: white; cursor: pointer; font-size: 16px;"
-				onclick="this.parentNode.style.display='none';"
-			>&times;</button>
-		</div>
-	</div>
+{{ var bgColor string }}
+switch notificationType {
+case NotifyError:
+{{ bgColor = "#dc3545" }}
+case NotifySuccess:
+{{ bgColor = "#28a745" }}
+case NotifyWarning:
+{{ bgColor = "#ffc107" }}
+default:
+{{ bgColor = "#6c757d" }}
+}
+<div hx-swap-oob={ "beforeend:" + id(notificationStack) }>
+    <div style={ fmt.Sprintf("background-color: %s;",
+        bgColor), "margin-bottom: 5px; float: right; width 30%; color: white; padding: 10px; border-radius: 5px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.2); z-index: 1000;"
+        }>
+        <span style="margin: 0;">{ message }</span>
+        <button
+            style="position: relative; top: 0px; right: 0px; background: none; border: none; color: white; cursor: pointer; font-size: 16px;"
+            onclick="this.parentNode.style.display='none';">&times;</button>
+    </div>
+</div>
+}
+
+var orchActiveCollectionTable = "orchActiveCollections"
+
+templ OrchestratorDashboard(orchestrator ManagementOrchestrator, collections []db.TermCollection) {
+@Base() {
+<h1>`{ orchestrator.Name }` Activity</h1>
+<h2>Active collections</h2>
+@OrchestratorActiveCollections(collections)
+<h2>Available schools and services </h2>
+<table>
+    for _, schoolService := range orchestrator.O.GetSchoolsWithService() {
+    <tr hx-target="next tr" hx-indicator="next div">
+        <td>{ schoolService.ServiceName }</td>
+        <td>{ schoolService.School.ID }</td>
+        <td>
+            <form hx-post={ fmt.Sprintf("/manage/%d/terms", orchestrator.label) } hx-indicator="find span">
+                <input type="text" name="serviceName" value={ schoolService.ServiceName } hidden />
+                <input type="text" name="schoolID" value={ schoolService.School.ID } hidden />
+                <button type="submit">
+                    Get Terms
+                </button>
+                <span class="htmx-indicator">
+                    <img src="/static/spinner.gif" width="50px" height="50px" alt="Loading..." />
+                </span>
+            </form>
+        </td>
+    </tr>
+    <tr></tr>
+    }
+</table>
+}
+}
+
+templ OrchestratorActiveCollections(collections []db.TermCollection) {
+<table id={ orchActiveCollectionTable } hx-swap-oob="true">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>School ID</th>
+            <th>Season</th>
+        </tr>
+    </thead>
+    <tbody>
+        for _, collection := range collections {
+        <tr>
+            <td>{ collection.ID }</td>
+            <td>{ collection.Name.String }</td>
+            <td>{ collection.SchoolID }</td>
+            <td>{ string(collection.Season) }</td>
+        </tr>
+        }
+    </tbody>
+</table>
+}
+
+templ TermCollections(orchestrator ManagementOrchestrator, terms []classentry.TermCollection, serviceName string) {
+<td colspan="100%" styles="padding: 0;">
+    <table class="termCollections">
+        <thead>
+            <th>ID</th>
+            <th>Season</th>
+            <th>Year</th>
+            <th>Still Collecting?</th>
+        </thead>
+        <tbody>
+            for _, term := range terms {
+            <tr>
+                <td>
+                    <form hidden>
+                        <input type="text" name="serviceName" value="" />
+                    </form>
+                    <a href="#" title="Collect" hx-include="previous form" hx-patch={ fmt.Sprintf("/manage/%d/terms",
+                        orchestrator.label) }>
+                        { term.ID }
+                    </a>
+                </td>
+                <td>{ string(term.Term.Season) }</td>
+                <td>{ strconv.Itoa(int(term.Term.Year)) }</td>
+                if term.StillCollecting {
+                <td>Yes</td>
+                } else {
+                <td>No</td>
+                }
+            </tr>
+            }
+        </tbody>
+    </table>
+</td>
 }
