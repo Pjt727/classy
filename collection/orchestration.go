@@ -185,11 +185,17 @@ func (o Orchestrator) UpsertAllSchools(ctx context.Context) error {
 }
 
 // uses the "best" service for the job
-func (o Orchestrator) UpsertSchoolTerms(ctx context.Context, logger log.Entry, school db.School) error {
+func (o Orchestrator) UpsertSchoolTerms(
+	ctx context.Context,
+	logger log.Entry,
+	school db.School,
+) error {
 	logger.Info("starting collection and db addition of colleciton terms")
 	service, ok := o.schoolIdToService[school.ID]
 	if !ok {
-		return errors.New(fmt.Sprintf("Do not know how to scrape %s. No service was found.", school.ID))
+		return errors.New(
+			fmt.Sprintf("Do not know how to scrape %s. No service was found.", school.ID),
+		)
 	}
 	o.UpsertSchoolTermsWithService(ctx, logger, school, (*service).GetName())
 	return nil
@@ -278,11 +284,17 @@ func (o Orchestrator) UpsertSchoolTermsWithService(
 	return nil
 }
 
-func (o Orchestrator) UpsertSchoolServiceTerms(ctx context.Context, logger log.Entry, school db.School) error {
+func (o Orchestrator) UpsertSchoolServiceTerms(
+	ctx context.Context,
+	logger log.Entry,
+	school db.School,
+) error {
 	logger.Info("starting collection and db addition of colleciton terms")
 	service, ok := o.schoolIdToService[school.ID]
 	if !ok {
-		return errors.New(fmt.Sprintf("Do not know how to scrape %s. No service was found.", school.ID))
+		return errors.New(
+			fmt.Sprintf("Do not know how to scrape %s. No service was found.", school.ID),
+		)
 	}
 	tx, err := o.dbPool.Begin(ctx)
 	if err != nil {
@@ -393,10 +405,15 @@ func (o Orchestrator) UpsertAllTerms(ctx context.Context) error {
 	return nil
 }
 
-func (o Orchestrator) UpdateAllSectionsOfSchool(ctx context.Context, termCollection db.TermCollection) error {
+func (o Orchestrator) UpdateAllSectionsOfSchool(
+	ctx context.Context,
+	termCollection db.TermCollection,
+) error {
 	// take care of locking until this is done
 	if _, ok := o.termCollectionStagingLocks[termCollection]; ok {
-		return errors.New(fmt.Sprint("Already updating a section for this term collection ", termCollection))
+		return errors.New(
+			fmt.Sprint("Already updating a section for this term collection ", termCollection),
+		)
 	}
 	o.termCollectionStagingLocks[termCollection] = true
 	defer delete(o.termCollectionStagingLocks, termCollection)
@@ -412,7 +429,9 @@ func (o Orchestrator) UpdateAllSectionsOfSchool(ctx context.Context, termCollect
 	})
 	if !ok {
 		updateLogger.Error("Skipping update school... school not found")
-		return errors.New(fmt.Sprintf("Could not find service for shool id %s", termCollection.SchoolID))
+		return errors.New(
+			fmt.Sprintf("Could not find service for shool id %s", termCollection.SchoolID),
+		)
 	}
 	school := o.schoolIdToSchool[termCollection.SchoolID]
 	updateLogger = o.orchestrationLogger.WithFields(log.Fields{
