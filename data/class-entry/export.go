@@ -14,6 +14,7 @@ var SeasonEnumSummer = db.SeasonEnumSummer
 
 type Term = db.Term
 type School = db.School
+
 type TermCollection struct {
 	ID              string
 	Term            Term

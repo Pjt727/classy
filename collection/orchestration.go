@@ -412,7 +412,7 @@ func (o Orchestrator) UpdateAllSectionsOfSchool(
 	// take care of locking until this is done
 	if _, ok := o.termCollectionStagingLocks[termCollection]; ok {
 		return errors.New(
-			fmt.Sprint("Already updating a section for this term collection ", termCollection),
+			fmt.Sprint("Already updating sections for this term collection ", termCollection),
 		)
 	}
 	o.termCollectionStagingLocks[termCollection] = true
@@ -494,21 +494,33 @@ func (o Orchestrator) GetTerms(
 	ctx context.Context,
 	serviceName string,
 	schoolID string,
-) ([]classentry.TermCollection, error) {
+) ([]db.TermCollection, error) {
 	service, ok := o.serviceEntries[serviceName]
 	if !ok {
-		return []classentry.TermCollection{}, errors.New("Service not found")
+		return []db.TermCollection{}, errors.New("Service not found")
 	}
 	school, ok := o.GetSchoolById(schoolID)
 	if !ok {
-		return []classentry.TermCollection{}, errors.New("School ID not found")
+		return []db.TermCollection{}, errors.New("School ID not found")
 	}
-	termCollections, err := service.GetTermCollections(*o.orchestrationLogger, ctx, school)
+	entryTermCollections, err := service.GetTermCollections(*o.orchestrationLogger, ctx, school)
 
 	if err != nil {
 		o.orchestrationLogger.Error("There")
-		return []classentry.TermCollection{}, err
+		return []db.TermCollection{}, err
 	}
 
-	return termCollections, nil
+	dbTermCollections := make([]db.TermCollection, len(entryTermCollections))
+	for i, t := range entryTermCollections {
+		dbTermCollections[i] = db.TermCollection{
+			ID:              t.ID,
+			SchoolID:        school.ID,
+			Year:            t.Term.Year,
+			Season:          t.Term.Season,
+			Name:            t.Name,
+			StillCollecting: t.StillCollecting,
+		}
+	}
+
+	return dbTermCollections, nil
 }

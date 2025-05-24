@@ -5,26 +5,44 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
 
 	"github.com/Pjt727/classy/api/components"
 	"github.com/Pjt727/classy/collection"
 	"github.com/Pjt727/classy/data/db"
 	"github.com/go-chi/chi/v5"
-	"github.com/gorilla/websocket"
-
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	log "github.com/sirupsen/logrus"
 )
 
-type ManageUrlParams int
+type Sanatized int
 
 const (
-	OrchestratorIndex ManageUrlParams = iota
+	OrchestratorLabel Sanatized = iota
+	UserCookie
 )
 
 // not safe mutliple changes at the same time
 var lastOrchestratorLabel = 0
-var orchestrators map[int]components.ManagementOrchestrator = make(map[int]components.ManagementOrchestrator, 0)
+
+var orchestrators map[int]*sessionOrchestrator = make(
+	map[int]*sessionOrchestrator,
+	0,
+)
+
+// keeps track of all sessions that are on this orchestrator
+// when an orchestrator gets a request it should notify all websocket connections
+// this is a wrapper around ManagementOrchestrator because data is fields the templates need
+//
+//	and the rest is needed to for the websockets
+//
+// moving ManagementOrchestrator here would result in circular imports
+type sessionOrchestrator struct {
+	data        *components.ManagementOrchestrator
+	connections []*WebSocketConnection
+	mu          sync.Mutex
+}
 
 func init() {
 	newOrchestrator, err := collection.CreateOrchestrator(collection.DefaultEnabledServices, nil)
@@ -32,20 +50,21 @@ func init() {
 		panic(err)
 	}
 	managementOrchestrator := components.ManagementOrchestrator{
-		O:    newOrchestrator,
-		Name: "Default Orch",
+		O:     &newOrchestrator,
+		Name:  "Default Orch",
+		Label: lastOrchestratorLabel,
 	}
-	orchestrators[lastOrchestratorLabel] = managementOrchestrator
+	orchestrator := sessionOrchestrator{
+		data:        &managementOrchestrator,
+		connections: []*WebSocketConnection{},
+		mu:          sync.Mutex{},
+	}
+	orchestrators[lastOrchestratorLabel] = &orchestrator
 	lastOrchestratorLabel++
 }
 
 type ManageHandler struct {
 	DbPool *pgxpool.Pool
-}
-
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
 }
 
 func Notify(
@@ -61,7 +80,7 @@ func Notify(
 	}
 }
 
-func (h ManageHandler) DashboardHome(w http.ResponseWriter, r *http.Request) {
+func (h *ManageHandler) DashboardHome(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 	// servicesForSchools := h.Orchestrator.GetSchoolsWithService()
@@ -74,9 +93,15 @@ func (h ManageHandler) DashboardHome(w http.ResponseWriter, r *http.Request) {
 		Notify(w, r, components.NotifyError, "Database not working")
 		return
 	}
+	managementOrchs := make([]*components.ManagementOrchestrator, len(orchestrators))
+	i := 0
+	for _, o := range orchestrators {
+		managementOrchs[i] = o.data
+		i++
+	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	err = components.Dashboard(orchestrators).Render(r.Context(), w)
+	err = components.Dashboard(managementOrchs).Render(r.Context(), w)
 
 	if err != nil {
 		log.Error("Could not render template: ", err)
@@ -86,16 +111,21 @@ func (h ManageHandler) DashboardHome(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (h ManageHandler) NewOrchestrator(w http.ResponseWriter, r *http.Request) {
+func (h *ManageHandler) NewOrchestrator(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	name := r.FormValue("name")
 
 	newOrchestrator, err := collection.CreateOrchestrator(collection.DefaultEnabledServices, nil)
 	managementOrchestrator := components.ManagementOrchestrator{
-		O:    newOrchestrator,
+		O:    &newOrchestrator,
 		Name: name,
 	}
-	orchestrators[lastOrchestratorLabel] = managementOrchestrator
+	sessionOrchestrator := sessionOrchestrator{
+		data:        &managementOrchestrator,
+		connections: []*WebSocketConnection{},
+		mu:          sync.Mutex{},
+	}
+	orchestrators[lastOrchestratorLabel] = &sessionOrchestrator
 	lastOrchestratorLabel++
 
 	if err != nil {
@@ -104,7 +134,14 @@ func (h ManageHandler) NewOrchestrator(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = components.ManageOrchestrators(orchestrators).Render(r.Context(), w)
+	managementOrchs := make([]*components.ManagementOrchestrator, len(orchestrators))
+	i := 0
+	for _, o := range orchestrators {
+		managementOrchs[i] = o.data
+		i++
+	}
+
+	err = components.ManageOrchestrators(managementOrchs).Render(r.Context(), w)
 
 	if err != nil {
 		log.Error("Could not render template: ", err)
@@ -138,20 +175,49 @@ func ValidateOrchestrator(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx = context.WithValue(ctx, OrchestratorIndex, label)
+		ctx = context.WithValue(ctx, OrchestratorLabel, label)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-func (h ManageHandler) OrchestratorHome(w http.ResponseWriter, r *http.Request) {
+// this will be changed to actual auth to allow allow users
+//
+//	with a given key to manage
+func EnsureCookie(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		var cookie *http.Cookie
+		var err error
+		cookie, err = r.Cookie("user_id")
+		if err != nil {
+			id := uuid.New().String()
+			cookie = &http.Cookie{
+				Name:     "user_id",
+				Value:    id,
+				Path:     "/manage",
+				Secure:   true,
+				HttpOnly: true,
+				SameSite: http.SameSiteStrictMode,
+			}
+			http.SetCookie(w, cookie)
+		}
+
+		ctx = context.WithValue(ctx, UserCookie, cookie.String())
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func (h *ManageHandler) OrchestratorHome(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	ctx := r.Context()
-	index := ctx.Value(OrchestratorIndex).(int)
+	index := ctx.Value(OrchestratorLabel).(int)
 	fmt.Println(index)
 
 	orchestrator := orchestrators[index]
-	orchestrator.O.GetSchoolsWithService()
-	err := components.OrchestratorDashboard(orchestrator, orchestrator.O.ListRunningCollections()).Render(r.Context(), w)
+	orchestrator.data.O.GetSchoolsWithService()
+	err := components.OrchestratorDashboard(orchestrator.data, orchestrator.data.O.ListRunningCollections()).
+		Render(r.Context(), w)
 
 	if err != nil {
 		log.Error("Orchestrator dashboard error: ", err)
@@ -160,15 +226,15 @@ func (h ManageHandler) OrchestratorHome(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-func (h ManageHandler) OrchestratorGetTerms(w http.ResponseWriter, r *http.Request) {
+func (h *ManageHandler) OrchestratorGetTerms(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	ctx := r.Context()
-	index := ctx.Value(OrchestratorIndex).(int)
+	index := ctx.Value(OrchestratorLabel).(int)
 	serviceName := r.FormValue("serviceName")
 	schoolID := r.FormValue("schoolID")
 
 	orchestrator := orchestrators[index]
-	terms, err := orchestrator.O.GetTerms(ctx, serviceName, schoolID)
+	terms, err := orchestrator.data.O.GetTerms(ctx, serviceName, schoolID)
 	if err != nil {
 		badValues := fmt.Sprintf("service name: `%s`, school ID: `%s`", serviceName, schoolID)
 		log.Error(fmt.Sprintf("Could not get terms for %s: ", badValues), err)
@@ -176,7 +242,7 @@ func (h ManageHandler) OrchestratorGetTerms(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	err = components.TermCollections(orchestrator, terms, serviceName).Render(ctx, w)
+	err = components.TermCollections(orchestrator.data, terms, serviceName).Render(ctx, w)
 
 	if err != nil {
 		log.Error("Term collections failed to render: ", err)
@@ -185,19 +251,24 @@ func (h ManageHandler) OrchestratorGetTerms(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-func (h ManageHandler) CollectTerm(w http.ResponseWriter, r *http.Request) {
+func (h *ManageHandler) CollectTerm(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	ctx := r.Context()
-	index := ctx.Value(OrchestratorIndex).(int)
+	label := ctx.Value(OrchestratorLabel).(int)
 	serviceName := r.FormValue("serviceName")
 	schoolID := r.FormValue("schoolID")
 	termID := r.FormValue("termID")
-	orchestrator := orchestrators[index]
+	orchestrator := orchestrators[label]
 
-	school, ok := orchestrator.O.GetSchoolById(schoolID)
+	school, ok := orchestrator.data.O.GetSchoolById(schoolID)
 	if !ok {
 		log.Error(fmt.Sprintf("Could not find school `%s`: ", schoolID))
-		Notify(w, r, components.NotifyError, fmt.Sprintf("Could not find the school `%s`", schoolID))
+		Notify(
+			w,
+			r,
+			components.NotifyError,
+			fmt.Sprintf("Could not find the school `%s`", schoolID),
+		)
 		return
 	}
 
@@ -207,34 +278,21 @@ func (h ManageHandler) CollectTerm(w http.ResponseWriter, r *http.Request) {
 		"school": school,
 	})
 
+	hook := WebsocketLoggingHook{
+		orchestratorLabel: label,
+		termID:            termID,
+		schoolID:          schoolID,
+	}
+
+	oneOffLogger.Logger.AddHook(&hook)
+
 	go func() {
-		orchestrator.O.UpsertSchoolTermsWithService(ctx)
+		orchestrator.data.O.UpsertSchoolTermsWithService(ctx, *oneOffLogger, school, serviceName)
 	}()
-
-	orchestrator.O.UpsertSchoolTermsWithService(ctx, *oneOffLogger, school, serviceName)
-
-	terms, err := orchestrator.O.GetTerms(ctx, serviceName, schoolID)
-	if err != nil {
-		badValues := fmt.Sprintf("service name: `%s`, school ID: `%s`", serviceName, schoolID)
-		log.Error(fmt.Sprintf("Could not get terms for %s: ", badValues), err)
-		Notify(w, r, components.NotifyError, fmt.Sprintf("Failed to get terms for %s", badValues))
-		return
-	}
-
-	err = components.TermCollections(orchestrator, terms).Render(ctx, w)
-
-	if err != nil {
-		log.Error("Term collections failed to render: ", err)
-		Notify(w, r, components.NotifyError, "Orchestrator rendering failed")
-		return
-	}
-}
-
-func loggingWebSocket(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Error(err)
-		return
-	}
-
+	Notify(
+		w,
+		r,
+		components.NotifyProgress,
+		fmt.Sprintf("Starting collection for `%s` `%s`", schoolID, termID),
+	)
 }

@@ -19,7 +19,10 @@ func populateManagementRoutes(r *chi.Router) error {
 	h := handlers.ManageHandler{
 		DbPool: pool,
 	}
-	(*r).Use(middleware.AllowContentType("application/x-www-form-urlencoded", "multipart/form-data"))
+	(*r).Use(
+		middleware.AllowContentType("application/x-www-form-urlencoded", "multipart/form-data"),
+	)
+	(*r).Use(handlers.EnsureCookie)
 
 	(*r).Get("/", h.DashboardHome)
 	(*r).Post("/", h.NewOrchestrator)
@@ -27,8 +30,9 @@ func populateManagementRoutes(r *chi.Router) error {
 	(*r).Route("/{orchestratorLabel}", func(r chi.Router) {
 		r.Use(handlers.ValidateOrchestrator)
 		r.Get("/", h.OrchestratorHome)
+		r.Get("/watch-logs", h.LoggingWebSocket)
 		r.Post("/terms", h.OrchestratorGetTerms)
-		r.Patch("/terms", h.OrchestratorGetTerms)
+		r.Patch("/terms", h.CollectTerm)
 	})
 
 	return nil

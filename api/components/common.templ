@@ -3,15 +3,14 @@ package components
 import (
 "fmt"
 "github.com/Pjt727/classy/collection"
-"github.com/Pjt727/classy/data/class-entry"
 "github.com/Pjt727/classy/data/db"
 "strconv"
 )
 
 type ManagementOrchestrator struct {
-O collection.Orchestrator
+O *collection.Orchestrator
 Name string
-label int
+Label int
 }
 
 func id(idValue string) string {
@@ -36,12 +35,13 @@ templ Base() {
 <body class="container">
     { children... }
     <script src="/static/htmx.js"></script>
+    <script src="/static/htmx-ws.js"></script>
 </body>
 
 </html>
 }
 
-templ Dashboard(orchestrators map[int]ManagementOrchestrator) {
+templ Dashboard(orchestrators []*ManagementOrchestrator) {
 @Base() {
 <h1>Add a new orchestrator</h1>
 <div>
@@ -60,13 +60,13 @@ templ NewOrchestrator() {
 </form>
 }
 
-templ ManageOrchestrators(orchestrators map[int]ManagementOrchestrator) {
+templ ManageOrchestrators(orchestrators []*ManagementOrchestrator) {
 <table id={ orchTable } hx-swap-oob="true">
     <tbody>
-        for l, orch := range orchestrators {
+        for _, orch := range orchestrators {
         <tr>
             <td>{ orch.Name }</td>
-            <td><a href={ templ.SafeURL(fmt.Sprintf("/manage/%d", l)) }>View Activity</a></td>
+            <td><a href={ templ.SafeURL(fmt.Sprintf("/manage/%d", orch.Label)) }>View Activity</a></td>
         </tr>
         }
     </tbody>
@@ -79,6 +79,7 @@ const (
 NotifyError NotificationType = "Error"
 NotifySuccess NotificationType = "Success"
 NotifyWarning NotificationType = "Warning"
+NotifyProgress NotificationType = "Progress"
 )
 
 templ Notification(notificationType NotificationType, message string) {
@@ -90,6 +91,8 @@ case NotifySuccess:
 {{ bgColor = "#28a745" }}
 case NotifyWarning:
 {{ bgColor = "#ffc107" }}
+case NotifyProgress:
+{{ bgColor = "#007bff" }}
 default:
 {{ bgColor = "#6c757d" }}
 }
@@ -105,13 +108,11 @@ default:
 </div>
 }
 
-var orchActiveCollectionTable = "orchActiveCollections"
-
-templ OrchestratorDashboard(orchestrator ManagementOrchestrator, collections []db.TermCollection) {
+templ OrchestratorDashboard(orchestrator *ManagementOrchestrator, collections []db.TermCollection) {
 @Base() {
 <h1>`{ orchestrator.Name }` Activity</h1>
 <h2>Active collections</h2>
-@OrchestratorActiveCollections(collections)
+@OrchestratorActiveCollections(orchestrator, collections)
 <h2>Available schools and services </h2>
 <table>
     for _, schoolService := range orchestrator.O.GetSchoolsWithService() {
@@ -119,7 +120,7 @@ templ OrchestratorDashboard(orchestrator ManagementOrchestrator, collections []d
         <td>{ schoolService.ServiceName }</td>
         <td>{ schoolService.School.ID }</td>
         <td>
-            <form hx-post={ fmt.Sprintf("/manage/%d/terms", orchestrator.label) } hx-indicator="find span">
+            <form hx-post={ fmt.Sprintf("/manage/%d/terms", orchestrator.Label) } hx-indicator="find span">
                 <input type="text" name="serviceName" value={ schoolService.ServiceName } hidden />
                 <input type="text" name="schoolID" value={ schoolService.School.ID } hidden />
                 <button type="submit">
@@ -137,30 +138,39 @@ templ OrchestratorDashboard(orchestrator ManagementOrchestrator, collections []d
 }
 }
 
-templ OrchestratorActiveCollections(collections []db.TermCollection) {
-<table id={ orchActiveCollectionTable } hx-swap-oob="true">
+var ActiveCollections = "activeCollections"
+
+templ OrchestratorActiveCollections(orchestrator *ManagementOrchestrator, collections []db.TermCollection) {
+<table hx-ext="ws" ws-connect={ fmt.Sprintf("/manage/%d/watch-logs", orchestrator.Label) }>
     <thead>
         <tr>
-            <th>ID</th>
-            <th>Name</th>
+            <th>Term ID</th>
             <th>School ID</th>
-            <th>Season</th>
         </tr>
     </thead>
-    <tbody>
+    <tbody id={ ActiveCollections }>
         for _, collection := range collections {
-        <tr>
-            <td>{ collection.ID }</td>
-            <td>{ collection.Name.String }</td>
-            <td>{ collection.SchoolID }</td>
-            <td>{ string(collection.Season) }</td>
-        </tr>
+        @ActiveTermCollection(collection, false)
         }
     </tbody>
 </table>
 }
 
-templ TermCollections(orchestrator ManagementOrchestrator, terms []classentry.TermCollection, serviceName string) {
+templ ActiveTermCollection(collection db.TermCollection, oob bool) {
+if oob {
+<tr hx-target={ id(ActiveCollections) } hx-swap-oob="beforeend">
+    <td>{ collection.ID }</td>
+    <td>{ collection.SchoolID }</td>
+</tr>
+} else {
+<tr>
+    <td>{ collection.ID }</td>
+    <td>{ collection.SchoolID }</td>
+</tr>
+}
+}
+
+templ TermCollections(orchestrator *ManagementOrchestrator, terms []db.TermCollection, serviceName string) {
 <td colspan="100%" styles="padding: 0;">
     <table class="termCollections">
         <thead>
@@ -174,15 +184,17 @@ templ TermCollections(orchestrator ManagementOrchestrator, terms []classentry.Te
             <tr>
                 <td>
                     <form hidden>
-                        <input type="text" name="serviceName" value="" />
+                        <input type="text" name="serviceName" value={ serviceName } />
+                        <input type="text" name="schoolID" value={ term.SchoolID } />
+                        <input type="text" name="termID" value={ term.ID } />
                     </form>
-                    <a href="#" title="Collect" hx-include="previous form" hx-patch={ fmt.Sprintf("/manage/%d/terms",
-                        orchestrator.label) }>
+                    <a href="#" title="Collect" hx-swap="none" hx-include="previous form" hx-patch={
+                        fmt.Sprintf("/manage/%d/terms", orchestrator.Label) }>
                         { term.ID }
                     </a>
                 </td>
-                <td>{ string(term.Term.Season) }</td>
-                <td>{ strconv.Itoa(int(term.Term.Year)) }</td>
+                <td>{ string(term.Season) }</td>
+                <td>{ strconv.Itoa(int(term.Year)) }</td>
                 if term.StillCollecting {
                 <td>Yes</td>
                 } else {
