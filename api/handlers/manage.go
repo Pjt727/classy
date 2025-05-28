@@ -6,12 +6,15 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/Pjt727/classy/api/components"
 	"github.com/Pjt727/classy/collection"
+	test_banner "github.com/Pjt727/classy/collection/services/banner/test"
 	"github.com/Pjt727/classy/data/db"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	log "github.com/sirupsen/logrus"
 )
@@ -45,7 +48,12 @@ type sessionOrchestrator struct {
 }
 
 func init() {
-	newOrchestrator, err := collection.CreateOrchestrator(collection.DefaultEnabledServices, nil)
+	testingSerivce, err := test_banner.GetTestingService()
+	if err != nil {
+		panic(err)
+	}
+	services := append(collection.DefaultEnabledServices, testingSerivce)
+	newOrchestrator, err := collection.CreateOrchestrator(services, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -272,21 +280,37 @@ func (h *ManageHandler) CollectTerm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	oneOffLogger := log.WithFields(log.Fields{
-		"job":    "User driven",
-		"termID": termID,
-		"school": school,
-	})
-
-	hook := WebsocketLoggingHook{
-		orchestratorLabel: label,
-		termID:            termID,
-		schoolID:          schoolID,
-	}
-
-	oneOffLogger.Logger.AddHook(&hook)
-
+	//  creating the logger and kicking off the process
 	go func() {
+		ctx := context.Background()
+		customLogger := log.New()
+
+		oneOffLogger := customLogger.WithFields(log.Fields{
+			"job":    "User driven",
+			"termID": termID,
+			"school": school,
+		})
+		oneOffLogger = customLogger.WithContext(ctx)
+		hook := WebsocketLoggingHook{
+			orchestratorLabel: label,
+			termCollection: db.TermCollection{
+				ID:       termID,
+				SchoolID: schoolID,
+				// these values do not matter as they are not used
+				Year:   0,
+				Season: "",
+				Name: pgtype.Text{
+					String: "",
+					Valid:  false,
+				},
+				StillCollecting: false,
+			},
+			serviceName: serviceName,
+		}
+		oneOffLogger.Logger.AddHook(&hook)
+
+		hook.start(ctx)
+		time.Sleep(time.Duration(100) * time.Millisecond)
 		orchestrator.data.O.UpsertSchoolTermsWithService(ctx, *oneOffLogger, school, serviceName)
 	}()
 	Notify(

@@ -207,7 +207,7 @@ type section struct {
 	CampusDescription     string            `json:"campusDescription"`
 }
 
-type sectionSearch struct {
+type SectionSearch struct {
 	Sections []section `json:"data"`
 }
 
@@ -401,7 +401,15 @@ func (b *bannerSchool) stageAllClasses(
 		workersReq.URL.RawQuery = queryParams.Encode()
 		go func(req http.Request) {
 			defer wg.Done()
-			err := b.insertGroupOfSections(workerLog, workersReq, ctx, q, &client, termCollection, fullCollection)
+			err := b.insertGroupOfSections(
+				workerLog,
+				workersReq,
+				ctx,
+				q,
+				&client,
+				termCollection,
+				fullCollection,
+			)
 			if err != nil {
 				errCh <- err
 			}
@@ -457,12 +465,12 @@ func (b *bannerSchool) insertGroupOfSections(
 	}
 	defer resp.Body.Close()
 
-	var sections sectionSearch
+	var sections SectionSearch
 	if err := json.NewDecoder(resp.Body).Decode(&sections); err != nil {
 		logger.Error("Error decoding sections: ", err)
 		return err
 	}
-	classData := processSectionSearch(sections)
+	classData := ProcessSectionSearch(sections)
 
 	// add all of the coures
 	if fullCollection {
@@ -527,12 +535,15 @@ func (b *bannerSchool) insertGroupOfSections(
 		return err
 	}
 
-	logger.Infof("Successfully added %d sections and their related information", len(classData.Sections))
+	logger.Infof(
+		"Successfully added %d sections and their related information",
+		len(classData.Sections),
+	)
 
 	return nil
 }
 
-type classData struct {
+type ClassData struct {
 	Sections               []classentry.Section
 	MeetingTimes           []classentry.MeetingTime
 	Professors             map[string]classentry.Professor
@@ -540,7 +551,7 @@ type classData struct {
 	CourseReferenceNumbers map[string]string
 }
 
-func processSectionSearch(sectionData sectionSearch) classData {
+func ProcessSectionSearch(sectionData SectionSearch) ClassData {
 	var sections []classentry.Section
 	var meetingTimes []classentry.MeetingTime
 	professors := make(map[string]classentry.Professor)
@@ -650,7 +661,7 @@ func processSectionSearch(sectionData sectionSearch) classData {
 		courseReferenceNumbers[courseId] = s.CourseReferenceNumber
 		sections = append(sections, dbSection)
 	}
-	return classData{
+	return ClassData{
 		Sections:               sections,
 		MeetingTimes:           meetingTimes,
 		Professors:             professors,

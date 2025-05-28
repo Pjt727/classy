@@ -2,12 +2,13 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 
 	"github.com/Pjt727/classy/api/components"
 	"github.com/Pjt727/classy/data/db"
 	"github.com/gorilla/websocket"
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/robert-nix/ansihtml"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -28,8 +29,8 @@ var upgrader = websocket.Upgrader{
 
 type WebsocketLoggingHook struct {
 	orchestratorLabel int
-	termID            string
-	schoolID          string
+	termCollection    db.TermCollection
+	serviceName       string
 }
 
 func (w *WebsocketLoggingHook) Levels() []log.Level {
@@ -38,46 +39,51 @@ func (w *WebsocketLoggingHook) Levels() []log.Level {
 
 func (w *WebsocketLoggingHook) Fire(e *log.Entry) error {
 	wsConn, ok := orchestrators[w.orchestratorLabel]
-
 	// it is completely fine if the log does not get sent
 	if !ok {
+		log.Warn("ws failed to be established")
 		return nil
 	}
-	formattedLog, err := e.String()
+
+	logString, err := e.String()
 	if err != nil {
+		log.Error(err)
 		return err
 	}
-
+	formattedLog := ansihtml.ConvertToHTML([]byte(logString))
+	var buf bytes.Buffer
+	err = components.CollectionLog(w.termCollection, string(formattedLog)).Render(e.Context, &buf)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
 	for _, c := range wsConn.connections {
-		c.send <- []byte(formattedLog)
+		c.send <- buf.Bytes()
 	}
 	return nil
 }
 
-func (w *WebsocketLoggingHook) start(e *log.Entry) error {
+func (w *WebsocketLoggingHook) start(ctx context.Context) error {
+	log.Info("Starting term collection")
 	wsConn, ok := orchestrators[w.orchestratorLabel]
 
 	// it is completely fine if the log does not get sent
 	if !ok {
+		log.Warn("Could ot find the orch")
 		return nil
 	}
 
 	var buf bytes.Buffer
-	err := components.ActiveTermCollection(db.TermCollection{
-		ID:              w.termID,
-		SchoolID:        w.schoolID,
-		Year:            0,
-		Season:          "",
-		Name:            pgtype.Text{},
-		StillCollecting: false,
-	}, true).Render(e.Context, &buf)
+	err := components.ActiveTermCollectionOob(w.termCollection).Render(ctx, &buf)
 	if err != nil {
+		log.Error("Could not render the oob", err)
 		return err
 	}
 
 	for _, c := range wsConn.connections {
 		c.send <- buf.Bytes()
 	}
+	log.Info("Finished term collection")
 	return nil
 }
 
@@ -91,7 +97,7 @@ func (h *ManageHandler) LoggingWebSocket(w http.ResponseWriter, r *http.Request)
 	conn, err := upgrader.Upgrade(w, r, nil)
 	ctx := r.Context()
 	if err != nil {
-		log.Println(err)
+		log.Println("Could not upgrade: ", err)
 		return
 	}
 
@@ -121,7 +127,7 @@ func (h *ManageHandler) LoggingWebSocket(w http.ResponseWriter, r *http.Request)
 
 	// running of the websocket
 	go wsConn.writePump()
-	go wsConn.readPump()
+	// go wsConn.readPump()
 }
 
 func (wsConn *WebSocketConnection) readPump() {
@@ -145,23 +151,21 @@ func (wsConn *WebSocketConnection) readPump() {
 }
 
 func (wsConn *WebSocketConnection) writePump() {
-	defer func() {
-		wsConn.disconnect()
-	}()
+	defer wsConn.disconnect()
 	for {
 		select {
 		case message, ok := <-wsConn.send:
 			if !ok {
 				// The hub closed the channel.
+				log.Info("CLOSING WRITE WEB SOCKET PUMP")
 				wsConn.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
-
-			log.Println(string(message))
+			log.Info("Received channel message: ", string(message))
 
 			err := wsConn.conn.WriteMessage(websocket.TextMessage, message)
 			if err != nil {
-				log.Error(err)
+				log.Error("Channel error", err)
 				return
 			}
 		}
@@ -173,6 +177,8 @@ func (wsConn *WebSocketConnection) disconnect() {
 	orch := orchestrators[wsConn.orchestratorLabel]
 	orch.mu.Lock()
 	defer orch.mu.Unlock()
+	wsConn.conn.Close()
+	close(wsConn.send)
 	for i, c := range orch.connections {
 		if c == wsConn {
 			orch.connections = append(orch.connections[:i], orch.connections[i+1:]...)

@@ -50,12 +50,40 @@ type Service interface {
 	) ([]classentry.TermCollection, error)
 }
 
+// object responsible for which service should be used for a collection if not explicity stated
+type ServiceManager struct {
+	services []*Service
+}
+
+func NewServiceManager(services []*Service) (*ServiceManager, error) {
+	if len(services) <= 0 {
+		return nil, errors.New("Must have at least one service")
+	}
+
+	return &ServiceManager{
+		services: services,
+	}, nil
+}
+
+// eventually might be more sohpicated and ingest data about how collections went and whether the were sucessfull or not
+func (s *ServiceManager) GetService() *Service {
+	return s.services[0]
+}
+
+func (s *ServiceManager) GetServices() []*Service {
+	return s.services
+}
+
+func (s *ServiceManager) AddSerivce(service *Service) {
+	s.services = append(s.services, service)
+}
+
 type Orchestrator struct {
 	serviceEntries map[string]Service
 	// it would not be good if the same term collection was being
 	//    collected by multiple workers at the same time
 	termCollectionStagingLocks map[db.TermCollection]bool
-	schoolIdToService          map[string]*Service
+	schoolIdToServiceManager   map[string]*ServiceManager
 	schoolIdToSchool           map[string]db.School
 	orchestrationLogger        *log.Entry
 	dbPool                     *pgxpool.Pool
@@ -80,7 +108,7 @@ func GetDefaultOrchestrator() (Orchestrator, error) {
 	orchestrator := Orchestrator{
 		serviceEntries:             serviceEntries,
 		termCollectionStagingLocks: map[db.TermCollection]bool{},
-		schoolIdToService:          make(map[string]*Service),
+		schoolIdToServiceManager:   make(map[string]*ServiceManager),
 		schoolIdToSchool:           make(map[string]db.School),
 		orchestrationLogger:        log.WithFields(log.Fields{"job": "orchestration"}),
 		dbPool:                     dbPool,
@@ -109,7 +137,7 @@ func CreateOrchestrator(services []Service, logger *log.Entry) (Orchestrator, er
 	orchestrator := Orchestrator{
 		serviceEntries:             serviceEntries,
 		termCollectionStagingLocks: map[db.TermCollection]bool{},
-		schoolIdToService:          make(map[string]*Service),
+		schoolIdToServiceManager:   make(map[string]*ServiceManager),
 		schoolIdToSchool:           make(map[string]db.School),
 		orchestrationLogger:        logger,
 		dbPool:                     dbPool,
@@ -128,12 +156,28 @@ func (o Orchestrator) initMappings(ctx context.Context) {
 		serviceLogger := o.orchestrationLogger.WithField("service", service.GetName())
 		schools, err := service.ListValidSchools(*serviceLogger, ctx)
 		if err != nil {
-			serviceLogger.Warn("Skipping school to service mapping because error: ", err)
+			serviceLogger.Warn(
+				fmt.Sprintf(
+					"Skipping shool  to service mappings of `%s` because error: %s",
+					service.GetName(),
+					err,
+				),
+			)
 			continue
 		}
 
 		for _, school := range schools {
-			o.schoolIdToService[school.ID] = &service
+			serviceManager, ok := o.schoolIdToServiceManager[school.ID]
+			if ok {
+				serviceManager.AddSerivce(&service)
+			} else {
+				serviceManager, err := NewServiceManager([]*Service{&service})
+				if err != nil {
+					serviceLogger.Warn("Skipping school to service mapping because error: ", err)
+					continue
+				}
+				o.schoolIdToServiceManager[school.ID] = serviceManager
+			}
 			o.schoolIdToSchool[school.ID] = school
 		}
 	}
@@ -146,11 +190,13 @@ type SchoolWithService struct {
 
 func (o Orchestrator) GetSchoolsWithService() []SchoolWithService {
 	schools := make([]SchoolWithService, 0)
-	for schoolId, service := range o.schoolIdToService {
-		schools = append(schools, SchoolWithService{
-			School:      o.schoolIdToSchool[schoolId],
-			ServiceName: (*service).GetName(),
-		})
+	for schoolId, serviceManager := range o.schoolIdToServiceManager {
+		for _, service := range serviceManager.GetServices() {
+			schools = append(schools, SchoolWithService{
+				School:      o.schoolIdToSchool[schoolId],
+				ServiceName: (*service).GetName(),
+			})
+		}
 	}
 	return schools
 }
@@ -190,13 +236,14 @@ func (o Orchestrator) UpsertSchoolTerms(
 	logger log.Entry,
 	school db.School,
 ) error {
-	logger.Info("starting collection and db addition of colleciton terms")
-	service, ok := o.schoolIdToService[school.ID]
+	logger.Info("starting collection and db addition of collection terms")
+	serviceManager, ok := o.schoolIdToServiceManager[school.ID]
 	if !ok {
 		return errors.New(
 			fmt.Sprintf("Do not know how to scrape %s. No service was found.", school.ID),
 		)
 	}
+	service := serviceManager.GetService()
 	o.UpsertSchoolTermsWithService(ctx, logger, school, (*service).GetName())
 	return nil
 }
@@ -208,7 +255,7 @@ func (o Orchestrator) UpsertSchoolTermsWithService(
 	school db.School,
 	serviceName string,
 ) error {
-	logger.Info("starting collection and db addition of colleciton terms")
+	logger.Info("starting collection and db addition of collection terms")
 	service, ok := o.serviceEntries[serviceName]
 	if !ok {
 		return errors.New(fmt.Sprintf("The service `%s` was not found.", serviceName))
@@ -289,13 +336,14 @@ func (o Orchestrator) UpsertSchoolServiceTerms(
 	logger log.Entry,
 	school db.School,
 ) error {
-	logger.Info("starting collection and db addition of colleciton terms")
-	service, ok := o.schoolIdToService[school.ID]
+	logger.Info("starting collection and db addition of collection terms")
+	serviceManager, ok := o.schoolIdToServiceManager[school.ID]
 	if !ok {
 		return errors.New(
 			fmt.Sprintf("Do not know how to scrape %s. No service was found.", school.ID),
 		)
 	}
+	service := serviceManager.GetService()
 	tx, err := o.dbPool.Begin(ctx)
 	if err != nil {
 		return err
@@ -370,13 +418,14 @@ func (o Orchestrator) UpsertSchoolServiceTerms(
 func (o Orchestrator) UpsertAllTerms(ctx context.Context) error {
 	var wg sync.WaitGroup
 	errCh := make(chan error)
-	numberOfWorkers := len(o.schoolIdToService)
+	numberOfWorkers := len(o.schoolIdToServiceManager)
 	o.orchestrationLogger.Infof(`Starting to add %d school's terms`, numberOfWorkers)
 	wg.Add(numberOfWorkers)
-	for school_id, s := range o.schoolIdToService {
-		school := o.schoolIdToSchool[school_id]
+	for schoolID, serviceManager := range o.schoolIdToServiceManager {
+		s := serviceManager.GetService()
+		school := o.schoolIdToSchool[schoolID]
 		termLogger := o.orchestrationLogger.WithFields(log.Fields{
-			"school_id": school_id,
+			"school_id": schoolID,
 			"service":   (*s).GetName(),
 		})
 		go func() {
@@ -421,7 +470,7 @@ func (o Orchestrator) UpdateAllSectionsOfSchool(
 	// there might be a good way to easily sandbox schoools to what they should change
 	//    could make a wrapping q client with the state of the school and then write wrappers
 	//    for each of the functions
-	service, ok := o.schoolIdToService[termCollection.SchoolID]
+	serviceManager, ok := o.schoolIdToServiceManager[termCollection.SchoolID]
 	updateLogger := o.orchestrationLogger.WithFields(log.Fields{
 		"school_id": termCollection.SchoolID,
 		"season":    termCollection.Season,
@@ -433,6 +482,7 @@ func (o Orchestrator) UpdateAllSectionsOfSchool(
 			fmt.Sprintf("Could not find service for shool id %s", termCollection.SchoolID),
 		)
 	}
+	service := serviceManager.GetService()
 	school := o.schoolIdToSchool[termCollection.SchoolID]
 	updateLogger = o.orchestrationLogger.WithFields(log.Fields{
 		"service":        (*service).GetName(),
