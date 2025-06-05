@@ -1,3 +1,4 @@
+# Websockets do not work with the proxy
 root = "."
 tmp_dir = "tmp"
 

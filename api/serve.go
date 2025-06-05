@@ -1,15 +1,18 @@
 package api
 
 import (
+	"context"
 	"fmt"
+	"net/http"
+	"path/filepath"
+	"strings"
+
 	"github.com/Pjt727/classy/collection/projectpath"
+	"github.com/Pjt727/classy/data"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	log "github.com/sirupsen/logrus"
-	"net/http"
-	"path/filepath"
-	"strings"
 )
 
 func Serve() {
@@ -25,16 +28,28 @@ func Serve() {
 	r.Use(cors.Handler)
 	r.Use(middleware.Logger)
 
+	dbPool, err := data.NewPool(context.Background(), false)
+	if err != nil {
+		log.Error("Fatal cannot connect to main db: ", err)
+		return
+	}
+
 	r.Route("/get", func(r chi.Router) {
-		populateGetRoutes(&r)
+		populateGetRoutes(&r, dbPool)
 	})
 	r.Route("/sync", func(r chi.Router) {
-		populateSyncRoutes(&r)
+		populateSyncRoutes(&r, dbPool)
 	})
 
 	fileServer(r, "/static", http.Dir(filepath.Join(projectpath.Root, "api", "static")))
+
+	dbTestPool, err := data.NewPool(context.Background(), true)
+	if err != nil {
+		log.Warn("Cannot connect to test db: ", err)
+		return
+	}
 	r.Route("/manage", func(r chi.Router) {
-		populateManagementRoutes(&r)
+		populateManagementRoutes(&r, dbPool, dbTestPool)
 	})
 	port := 3000
 	log.Infof("Running server on :%d", port)

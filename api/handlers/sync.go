@@ -104,12 +104,31 @@ type syncDataPerTermParams struct {
 	SchoolSequences []perSchool `json:"school_sequences"`
 }
 
-type syncTermsResult struct {
+type syncTermsResults struct {
 	SyncData           []db.GetLastestSyncChangesForTermsRow `json:"sync_data"`
 	PerTermSequences   []perTerm                             `json:"last_term_sequence"`
 	PerSchoolSequences []perSchool                           `json:"last_common_sequence"`
 }
 
+type tableSyncEntry struct {
+	TableName string `json:"table_name"`
+	LastSync  *int   `json:"last_sync"`
+}
+
+type SelectSchoolEntry struct {
+	CommonTables []tableSyncEntry `json:"common_tables"`
+	SelectTerms  []string         `json:"select_terms"`
+}
+
+type syncTermsResult struct {
+	AllSchools         []tableSyncEntry          `json:"all_schools"`
+	SelectSchools      map[string]tableSyncEntry `json:"select_schools"`
+	PerSchoolSequences []perSchool               `json:"last_common_sequence"`
+}
+
+// Tables will propagate sync values to their depenencies e.i. if they are not given or greater than
+//
+//	a term table entry with a sync number of 100 necessitates a sync of at least 100 from the school table
 func (h SyncHandler) SyncTerms(w http.ResponseWriter, r *http.Request) {
 
 	var syncData syncDataPerTermParams
@@ -154,13 +173,16 @@ func (h SyncHandler) SyncTerms(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer wg.Done()
 		var err error
-		syncChangeRows, err = q.GetLastestSyncChangesForTerms(ctx, db.GetLastestSyncChangesForTermsParams{
-			TSchoolIds:         tSchoolIDs,
-			TTermCollectionIds: tTermCollectionIDs,
-			TLastSequences:     tLastSequences,
-			SSchoolIds:         sSchoolIDs,
-			SLastSequences:     sLastSequences,
-		})
+		syncChangeRows, err = q.GetLastestSyncChangesForTerms(
+			ctx,
+			db.GetLastestSyncChangesForTermsParams{
+				TSchoolIds:         tSchoolIDs,
+				TTermCollectionIds: tTermCollectionIDs,
+				TLastSequences:     tLastSequences,
+				SSchoolIds:         sSchoolIDs,
+				SLastSequences:     sLastSequences,
+			},
+		)
 		if err != nil {
 			log.Error("Could not get lastest sync rows: ", err)
 			return

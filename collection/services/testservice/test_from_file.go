@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/Pjt727/classy/collection"
+	"github.com/Pjt727/classy/data"
 	"github.com/Pjt727/classy/data/class-entry"
 	"github.com/Pjt727/classy/data/db"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -28,7 +29,10 @@ type termDirectory struct {
 	currentIndex  int
 }
 
-func newTermDirectoryLocation(term classentry.TermCollection, directoryPath string) (termDirectory, error) {
+func newTermDirectoryLocation(
+	term classentry.TermCollection,
+	directoryPath string,
+) (termDirectory, error) {
 	termDirectory := termDirectory{
 		term:          term,
 		directoryPath: directoryPath,
@@ -49,7 +53,9 @@ func newTermDirectoryLocation(term classentry.TermCollection, directoryPath stri
 		)
 	}
 	if len(termDirectory.filesPaths) == 0 {
-		return termDirectory, errors.New(fmt.Sprintf("Directory %s must at least one json file in them", directoryPath))
+		return termDirectory, errors.New(
+			fmt.Sprintf("Directory %s must at least one json file in them", directoryPath),
+		)
 	}
 
 	return termDirectory, nil
@@ -82,7 +88,11 @@ type TermDirectoryEntry struct {
 }
 
 // helper function to quickly define term collections
-func NewTermCollection(id string, season classentry.SeasonEnum, year int32) classentry.TermCollection {
+func NewTermCollection(
+	id string,
+	season classentry.SeasonEnum,
+	year int32,
+) classentry.TermCollection {
 	termName := fmt.Sprintf(
 		"%s %d",
 		season,
@@ -246,8 +256,14 @@ func (t *FileTestService) GetTermCollections(
 //
 //	and terms for the classdata
 func (t *FileTestService) RunThroughOrchestrator() error {
+	ctx := context.Background()
 
-	orch, err := collection.CreateOrchestrator([]collection.Service{t}, nil)
+	testDb, err := data.NewPool(ctx, true)
+	if err != nil {
+		return err
+	}
+
+	orch, err := collection.CreateOrchestrator([]collection.Service{t}, nil, testDb)
 	if err != nil {
 		return err
 	}

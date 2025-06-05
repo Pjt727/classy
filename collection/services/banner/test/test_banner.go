@@ -72,7 +72,7 @@ func GetTestingService() (*testservice.FileTestService, error) {
 }
 
 func TestBannerFileInput(t *testing.T) {
-	err := dbhelpers.SetupDb()
+	err := dbhelpers.SetupTestDb()
 	if err != nil {
 		t.Error(err)
 		return

@@ -17,3 +17,28 @@ func (q *Queries) GetPreviousCollections(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, getPreviousCollections)
 	return err
 }
+
+const getTermCollection = `-- name: GetTermCollection :one
+SELECT id, school_id, year, season, name, still_collecting FROM  term_collections
+WHERE term_collections.id = $1
+      AND term_collections.school_id = $2
+`
+
+type GetTermCollectionParams struct {
+	ID       string `json:"id"`
+	SchoolID string `json:"school_id"`
+}
+
+func (q *Queries) GetTermCollection(ctx context.Context, arg GetTermCollectionParams) (TermCollection, error) {
+	row := q.db.QueryRow(ctx, getTermCollection, arg.ID, arg.SchoolID)
+	var i TermCollection
+	err := row.Scan(
+		&i.ID,
+		&i.SchoolID,
+		&i.Year,
+		&i.Season,
+		&i.Name,
+		&i.StillCollecting,
+	)
+	return i, err
+}

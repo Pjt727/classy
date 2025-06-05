@@ -9,7 +9,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
-// overwrites the db conn and resets the database apply down and up migrations
+// overwrite database
 func SetupDb() error {
 	testDb := os.Getenv("TEST_DB_CONN")
 	os.Setenv("DB_CONN", testDb)

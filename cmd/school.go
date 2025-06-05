@@ -53,12 +53,12 @@ facualty members, and internal collection tables`,
 			return
 		}
 		ctx := context.Background()
-		dbPool, err := data.NewPool(ctx)
+		dbPool, err := data.NewPool(ctx, false)
 		if err != nil {
 			logger.Error("Could not connect to db: ", err)
 			return
 		}
-		orchestrator, err := collection.GetDefaultOrchestrator()
+		orchestrator, err := collection.GetDefaultOrchestrator(dbPool)
 		if err != nil {
 			logger.Error("Could create o: orchestrator", err)
 			return
@@ -72,7 +72,7 @@ facualty members, and internal collection tables`,
 		}
 
 		// update the terms for the school
-		err = orchestrator.UpsertSchoolTerms(ctx, *logger, db.School{
+		err = orchestrator.UpsertSchoolTerms(ctx, logger, db.School{
 			ID:   schoolId,
 			Name: schoolName,
 		})
@@ -83,11 +83,14 @@ facualty members, and internal collection tables`,
 		}
 
 		q := db.New(dbPool)
-		termCollections, err := q.GetTermCollectionsForSchoolsSemester(ctx, db.GetTermCollectionsForSchoolsSemesterParams{
-			SchoolID: schoolId,
-			Year:     int32(termYear),
-			Season:   termSeason,
-		})
+		termCollections, err := q.GetTermCollectionsForSchoolsSemester(
+			ctx,
+			db.GetTermCollectionsForSchoolsSemesterParams{
+				SchoolID: schoolId,
+				Year:     int32(termYear),
+				Season:   termSeason,
+			},
+		)
 		if err != nil {
 			logger.Error("There was an error getting terms: ", err)
 			return

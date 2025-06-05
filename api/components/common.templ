@@ -43,6 +43,13 @@ templ Base() {
 
 templ Dashboard(orchestrators []*ManagementOrchestrator) {
 	@Base() {
+		<div style="position: absolute; top: 5px; right: 0px;">
+			<button hx-delete="/manage/db" hx-confirm="Are you sure?" hx-vals='{"db": "main"}' hx-swap="none">
+				Reset Main
+				DB
+			</button>
+			<button hx-delete="/manage/db" hx-vals='{"db": "test"}' hx-swap="none">Reset Test DB</button>
+		</div>
 		<h1>Add a new orchestrator</h1>
 		<div>
 			@NewOrchestrator()
@@ -120,7 +127,7 @@ templ OrchestratorDashboard(orchestrator *ManagementOrchestrator, collections []
 			for _, schoolService := range orchestrator.O.GetSchoolsWithService() {
 				<tr hx-target="next tr" hx-indicator="next div">
 					<td>{ schoolService.ServiceName }</td>
-					<td>{ schoolService.School.ID }</td>
+					<td>{ schoolService.School.Name }</td>
 					<td>
 						<form hx-post={ fmt.Sprintf("/manage/%d/terms", orchestrator.Label) } hx-indicator="find span">
 							<input type="text" name="serviceName" value={ schoolService.ServiceName } hidden/>
@@ -142,6 +149,7 @@ templ OrchestratorDashboard(orchestrator *ManagementOrchestrator, collections []
 
 var ActiveCollections = "activeCollections"
 var activeLogsFormat = "logs-%s-%s"
+var jobProgressFormat = "progress-%s-%s"
 
 templ OrchestratorActiveCollections(orchestrator *ManagementOrchestrator, collections []db.TermCollection) {
 	<table hx-ext="ws" ws-connect={ fmt.Sprintf("/manage/%d/watch-logs", orchestrator.Label) }>
@@ -149,6 +157,7 @@ templ OrchestratorActiveCollections(orchestrator *ManagementOrchestrator, collec
 			<tr>
 				<th>Term ID</th>
 				<th>School ID</th>
+				<th></th>
 			</tr>
 		</thead>
 		<tbody id={ ActiveCollections }>
@@ -169,12 +178,17 @@ templ ActiveTermCollection(collection db.TermCollection) {
 	<tr>
 		<td>{ collection.ID }</td>
 		<td>{ collection.SchoolID }</td>
+		<td id={ fmt.Sprintf(jobProgressFormat, collection.ID, collection.SchoolID) }>
+			<img src="/static/spinner.gif" width="25px" height="25px" alt="Job In Progress..."/>
+		</td>
 	</tr>
 	<tr>
-		<td colspan="100%" styles="paddings: 0;">
-			<table>
-				<tbody id={ fmt.Sprintf(activeLogsFormat, collection.ID, collection.SchoolID) }></tbody>
-			</table>
+		<td colspan="100%" style="paddings: 0;">
+			<div style="max-height: 200px; display: block; overflow-y: scroll;" width="100%">
+				<table>
+					<tbody id={ fmt.Sprintf(activeLogsFormat, collection.ID, collection.SchoolID) }></tbody>
+				</table>
+			</div>
 		</td>
 	</tr>
 }
@@ -189,14 +203,82 @@ templ CollectionLog(collection db.TermCollection, log string) {
 	</tbody>
 }
 
-templ TermCollections(orchestrator *ManagementOrchestrator, terms []db.TermCollection, serviceName string) {
-	<td colspan="100%" styles="padding: 0;">
+type JobStatus string
+
+const (
+	JobError   JobStatus = "Error"
+	JobSuccess JobStatus = "Success"
+)
+
+templ JobFinished(orchestratorLabel int, serviceName string, collection db.TermCollection, jobStatus JobStatus) {
+	{{ var img string }}
+	{{ var title string }}
+	switch jobStatus {
+		case JobSuccess:
+			{{ img = "/static/check2-circle.svg" }}
+			{{ title = "Complete" }}
+		case JobError:
+			{{ img = "/static/check2-circle.svg" }}
+			{{ title = "Failed" }}
+	}
+	<td id={ fmt.Sprintf(jobProgressFormat, collection.ID, collection.SchoolID) } style="position: relative">
+		<img src={ img } width="25px" height="25px" title={ title } alt={ fmt.Sprintf("Job complete: %s", jobStatus) }/>
+		<form hx-patch={ fmt.Sprintf("/manage/%d/terms", orchestratorLabel) } hx-swap="none">
+			<input type="text" name="serviceName" value={ serviceName } hidden/>
+			<input type="text" name="schoolID" value={ collection.SchoolID } hidden/>
+			<input type="text" name="termID" value={ collection.ID } hidden/>
+			<button
+				style="position: absolute; top: 0px; right: 50px; background: none; border: none; color: black; cursor: pointer;"
+				type="submit"
+				onclick="
+
+      let row = this.closest('tr');
+      if (row) {
+        let nextRow = row.nextElementSibling;
+        setTimeout(() => {row.remove()}, 30)
+        if (nextRow) {
+          nextRow.remove();
+        }
+      }
+    "
+			>
+				<img src="/static/arrow-counterclockwise.svg" alt="Retry" title="Retry"/>
+			</button>
+		</form>
+		<button
+			style="position: absolute; top: 0px; right: 0px; background: none; border: none; color: black; cursor: pointer; font-size: 14px;"
+			onclick="
+      let row = this.closest('tr');
+      if (row) {
+        let nextRow = row.nextElementSibling;
+        row.remove();
+        if (nextRow) {
+          nextRow.remove();
+        }
+      }
+    "
+		>&times;</button>
+	</td>
+}
+
+templ TermCollections(
+	orchestrator *ManagementOrchestrator,
+	terms []db.TermCollection,
+	serviceName string,
+) {
+	<td colspan="100%" style="padding: 0;">
 		<table class="termCollections">
 			<thead>
 				<th>ID</th>
 				<th>Season</th>
 				<th>Year</th>
-				<th>Still Collecting?</th>
+				<th>
+					Still Collecting?
+					<button
+						style="background: none; border: none; color: black; cursor: pointer; font-size: 16px;"
+						onclick="this.closest('table').closest('td').remove()"
+					>-</button>
+				</th>
 			</thead>
 			<tbody>
 				for _, term := range terms {

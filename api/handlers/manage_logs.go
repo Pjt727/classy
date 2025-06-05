@@ -31,6 +31,7 @@ type WebsocketLoggingHook struct {
 	orchestratorLabel int
 	termCollection    db.TermCollection
 	serviceName       string
+	h                 *ManageHandler
 }
 
 func (w *WebsocketLoggingHook) Levels() []log.Level {
@@ -38,7 +39,7 @@ func (w *WebsocketLoggingHook) Levels() []log.Level {
 }
 
 func (w *WebsocketLoggingHook) Fire(e *log.Entry) error {
-	wsConn, ok := orchestrators[w.orchestratorLabel]
+	wsConn, ok := w.h.orchestrators[w.orchestratorLabel]
 	// it is completely fine if the log does not get sent
 	if !ok {
 		log.Warn("ws failed to be established")
@@ -65,18 +66,18 @@ func (w *WebsocketLoggingHook) Fire(e *log.Entry) error {
 
 func (w *WebsocketLoggingHook) start(ctx context.Context) error {
 	log.Info("Starting term collection")
-	wsConn, ok := orchestrators[w.orchestratorLabel]
+	wsConn, ok := w.h.orchestrators[w.orchestratorLabel]
 
 	// it is completely fine if the log does not get sent
 	if !ok {
-		log.Warn("Could ot find the orch")
+		log.Warn("Could not find the orch")
 		return nil
 	}
 
 	var buf bytes.Buffer
 	err := components.ActiveTermCollectionOob(w.termCollection).Render(ctx, &buf)
 	if err != nil {
-		log.Error("Could not render the oob", err)
+		log.Error("Could not render the starting oob", err)
 		return err
 	}
 
@@ -87,10 +88,34 @@ func (w *WebsocketLoggingHook) start(ctx context.Context) error {
 	return nil
 }
 
+func (w *WebsocketLoggingHook) finish(ctx context.Context, status components.JobStatus) error {
+	wsConn, ok := w.h.orchestrators[w.orchestratorLabel]
+
+	// it is completely fine if the log does not get sent
+	if !ok {
+		log.Warn("Could not find the orch")
+		return nil
+	}
+
+	var buf bytes.Buffer
+	err := components.JobFinished(w.orchestratorLabel, w.serviceName, w.termCollection, status).
+		Render(ctx, &buf)
+	if err != nil {
+		log.Error("Could not render the finsihed oob", err)
+		return err
+	}
+
+	for _, c := range wsConn.connections {
+		c.send <- buf.Bytes()
+	}
+	return nil
+}
+
 type WebSocketConnection struct {
 	conn              *websocket.Conn
 	orchestratorLabel int
 	send              chan []byte
+	h                 *ManageHandler
 }
 
 func (h *ManageHandler) LoggingWebSocket(w http.ResponseWriter, r *http.Request) {
@@ -114,12 +139,12 @@ func (h *ManageHandler) LoggingWebSocket(w http.ResponseWriter, r *http.Request)
 		conn:              conn,
 		orchestratorLabel: label,
 		send:              make(chan []byte),
+		h:                 h,
 	}
 
 	// creation
 	{
-		log.Println("Added webconnection")
-		orch := orchestrators[label]
+		orch := h.orchestrators[label]
 		orch.mu.Lock()
 		defer orch.mu.Unlock()
 		orch.connections = append(orch.connections, wsConn)
@@ -157,15 +182,13 @@ func (wsConn *WebSocketConnection) writePump() {
 		case message, ok := <-wsConn.send:
 			if !ok {
 				// The hub closed the channel.
-				log.Info("CLOSING WRITE WEB SOCKET PUMP")
 				wsConn.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
-			log.Info("Received channel message: ", string(message))
 
 			err := wsConn.conn.WriteMessage(websocket.TextMessage, message)
 			if err != nil {
-				log.Error("Channel error", err)
+				log.Error("Channel error: ", err)
 				return
 			}
 		}
@@ -173,8 +196,7 @@ func (wsConn *WebSocketConnection) writePump() {
 }
 
 func (wsConn *WebSocketConnection) disconnect() {
-	log.Println("broke down webconnection")
-	orch := orchestrators[wsConn.orchestratorLabel]
+	orch := wsConn.h.orchestrators[wsConn.orchestratorLabel]
 	orch.mu.Lock()
 	defer orch.mu.Unlock()
 	wsConn.conn.Close()

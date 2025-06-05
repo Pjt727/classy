@@ -6,12 +6,12 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/Pjt727/classy/api/components"
 	"github.com/Pjt727/classy/collection"
 	test_banner "github.com/Pjt727/classy/collection/services/banner/test"
 	"github.com/Pjt727/classy/data/db"
+	dbhelpers "github.com/Pjt727/classy/data/testdb"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -26,13 +26,14 @@ const (
 	UserCookie
 )
 
-// not safe mutliple changes at the same time
-var lastOrchestratorLabel = 0
+type ManageHandler struct {
+	DbPool     *pgxpool.Pool
+	TestDbPool *pgxpool.Pool
 
-var orchestrators map[int]*sessionOrchestrator = make(
-	map[int]*sessionOrchestrator,
-	0,
-)
+	// not safe mutliple changes at the same time
+	orchestrators         map[int]*sessionOrchestrator
+	lastOrchestratorLabel int
+}
 
 // keeps track of all sessions that are on this orchestrator
 // when an orchestrator gets a request it should notify all websocket connections
@@ -47,32 +48,58 @@ type sessionOrchestrator struct {
 	mu          sync.Mutex
 }
 
-func init() {
+func GetManageHandler(pool *pgxpool.Pool, testPool *pgxpool.Pool) *ManageHandler {
+
 	testingSerivce, err := test_banner.GetTestingService()
 	if err != nil {
 		panic(err)
 	}
-	services := append(collection.DefaultEnabledServices, testingSerivce)
-	newOrchestrator, err := collection.CreateOrchestrator(services, nil)
+
+	h := &ManageHandler{
+		DbPool:                pool,
+		TestDbPool:            testPool,
+		orchestrators:         map[int]*sessionOrchestrator{},
+		lastOrchestratorLabel: 0,
+	}
+	defaultOrchestrator, err := collection.GetDefaultOrchestrator(pool)
 	if err != nil {
 		panic(err)
 	}
-	managementOrchestrator := components.ManagementOrchestrator{
-		O:     &newOrchestrator,
+	testOrchestrator, err := collection.CreateOrchestrator(
+		[]collection.Service{testingSerivce},
+		nil,
+		testPool,
+	)
+	if err != nil {
+		log.Warn("Testing orchestrator could not be made: ", err)
+	}
+	managementOrchestrator := &components.ManagementOrchestrator{
+		O:     &defaultOrchestrator,
 		Name:  "Default Orch",
-		Label: lastOrchestratorLabel,
+		Label: h.lastOrchestratorLabel,
 	}
 	orchestrator := sessionOrchestrator{
-		data:        &managementOrchestrator,
+		data:        managementOrchestrator,
 		connections: []*WebSocketConnection{},
 		mu:          sync.Mutex{},
 	}
-	orchestrators[lastOrchestratorLabel] = &orchestrator
-	lastOrchestratorLabel++
-}
+	h.orchestrators[h.lastOrchestratorLabel] = &orchestrator
+	h.lastOrchestratorLabel++
 
-type ManageHandler struct {
-	DbPool *pgxpool.Pool
+	testingManagementOrchestrator := &components.ManagementOrchestrator{
+		O:     &testOrchestrator,
+		Name:  "Testing Orch",
+		Label: h.lastOrchestratorLabel,
+	}
+	testingOrchestrator := sessionOrchestrator{
+		data:        testingManagementOrchestrator,
+		connections: []*WebSocketConnection{},
+		mu:          sync.Mutex{},
+	}
+	h.orchestrators[h.lastOrchestratorLabel] = &testingOrchestrator
+	h.lastOrchestratorLabel++
+
+	return h
 }
 
 func Notify(
@@ -101,9 +128,9 @@ func (h *ManageHandler) DashboardHome(w http.ResponseWriter, r *http.Request) {
 		Notify(w, r, components.NotifyError, "Database not working")
 		return
 	}
-	managementOrchs := make([]*components.ManagementOrchestrator, len(orchestrators))
+	managementOrchs := make([]*components.ManagementOrchestrator, len(h.orchestrators))
 	i := 0
-	for _, o := range orchestrators {
+	for _, o := range h.orchestrators {
 		managementOrchs[i] = o.data
 		i++
 	}
@@ -122,8 +149,20 @@ func (h *ManageHandler) DashboardHome(w http.ResponseWriter, r *http.Request) {
 func (h *ManageHandler) NewOrchestrator(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	name := r.FormValue("name")
+	isTest := r.FormValue("isTest") == "true"
 
-	newOrchestrator, err := collection.CreateOrchestrator(collection.DefaultEnabledServices, nil)
+	var newOrchestrator collection.Orchestrator
+	var err error
+	if isTest {
+		newOrchestrator, err = collection.CreateOrchestrator(
+			collection.DefaultEnabledServices,
+			nil,
+			h.TestDbPool,
+		)
+	} else {
+		newOrchestrator, err = collection.CreateOrchestrator(collection.DefaultEnabledServices, nil, h.DbPool)
+	}
+
 	managementOrchestrator := components.ManagementOrchestrator{
 		O:    &newOrchestrator,
 		Name: name,
@@ -133,8 +172,8 @@ func (h *ManageHandler) NewOrchestrator(w http.ResponseWriter, r *http.Request) 
 		connections: []*WebSocketConnection{},
 		mu:          sync.Mutex{},
 	}
-	orchestrators[lastOrchestratorLabel] = &sessionOrchestrator
-	lastOrchestratorLabel++
+	h.orchestrators[h.lastOrchestratorLabel] = &sessionOrchestrator
+	h.lastOrchestratorLabel++
 
 	if err != nil {
 		log.Error("Error decoding post: ", err)
@@ -142,9 +181,9 @@ func (h *ManageHandler) NewOrchestrator(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	managementOrchs := make([]*components.ManagementOrchestrator, len(orchestrators))
+	managementOrchs := make([]*components.ManagementOrchestrator, len(h.orchestrators))
 	i := 0
-	for _, o := range orchestrators {
+	for _, o := range h.orchestrators {
 		managementOrchs[i] = o.data
 		i++
 	}
@@ -167,12 +206,12 @@ func (h *ManageHandler) NewOrchestrator(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-func ValidateOrchestrator(next http.Handler) http.Handler {
+func (h *ManageHandler) ValidateOrchestrator(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		label, err := strconv.Atoi(chi.URLParam(r, "orchestratorLabel"))
 		fmt.Println(label)
-		_, orchExists := orchestrators[label]
+		_, orchExists := h.orchestrators[label]
 		if err != nil || !orchExists {
 			if !orchExists {
 				log.Error("Orchestrator does not exists:", label)
@@ -222,7 +261,7 @@ func (h *ManageHandler) OrchestratorHome(w http.ResponseWriter, r *http.Request)
 	index := ctx.Value(OrchestratorLabel).(int)
 	fmt.Println(index)
 
-	orchestrator := orchestrators[index]
+	orchestrator := h.orchestrators[index]
 	orchestrator.data.O.GetSchoolsWithService()
 	err := components.OrchestratorDashboard(orchestrator.data, orchestrator.data.O.ListRunningCollections()).
 		Render(r.Context(), w)
@@ -241,7 +280,7 @@ func (h *ManageHandler) OrchestratorGetTerms(w http.ResponseWriter, r *http.Requ
 	serviceName := r.FormValue("serviceName")
 	schoolID := r.FormValue("schoolID")
 
-	orchestrator := orchestrators[index]
+	orchestrator := h.orchestrators[index]
 	terms, err := orchestrator.data.O.GetTerms(ctx, serviceName, schoolID)
 	if err != nil {
 		badValues := fmt.Sprintf("service name: `%s`, school ID: `%s`", serviceName, schoolID)
@@ -266,7 +305,7 @@ func (h *ManageHandler) CollectTerm(w http.ResponseWriter, r *http.Request) {
 	serviceName := r.FormValue("serviceName")
 	schoolID := r.FormValue("schoolID")
 	termID := r.FormValue("termID")
-	orchestrator := orchestrators[label]
+	orchestrator := h.orchestrators[label]
 
 	school, ok := orchestrator.data.O.GetSchoolById(schoolID)
 	if !ok {
@@ -294,29 +333,94 @@ func (h *ManageHandler) CollectTerm(w http.ResponseWriter, r *http.Request) {
 		hook := WebsocketLoggingHook{
 			orchestratorLabel: label,
 			termCollection: db.TermCollection{
-				ID:       termID,
-				SchoolID: schoolID,
-				// these values do not matter as they are not used
-				Year:   0,
-				Season: "",
-				Name: pgtype.Text{
-					String: "",
-					Valid:  false,
-				},
+				ID:              termID,
+				SchoolID:        schoolID,
+				Year:            0,
+				Season:          "",
+				Name:            pgtype.Text{String: "", Valid: false},
 				StillCollecting: false,
 			},
 			serviceName: serviceName,
+			h:           h,
 		}
 		oneOffLogger.Logger.AddHook(&hook)
 
 		hook.start(ctx)
-		time.Sleep(time.Duration(100) * time.Millisecond)
-		orchestrator.data.O.UpsertSchoolTermsWithService(ctx, *oneOffLogger, school, serviceName)
+		// flush all terms
+		err := orchestrator.data.O.UpsertSchoolTermsWithService(
+			ctx,
+			oneOffLogger,
+			school,
+			serviceName,
+		)
+		if err != nil {
+			hook.finish(ctx, components.JobError)
+			return
+		}
+
+		// get the rest of the termCollection information because it is needed for this part
+		q := db.New(h.DbPool)
+		termCollection, err := q.GetTermCollection(ctx, db.GetTermCollectionParams{
+			ID:       termID,
+			SchoolID: schoolID,
+		})
+
+		if err != nil {
+			oneOffLogger.Error("Could not get term collection: ", err)
+			hook.finish(ctx, components.JobError)
+			return
+		}
+
+		err = orchestrator.data.O.UpdateAllSectionsOfSchoolWithService(
+			ctx,
+			termCollection,
+			oneOffLogger,
+			serviceName,
+		)
+		if err != nil {
+			hook.finish(ctx, components.JobError)
+			return
+		}
+		hook.finish(ctx, components.JobSuccess)
 	}()
 	Notify(
 		w,
 		r,
 		components.NotifyProgress,
 		fmt.Sprintf("Starting collection for `%s` `%s`", schoolID, termID),
+	)
+}
+
+// runs all up and down migrations of the database...
+//
+//	ALL data is lost when doing this
+func (h *ManageHandler) ResetDatabase(w http.ResponseWriter, r *http.Request) {
+	isMainDb := r.FormValue("db") == "main"
+	var message string
+	var status components.NotificationType
+	if isMainDb {
+		err := dbhelpers.ReloadDb()
+		if err != nil {
+			message = "Could not reload main database: " + err.Error()
+			status = components.NotifyError
+		} else {
+			message = "Reloaded main database"
+			status = components.NotifySuccess
+		}
+	} else {
+		err := dbhelpers.SetupTestDb()
+		if err != nil {
+			message = "Could not reload test database: " + err.Error()
+			status = components.NotifyError
+		} else {
+			message = "Reloaded test database"
+			status = components.NotifySuccess
+		}
+	}
+	Notify(
+		w,
+		r,
+		status,
+		message,
 	)
 }

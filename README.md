@@ -1,20 +1,29 @@
 # Overview
-Classy is a **WIP** project made to provide a centralized API to access basic class information for many schools. 
+Classy is a **WIP** project made to provide a centralized API to access basic class information for many schools.
 It is aimed to be used by developers
 who want to create apps for schools (think something like [coursicle](https://www.coursicle.com/)),
-but do not want or cannot scrape the information themselves.
+but do not want to, or cannot, scrape the information themselves.
 
-## how can you use classy?
-The [classy-api](https://github.com/Pjt727/classy-api) can be viewed [here](https://pjt727.github.io/classy-api/) (only works if you are locally running the classy server).
-Class information can also be synced with existing data sources to provide updates instead of complete class data, [class-sync](https://github.com/Pjt727/classy-sync)
-is a tool to sync to a database (currently only sqlite).
+## How can you use Classy?
+Classy will eventually expose a public API to help applications get class information.
+### [classy-api](https://github.com/Pjt727/classy-api)
+An explorer page for the basic API information.
+It is hosted [here](https://pjt727.github.io/classy-api/) on GitHub, but will only work once Classy itself is hosted.
+For now, it can only be used when running Classy locally as well.
+### [classy-sync](https://github.com/Pjt727/classy-sync)
+An application meant to help replicate all or some of Classy's database with other data stores.
+These data stores can be other servers displaying content for many different schools, or local data stores on a client for fast lookups for a school.
+
+
+The [classy-api](https://github.com/Pjt727/classy-api) can be viewed [here](https://pjt727.github.io/classy-api/) (only works if you are locally running the Classy server).
+Class information can also be synced with existing data sources to provide updates instead of complete class data. [class-sync](https://github.com/Pjt727/classy-sync)
+is a tool to sync to a database (currently only SQLite).
 
 # Technical Notes
-- any .http files follow syntax of [kuala.nvim](https://github.com/mistweaverco/kulala.nvim) a http client as a neovim plugin
-    - these files are not accessed by the code and are there for exploratory purposes allowing developers to reproduce the minimal requests needed to get class information
 - Database: Postgres
-- Main Language: Golang
-    - logging: [logrus](https://github.com/sirupsen/logrus)
-    - database interaction: [sqlc](https://docs.sqlc.dev/en/latest/) with [pgx](https://github.com/jackc/pgx)
+- Main Language: Go
+    - Logging: [logrus](https://github.com/sirupsen/logrus)
+    - Database interaction: [sqlc](https://docs.sqlc.dev/en/latest/) with [pgx](https://github.com/jackc/pgx)
     - cmd: [cobra](https://github.com/spf13/cobra)
-
+- Any .http files follow the syntax of [kuala.nvim](https://github.com/mistweaverco/kulala.nvim), an HTTP client for Neovim.
+    - These files are not accessed by the code and are there for exploratory purposes, allowing developers to reproduce the minimal requests needed to get class information.

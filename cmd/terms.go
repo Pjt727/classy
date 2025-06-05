@@ -7,6 +7,7 @@ import (
 	"context"
 
 	"github.com/Pjt727/classy/collection"
+	"github.com/Pjt727/classy/data"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -23,7 +24,12 @@ as defined in orchestration`,
 			"job": "getSchoolTerms",
 		})
 		ctx := context.Background()
-		orchestrator, err := collection.GetDefaultOrchestrator()
+		dbPool, err := data.NewPool(ctx, false)
+		if err != nil {
+			logger.Error("Could not get database ", err)
+			return
+		}
+		orchestrator, err := collection.GetDefaultOrchestrator(dbPool)
 		if err != nil {
 			logger.Error("Could not get orchestrator ", err)
 			return

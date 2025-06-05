@@ -1,24 +1,14 @@
 package api
 
 import (
-	"context"
-
 	"github.com/Pjt727/classy/api/handlers"
-	"github.com/Pjt727/classy/data"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func populateManagementRoutes(r *chi.Router) error {
-
-	ctx := context.Background()
-	pool, err := data.NewPool(ctx)
-	if err != nil {
-		return err
-	}
-	h := handlers.ManageHandler{
-		DbPool: pool,
-	}
+func populateManagementRoutes(r *chi.Router, pool *pgxpool.Pool, testPool *pgxpool.Pool) error {
+	h := handlers.GetManageHandler(pool, testPool)
 	(*r).Use(
 		middleware.AllowContentType("application/x-www-form-urlencoded", "multipart/form-data"),
 	)
@@ -26,9 +16,10 @@ func populateManagementRoutes(r *chi.Router) error {
 
 	(*r).Get("/", h.DashboardHome)
 	(*r).Post("/", h.NewOrchestrator)
+	(*r).Delete("/db", h.ResetDatabase)
 
 	(*r).Route("/{orchestratorLabel}", func(r chi.Router) {
-		r.Use(handlers.ValidateOrchestrator)
+		r.Use(h.ValidateOrchestrator)
 		r.Get("/", h.OrchestratorHome)
 		r.Get("/watch-logs", h.LoggingWebSocket)
 		r.Post("/terms", h.OrchestratorGetTerms)

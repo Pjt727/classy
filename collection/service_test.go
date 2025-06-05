@@ -25,7 +25,10 @@ func (t TestService) GetName() string {
 	return "Test Service"
 }
 
-func (t TestService) ListValidSchools(logger log.Entry, ctx context.Context) ([]classentry.School, error) {
+func (t TestService) ListValidSchools(
+	logger log.Entry,
+	ctx context.Context,
+) ([]classentry.School, error) {
 	return t.schools, nil
 }
 
@@ -75,14 +78,17 @@ func (t TestService) StageAllClasses(
 	for _, course := range courses {
 		for j := 0; j > t.r.Intn(3); j++ {
 			section := classentry.Section{
-				Sequence:           strconv.Itoa(j),
-				Campus:             pgtype.Text{String: t.randomString(1), Valid: true},
-				SubjectCode:        course.SubjectCode,
-				CourseNumber:       course.Number,
-				Enrollment:         pgtype.Int4{Int32: int32(t.r.Intn(10) + 10), Valid: true},
-				MaxEnrollment:      pgtype.Int4{Int32: int32(t.r.Intn(10) + 10), Valid: true},
-				InstructionMethod:  pgtype.Text{String: t.randomString(1), Valid: true},
-				PrimaryProfessorID: pgtype.Text{String: profs[t.r.Intn(len(profs))].ID, Valid: t.r.Intn(2) == 0},
+				Sequence:          strconv.Itoa(j),
+				Campus:            pgtype.Text{String: t.randomString(1), Valid: true},
+				SubjectCode:       course.SubjectCode,
+				CourseNumber:      course.Number,
+				Enrollment:        pgtype.Int4{Int32: int32(t.r.Intn(10) + 10), Valid: true},
+				MaxEnrollment:     pgtype.Int4{Int32: int32(t.r.Intn(10) + 10), Valid: true},
+				InstructionMethod: pgtype.Text{String: t.randomString(1), Valid: true},
+				PrimaryProfessorID: pgtype.Text{
+					String: profs[t.r.Intn(len(profs))].ID,
+					Valid:  t.r.Intn(2) == 0,
+				},
 			}
 			sections = append(sections, section)
 
@@ -126,7 +132,7 @@ func (t TestService) GetTermCollections(
 }
 
 func TestServiceProcess(t *testing.T) {
-	err := dbhelpers.SetupDb()
+	err := dbhelpers.SetupTestDb()
 	if err != nil {
 		t.Error(err)
 		return
