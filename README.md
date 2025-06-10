@@ -4,7 +4,7 @@ It is aimed to be used by developers
 who want to create apps for schools (think something like [coursicle](https://www.coursicle.com/)),
 but do not want to, or cannot, scrape the information themselves.
 
-## How can you use Classy?
+## How can I use Classy?
 Classy will eventually expose a public API to help applications get class information.
 ### [classy-api](https://github.com/Pjt727/classy-api)
 An explorer page for the basic API information.

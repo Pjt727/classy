@@ -27,12 +27,13 @@ sql:
             go_type:
               type: "PartialTerm"
               slice: true
-          - column: "sync_diffs.updated_pk_fields"
-            go_type:
-              type: "map[string]interface{}"
           - column: "sync_diffs.sync_action"
             go_type:
               type: "string"
           - column: "sync_diffs.relevant_fields"
             go_type:
               type: "map[string]interface{}"
+          - column: "sync_diffs.pk_fields"
+            go_type:
+              type: "string"
+              slice: true

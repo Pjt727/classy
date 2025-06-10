@@ -161,3 +161,153 @@ FROM sync_diffs WHERE (school_id, table_name, composite_hash, updated_input_at) 
     GROUP BY s.school_id, s.table_name, s.composite_hash
 );
 
+-- cost=2422118.10..2422133.85
+EXPLAIN (
+SELECT h1.sequence,
+       h1.table_name,
+       h1.input_at AS updated_input_at,
+       h1.composite_hash,
+       h1.school_id,
+       jsonb_set(h1.pk_fields::jsonb, '{school_id}', to_jsonb(h1.school_id), true) AS updated_pk_fields, 
+       (SELECT combined_json(
+                (h2.sync_action, h2.relevant_fields)::sync_change
+                ORDER BY h2.sequence
+       )
+       FROM historic_class_information h2
+       WHERE h2.school_id = h1.school_id
+             AND h2.table_name = h1.table_name
+             AND h2.composite_hash = h1.composite_hash
+             AND h2.sequence >= h1.sequence
+       ) AS sync_changes
+FROM 
+    historic_class_information h1
+    ORDER BY h1.input_at
+)
+-- cost: 2422023.55..2422039.31
+    EXPLAIN (
+SELECT h1.sequence,
+       h1.table_name,
+       h1.input_at AS updated_input_at,
+       h1.composite_hash,
+       h1.school_id,
+       jsonb_set(h1.pk_fields::jsonb, '{school_id}', to_jsonb(h1.school_id), true) AS updated_pk_fields, 
+       (SELECT combined_json(
+                (h2.sync_action, h2.relevant_fields)::sync_change
+                ORDER BY h2.sequence
+       )
+       FROM historic_class_information h2
+       WHERE h2.school_id = h1.school_id
+             AND h2.table_name = h1.table_name
+             AND h2.composite_hash = h1.composite_hash
+             AND h2.sequence >= h1.sequence
+       ).*
+FROM 
+    historic_class_information h1
+ORDER BY h1.input_at);
+
+SELECT table_name, updated_pk_fields AS pk_fields, (sync_changes).sync_action, (sync_changes).relevant_fields
+FROM sync_diffs WHERE (school_id, table_name, composite_hash, updated_input_at) IN (
+    SELECT s.school_id, s.table_name, s.composite_hash, MIN(s.updated_input_at)
+    FROM sync_diffs s
+    WHERE s.sequence > 0
+    GROUP BY s.school_id, s.table_name, s.composite_hash
+);
+
+select * from term_collections;
+
+
+SELECT
+    (SELECT elem FROM UNNEST(ARRAY['a', 'b', 'c']) WITH ORDINALITY AS u(elem, idx) WHERE idx = i),
+    (SELECT elem FROM UNNEST(ARRAY['x', 'y', 'z']) WITH ORDINALITY AS u(elem, idx) WHERE idx = i)
+FROM generate_series(1, array_length(ARRAY['a', 'b', 'c'], 1)) AS i;
+
+-- Sort  (cost=1951.61..1951.63 rows=10 width=126)
+EXPLAIN (
+SELECT sd.*
+FROM sync_diffs sd
+where sd."sequence" in (select h."sequence" from historic_class_information h where h."table_name" = 'professors')
+);
+
+
+ -- Hash Join  (cost=1212940.44..1212979.97 rows=10 width=126)
+EXPLAIN (
+SELECT sd.*
+FROM sync_diffs sd
+where sd."sequence" IN (SELECT generate_series(1, 10))
+);
+
+select * from sync_diffs;
+
+EXPLAIN (
+select (sync_diffs.sync_changes).sync_action, (sync_diffs.sync_changes).relevant_fields from sync_diffs where "table_name" = 'professors'
+);
+
+--                                                               QUERY PLAN                                                               
+-- ---------------------------------------------------------------------------------------------------------------------------------------
+--  Seq Scan on historic_class_information h1  (cost=0.00..82824.01 rows=429 width=32)
+--    Filter: (table_name = 'professors'::text)
+--    SubPlan 1
+--      ->  Aggregate  (cost=192.12..192.13 rows=1 width=32)
+--            ->  Index Scan using historic_class_information_pkey on historic_class_information h2  (cost=0.28..191.87 rows=1 width=208)
+--                  Index Cond: (sequence >= h1.sequence)
+--                  Filter: ((school_id = h1.school_id) AND (table_name = h1.table_name) AND (composite_hash = h1.composite_hash))
+                                                               -- QUERY PLAN                                                                
+-- -----------------------------------------------------------------------------------------------------------------------------------------
+--  Seq Scan on historic_class_information h1  (cost=0.00..165246.17 rows=429 width=36)
+--    Filter: (table_name = 'professors'::text)
+--    SubPlan 1
+--      ->  Aggregate  (cost=192.12..192.13 rows=1 width=32)
+--            ->  Index Scan using historic_class_information_pkey on historic_class_information h2  (cost=0.28..191.87 rows=1 width=208)
+--                  Index Cond: (sequence >= h1.sequence)
+--                  Filter: ((school_id = h1.school_id) AND (table_name = h1.table_name) AND (composite_hash = h1.composite_hash))
+--    SubPlan 2
+--      ->  Aggregate  (cost=192.12..192.13 rows=1 width=32)
+--            ->  Index Scan using historic_class_information_pkey on historic_class_information h2_1  (cost=0.28..191.87 rows=1 width=208)
+--                  Index Cond: (sequence >= h1.sequence)
+--                  Filter: ((school_id = h1.school_id) AND (table_name = h1.table_name) AND (composite_hash = h1.composite_hash))
+EXPLAIN (
+select 
+        ...
+       (SELECT combined_json(
+                (h2.sync_action, h2.relevant_fields)::sync_change
+                ORDER BY h2.sequence
+       )
+       FROM historic_class_information h2
+       WHERE h2.school_id = h1.school_id
+             AND h2.table_name = h1.table_name
+             AND h2.composite_hash = h1.composite_hash
+             AND h2.sequence >= h1.sequence
+       )
+       ...
+;
+);
+EXPLAIN(
+    select * from sync_diffs
+);
+EXPLAIN(
+    select * from sync_diffs_nested
+);
+
+CREATE VIEW sync_diffs AS (
+SELECT h1.sequence,
+       h1.table_name,
+       h1.input_at AS updated_input_at,
+       h1.composite_hash,
+       h1.school_id,
+       jsonb_set(h1.pk_fields::jsonb, '{school_id}', to_jsonb(h1.school_id), true) AS updated_pk_fields, 
+        -- unpacking this tuple or duplicating sync_changes seems to make the expensive json joins happen twice
+        --    doubling the cost of the query
+       (SELECT combined_json(
+                (h2.sync_action, h2.relevant_fields)::sync_change
+                ORDER BY h2.sequence
+       )
+       FROM historic_class_information h2
+       WHERE h2.school_id = h1.school_id
+             AND h2.table_name = h1.table_name
+             AND h2.composite_hash = h1.composite_hash
+             AND h2.sequence >= h1.sequence
+       ) AS sync_changes
+FROM 
+    historic_class_information h1
+ORDER BY h1.input_at
+);

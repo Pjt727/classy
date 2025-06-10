@@ -45,6 +45,7 @@ type ManageHandler struct {
 type sessionOrchestrator struct {
 	data        *components.ManagementOrchestrator
 	connections []*WebSocketConnection
+	isTest      bool
 	mu          sync.Mutex
 }
 
@@ -81,6 +82,7 @@ func GetManageHandler(pool *pgxpool.Pool, testPool *pgxpool.Pool) *ManageHandler
 	orchestrator := sessionOrchestrator{
 		data:        managementOrchestrator,
 		connections: []*WebSocketConnection{},
+		isTest:      false,
 		mu:          sync.Mutex{},
 	}
 	h.orchestrators[h.lastOrchestratorLabel] = &orchestrator
@@ -94,6 +96,7 @@ func GetManageHandler(pool *pgxpool.Pool, testPool *pgxpool.Pool) *ManageHandler
 	testingOrchestrator := sessionOrchestrator{
 		data:        testingManagementOrchestrator,
 		connections: []*WebSocketConnection{},
+		isTest:      true,
 		mu:          sync.Mutex{},
 	}
 	h.orchestrators[h.lastOrchestratorLabel] = &testingOrchestrator
@@ -359,7 +362,13 @@ func (h *ManageHandler) CollectTerm(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// get the rest of the termCollection information because it is needed for this part
-		q := db.New(h.DbPool)
+
+		var q *db.Queries
+		if orchestrator.isTest {
+			q = db.New(h.TestDbPool)
+		} else {
+			q = db.New(h.DbPool)
+		}
 		termCollection, err := q.GetTermCollection(ctx, db.GetTermCollectionParams{
 			ID:       termID,
 			SchoolID: schoolID,

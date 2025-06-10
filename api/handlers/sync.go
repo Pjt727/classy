@@ -2,8 +2,8 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
-	"slices"
 	"strconv"
 	"sync"
 
@@ -22,7 +22,7 @@ type syncResult struct {
 	LastSequence int                           `json:"last_update"`
 }
 
-func (h SyncHandler) SyncAll(w http.ResponseWriter, r *http.Request) {
+func (h *SyncHandler) SyncAll(w http.ResponseWriter, r *http.Request) {
 
 	inputSequence := chi.URLParam(r, "lastSyncSequence")
 	var sequence int
@@ -88,149 +88,114 @@ func (h SyncHandler) SyncAll(w http.ResponseWriter, r *http.Request) {
 	w.Write(resultJson)
 }
 
-type perTerm struct {
-	SchoolID         string `json:"school_id"`
-	TermCollectionID string `json:"term_collection_id"`
-	LastSequence     int32  `json:"last_sequence"`
+type CommonTable string
+
+const (
+	School         CommonTable = "School"
+	TermCollection CommonTable = "TermCollection"
+	Professor      CommonTable = "Professor"
+	Course         CommonTable = "Course"
+)
+
+func (e CommonTable) validate() error {
+	switch e {
+	case School, TermCollection, Professor, Course:
+		return nil
+	default:
+		return fmt.Errorf("invalid CommonTable value: %s", e)
+	}
 }
 
-type perSchool struct {
-	SchoolID     string `json:"school_id"`
-	LastSequence int32  `json:"last_sequence"`
+func (e *CommonTable) Scan(src interface{}) error {
+	var source string
+	switch s := src.(type) {
+	case []byte:
+		source = string(s)
+	case string:
+		source = s
+	default:
+		return fmt.Errorf("unsupported scan type for CommonTable: %T", src)
+	}
+
+	ct := CommonTable(source)
+	if err := ct.validate(); err != nil {
+		return err
+	}
+
+	*e = ct
+	return nil
 }
 
-type syncDataPerTermParams struct {
-	TermSequences   []perTerm   `json:"term_sequences"`
-	SchoolSequences []perSchool `json:"school_sequences"`
-}
-
-type syncTermsResults struct {
-	SyncData           []db.GetLastestSyncChangesForTermsRow `json:"sync_data"`
-	PerTermSequences   []perTerm                             `json:"last_term_sequence"`
-	PerSchoolSequences []perSchool                           `json:"last_common_sequence"`
-}
-
-type tableSyncEntry struct {
+type commonTableSyncEntry struct {
 	TableName string `json:"table_name"`
-	LastSync  *int   `json:"last_sync"`
+	LastSync  int    `json:"last_sync"`
 }
 
-type SelectSchoolEntry struct {
-	CommonTables []tableSyncEntry `json:"common_tables"`
-	SelectTerms  []string         `json:"select_terms"`
+type selectTermEntry struct {
+	TermCollectionID string `json:"term_collection_id"`
+	LastSync         int    `json:"last_sync"`
+}
+
+type selectSchoolEntry struct {
+	CommonTables []commonTableSyncEntry `json:"common_tables"`
+	SelectTerms  []selectTermEntry      `json:"select_terms"`
+}
+
+type syncTerms struct {
+	SelectSchools map[string]selectSchoolEntry `json:"select_schools"`
 }
 
 type syncTermsResult struct {
-	AllSchools         []tableSyncEntry          `json:"all_schools"`
-	SelectSchools      map[string]tableSyncEntry `json:"select_schools"`
-	PerSchoolSequences []perSchool               `json:"last_common_sequence"`
+	NewSyncTermSequences map[string]selectSchoolEntry          `json:"new_sync_term_sequences"`
+	SyncData             []db.GetLastestSyncChangesForTermsRow `json:"sync_data"`
 }
 
-// Tables will propagate sync values to their depenencies e.i. if they are not given or greater than
-//
-//	a term table entry with a sync number of 100 necessitates a sync of at least 100 from the school table
-func (h SyncHandler) SyncTerms(w http.ResponseWriter, r *http.Request) {
+func (h *SyncHandler) SyncTerms(w http.ResponseWriter, r *http.Request) {
 
-	var syncData syncDataPerTermParams
+	// reuse this input at return updating values in return without a separate qwuery
+	var syncData syncTerms
 	err := json.NewDecoder(r.Body).Decode(&syncData)
 	if err != nil {
 		log.Error("Could not parse sequence", err)
 		http.Error(w, "Could not parse body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-
-	tSchoolIDs := make([]string, len(syncData.TermSequences))
-	tTermCollectionIDs := make([]string, len(syncData.TermSequences))
-	tLastSequences := make([]int32, len(syncData.TermSequences))
-
-	for i, term := range syncData.TermSequences {
-		tSchoolIDs[i] = term.SchoolID
-		tTermCollectionIDs[i] = term.TermCollectionID
-		tLastSequences[i] = int32(term.LastSequence)
-	}
-
-	sSchoolIDs := make([]string, len(syncData.SchoolSequences))
-	sLastSequences := make([]int32, len(syncData.SchoolSequences))
-	for i, term := range syncData.SchoolSequences {
-		sSchoolIDs[i] = term.SchoolID
-		sLastSequences[i] = int32(term.LastSequence)
-	}
-
-	for _, schoolID := range tSchoolIDs {
-		if !slices.Contains(sSchoolIDs, schoolID) {
-			log.Error("Term school id not in schools", err)
-			http.Error(w, "Term school id not in schools ", http.StatusBadRequest)
-			return
-		}
-	}
+	// flatten the data structures
+	commonTables := make([]string, 0)
+	commonTableSequences := make([]int32, 0)
+	termCollectionIDs := make([]string, 0)
+	termCollectionSequences := make([]int32, 0)
+	schoolIDs := make([]string, 0)
 
 	ctx := r.Context()
 	q := db.New(h.DbPool)
-	var wg sync.WaitGroup
-	wg.Add(3)
-	errCh := make(chan error, 3)
-	var syncChangeRows []db.GetLastestSyncChangesForTermsRow
-	go func() {
-		defer wg.Done()
-		var err error
-		syncChangeRows, err = q.GetLastestSyncChangesForTerms(
-			ctx,
-			db.GetLastestSyncChangesForTermsParams{
-				TSchoolIds:         tSchoolIDs,
-				TTermCollectionIds: tTermCollectionIDs,
-				TLastSequences:     tLastSequences,
-				SSchoolIds:         sSchoolIDs,
-				SLastSequences:     sLastSequences,
-			},
-		)
-		if err != nil {
-			log.Error("Could not get lastest sync rows: ", err)
-			return
+	for schoolID, schoolEntry := range syncData.SelectSchools {
+		for _, commonTableEntry := range schoolEntry.CommonTables {
+			commonTables = append(commonTables, commonTableEntry.TableName)
+			commonTableSequences = append(commonTableSequences, int32(commonTableEntry.LastSync))
+			schoolIDs = append(schoolIDs, schoolID)
 		}
-	}()
-
-	var lastCommonSequences []perSchool
-	go func() {
-		defer wg.Done()
-		lastCommonSequenceRows, err := q.GetLastCommonSequences(ctx, sSchoolIDs)
-		for i, row := range lastCommonSequenceRows {
-			lastCommonSequences[i] = perSchool(row)
-		}
-		if err != nil {
-			log.Error("Could not get lastest sync rows: ", err)
-			return
+		for _, selectTermEntry := range schoolEntry.SelectTerms {
+			commonTables = append(commonTables, selectTermEntry.TermCollectionID)
+			commonTableSequences = append(commonTableSequences, int32(selectTermEntry.LastSync))
 		}
 
-	}()
-
-	var lastTermUpdates []perTerm
-	go func() {
-		defer wg.Done()
-		termUpdateRows, err := q.GetLastSyncTimesForTerms(ctx, db.GetLastSyncTimesForTermsParams{
-			SchoolIds:         tSchoolIDs,
-			TermCollectionIds: tTermCollectionIDs,
-		})
-		lastTermUpdates := make([]perTerm, len(termUpdateRows))
-		for i, row := range termUpdateRows {
-			lastTermUpdates[i] = perTerm(row)
-		}
-
-		if err != nil {
-			errCh <- err
-			log.Error("Could not get lastest sync term rows: ", err)
-			return
-		}
-	}()
-
-	wg.Wait()
-	if len(errCh) > 0 {
-		http.Error(w, http.StatusText(500), 500)
 	}
 
+	syncRows, err := q.GetLastestSyncChangesForTerms(
+		ctx,
+		db.GetLastestSyncChangesForTermsParams{
+			CommonTables:            commonTables,
+			SchoolID:                schoolIDs,
+			CommonSequences:         commonTableSequences,
+			TermCollectionID:        termCollectionIDs,
+			TermCollectionSequences: termCollectionSequences,
+		},
+	)
+
 	result := syncTermsResult{
-		SyncData:           syncChangeRows,
-		PerTermSequences:   lastTermUpdates,
-		PerSchoolSequences: lastCommonSequences,
+		NewSyncTermSequences: map[string]selectSchoolEntry{},
+		SyncData:             syncRows,
 	}
 	resultJson, err := json.Marshal(result)
 	if err != nil {

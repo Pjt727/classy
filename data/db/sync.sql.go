@@ -9,39 +9,6 @@ import (
 	"context"
 )
 
-const getLastCommonSequences = `-- name: GetLastCommonSequences :many
-SELECT school_id, MAX(sequence)::int as last_sequence
-FROM historic_class_information
-WHERE pk_fields->'term_collection_id' IS NULL
-      AND school_id IN ($1::string[])
-GROUP BY school_id
-`
-
-type GetLastCommonSequencesRow struct {
-	SchoolID     string `json:"school_id"`
-	LastSequence int32  `json:"last_sequence"`
-}
-
-func (q *Queries) GetLastCommonSequences(ctx context.Context, schoolIds []string) ([]GetLastCommonSequencesRow, error) {
-	rows, err := q.db.Query(ctx, getLastCommonSequences, schoolIds)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []GetLastCommonSequencesRow
-	for rows.Next() {
-		var i GetLastCommonSequencesRow
-		if err := rows.Scan(&i.SchoolID, &i.LastSequence); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const getLastSequence = `-- name: GetLastSequence :one
 SELECT MAX(sequence)::int FROM historic_class_information
 `
@@ -53,68 +20,29 @@ func (q *Queries) GetLastSequence(ctx context.Context) (int32, error) {
 	return column_1, err
 }
 
-const getLastSyncTimesForTerms = `-- name: GetLastSyncTimesForTerms :many
-SELECT school_id, (pk_fields->'term_collection_id')::text as term_collection_id, sequence as last_sequence
-FROM historic_class_information
-WHERE sequence IN (
-    SELECT MAX(h.sequence)
-    FROM historic_class_information h
-    WHERE EXISTS (
-        SELECT 1
-        FROM 
-            UNNEST($1::string[]) WITH ORDINALITY AS sch_id,
-            UNNEST($2::string[]) WITH ORDINALITY AS term_collection_id
-        WHERE h.school_id = sch_id
-              AND h.pk_fields->'term_collection_id' = term_collection_id 
-    )
-    GROUP BY h.school_id, h.table_name, h.composite_hash
-)
-`
-
-type GetLastSyncTimesForTermsParams struct {
-	SchoolIds         []string `json:"school_ids"`
-	TermCollectionIds []string `json:"term_collection_ids"`
-}
-
-type GetLastSyncTimesForTermsRow struct {
-	SchoolID         string `json:"school_id"`
-	TermCollectionID string `json:"term_collection_id"`
-	LastSequence     int32  `json:"last_sequence"`
-}
-
-func (q *Queries) GetLastSyncTimesForTerms(ctx context.Context, arg GetLastSyncTimesForTermsParams) ([]GetLastSyncTimesForTermsRow, error) {
-	rows, err := q.db.Query(ctx, getLastSyncTimesForTerms, arg.SchoolIds, arg.TermCollectionIds)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []GetLastSyncTimesForTermsRow
-	for rows.Next() {
-		var i GetLastSyncTimesForTermsRow
-		if err := rows.Scan(&i.SchoolID, &i.TermCollectionID, &i.LastSequence); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const getLastestSyncChanges = `-- name: GetLastestSyncChanges :many
-SELECT table_name, updated_pk_fields AS pk_fields, sync_action, relevant_fields
-FROM sync_diffs WHERE (school_id, table_name, composite_hash, updated_input_at) IN (
-    SELECT s.school_id, s.table_name, s.composite_hash, MIN(s.updated_input_at)
-    FROM sync_diffs s
-    WHERE s.sequence > $1
-    GROUP BY s.school_id, s.table_name, s.composite_hash
-)
+SELECT
+  sequence,
+  table_name,
+  pk_fields,
+  sync_action,
+  relevant_fields
+FROM
+(SELECT
+    sequence, table_name, updated_input_at, composite_hash, school_id, pk_fields, sync_action, relevant_fields,
+    ROW_NUMBER() OVER (PARTITION BY school_id, table_name, composite_hash ORDER BY sequence ASC) AS rn
+    FROM
+    sync_diffs s
+    WHERE sync_diffs.sequence > $1
+) as RankedData
+WHERE
+  rn = 1
 `
 
 type GetLastestSyncChangesRow struct {
+	Sequence       int32                  `json:"sequence"`
 	TableName      string                 `json:"table_name"`
-	PkFields       map[string]interface{} `json:"pk_fields"`
+	PkFields       []string               `json:"pk_fields"`
 	SyncAction     string                 `json:"sync_action"`
 	RelevantFields map[string]interface{} `json:"relevant_fields"`
 }
@@ -129,6 +57,7 @@ func (q *Queries) GetLastestSyncChanges(ctx context.Context, lastSequence int32)
 	for rows.Next() {
 		var i GetLastestSyncChangesRow
 		if err := rows.Scan(
+			&i.Sequence,
 			&i.TableName,
 			&i.PkFields,
 			&i.SyncAction,
@@ -145,62 +74,60 @@ func (q *Queries) GetLastestSyncChanges(ctx context.Context, lastSequence int32)
 }
 
 const getLastestSyncChangesForTerms = `-- name: GetLastestSyncChangesForTerms :many
-SELECT table_name, updated_pk_fields AS pk_fields, sync_action, relevant_fields
-FROM sync_diffs
-WHERE sequence IN (
-    SELECT MIN(h.sequence)
-    FROM historic_class_information h
-    WHERE EXISTS (
-        SELECT 1
-        FROM 
-            UNNEST($1::string[]) WITH ORDINALITY AS sch_id,
-            UNNEST($2::string[]) WITH ORDINALITY AS term_collection_id,
-            UNNEST($3::int[]) WITH ORDINALITY AS seq
-        WHERE h.school_id = sch_id
-              AND h.pk_fields->'term_collection_id' = term_collection_id 
-              AND h.sequence > seq
-    )
-    GROUP BY h.school_id, h.table_name, h.composite_hash
-) OR sequence IN (
-    SELECT MIN(h.sequence)
-    FROM historic_class_information h
-    WHERE h.pk_fields->'term_collection_id' IS NULL AND EXISTS (
-        SELECT 1
-        FROM
-            UNNEST($4::string[]) WITH ORDINALITY AS sch_id,
-            UNNEST($5::int[]) WITH ORDINALITY AS seq
-        WHERE h.school_id = sch_id 
-            AND h.sequence > seq
-    )
-    GROUP BY h.school_id, h.table_name, h.composite_hash
-)
+SELECT
+  sequence,
+  table_name,
+  pk_fields,
+  sync_action,
+  relevant_fields
+FROM
+(SELECT
+    sequence, table_name, updated_input_at, composite_hash, school_id, pk_fields, sync_action, relevant_fields,
+    ROW_NUMBER() OVER (PARTITION BY school_id, table_name, composite_hash ORDER BY sequence ASC) AS rn
+    FROM
+    sync_diffs
+    WHERE (updated_pk_fields->'term_collection_id' IS NULL AND EXISTS ( -- see if this improves performance
+            SELECT 1
+            FROM generate_series(1, array_length($1::string[], 1)) AS i
+            WHERE school_id = ($2::string[])[i]
+            AND table_name = ($1::string[])[i]
+            AND sequence > ($3::int[])[i]
+            ))
+            OR (
+                SELECT 1
+                FROM generate_series(1, array_length($4::string[], 1)) AS i
+                WHERE school_id = ($2::string[])[i]
+                AND term_collection_id = ($4::string[])[i]
+                AND sequence > ($5::int[])[i]
+            )) as RankedData
+WHERE
+  rn = 1
 `
 
 type GetLastestSyncChangesForTermsParams struct {
-	TSchoolIds         []string `json:"t_school_ids"`
-	TTermCollectionIds []string `json:"t_term_collection_ids"`
-	TLastSequences     []int32  `json:"t_last_sequences"`
-	SSchoolIds         []string `json:"s_school_ids"`
-	SLastSequences     []int32  `json:"s_last_sequences"`
+	CommonTables            []string `json:"common_tables"`
+	SchoolID                []string `json:"school_id"`
+	CommonSequences         []int32  `json:"common_sequences"`
+	TermCollectionID        []string `json:"term_collection_id"`
+	TermCollectionSequences []int32  `json:"term_collection_sequences"`
 }
 
 type GetLastestSyncChangesForTermsRow struct {
+	Sequence       int32                  `json:"sequence"`
 	TableName      string                 `json:"table_name"`
-	PkFields       map[string]interface{} `json:"pk_fields"`
+	PkFields       []string               `json:"pk_fields"`
 	SyncAction     string                 `json:"sync_action"`
 	RelevantFields map[string]interface{} `json:"relevant_fields"`
 }
 
-// The strategy of this query is get the next sync diff which is after
-//
-//	the last sync
+// all array inputs must be flattened to be the same length
 func (q *Queries) GetLastestSyncChangesForTerms(ctx context.Context, arg GetLastestSyncChangesForTermsParams) ([]GetLastestSyncChangesForTermsRow, error) {
 	rows, err := q.db.Query(ctx, getLastestSyncChangesForTerms,
-		arg.TSchoolIds,
-		arg.TTermCollectionIds,
-		arg.TLastSequences,
-		arg.SSchoolIds,
-		arg.SLastSequences,
+		arg.CommonTables,
+		arg.SchoolID,
+		arg.CommonSequences,
+		arg.TermCollectionID,
+		arg.TermCollectionSequences,
 	)
 	if err != nil {
 		return nil, err
@@ -210,6 +137,7 @@ func (q *Queries) GetLastestSyncChangesForTerms(ctx context.Context, arg GetLast
 	for rows.Next() {
 		var i GetLastestSyncChangesForTermsRow
 		if err := rows.Scan(
+			&i.Sequence,
 			&i.TableName,
 			&i.PkFields,
 			&i.SyncAction,

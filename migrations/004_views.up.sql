@@ -77,23 +77,15 @@ GROUP BY (
 );
 
 
-CREATE VIEW sync_diffs AS (
+CREATE VIEW sync_diffs_nested AS (
 SELECT h1.sequence,
        h1.table_name,
        h1.input_at AS updated_input_at,
        h1.composite_hash,
        h1.school_id,
        jsonb_set(h1.pk_fields::jsonb, '{school_id}', to_jsonb(h1.school_id), true) AS updated_pk_fields, 
-       (SELECT combined_json(
-                (h2.sync_action, h2.relevant_fields)::sync_change
-                ORDER BY h2.input_at
-       )
-       FROM historic_class_information h2
-       WHERE h2.school_id = h1.school_id
-             AND h2.table_name = h1.table_name
-             AND h2.composite_hash = h1.composite_hash
-             AND h2.sequence >= h1.sequence
-       ).sync_action AS sync_action,
+        -- unpacking this tuple or duplicating sync_changes seems to make the expensive json joins happen twice
+        --    doubling the cost of the query
        (SELECT combined_json(
                 (h2.sync_action, h2.relevant_fields)::sync_change
                 ORDER BY h2.sequence
@@ -103,9 +95,22 @@ SELECT h1.sequence,
              AND h2.table_name = h1.table_name
              AND h2.composite_hash = h1.composite_hash
              AND h2.sequence >= h1.sequence
-       ).relevant_fields AS relevant_fields
+       ) AS sync_changes
 FROM 
     historic_class_information h1
 ORDER BY h1.input_at
+);
+
+CREATE VIEW sync_diffs AS (
+SELECT s.sequence,
+       s.table_name,
+       s.updated_input_at,
+       s.composite_hash,
+       s.school_id,
+       s.updated_pk_fields AS pk_fields,
+       (s.sync_changes).sync_action AS sync_action,
+       (s.sync_changes).relevant_fields AS relevant_fields
+FROM 
+    sync_diffs_nested s
 );
 
