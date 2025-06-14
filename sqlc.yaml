@@ -35,5 +35,4 @@ sql:
               type: "map[string]interface{}"
           - column: "sync_diffs.pk_fields"
             go_type:
-              type: "string"
-              slice: true
+              type: "map[string]interface{}"

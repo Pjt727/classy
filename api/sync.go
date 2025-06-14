@@ -13,7 +13,7 @@ func populateSyncRoutes(r *chi.Router, pool *pgxpool.Pool) error {
 	}
 
 	(*r).Get("/all", syncHandler.SyncAll)
-	// (*r).Post("/schools/terms", syncHandler.SyncTerms)
+	(*r).Post("/schools/terms", syncHandler.SyncTerms)
 
 	return nil
 }

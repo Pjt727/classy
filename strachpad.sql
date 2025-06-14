@@ -311,3 +311,66 @@ FROM
     historic_class_information h1
 ORDER BY h1.input_at
 );
+
+SELECT * FROM professors where id = 'Alan.Labouseur@marist.edu';
+
+SELECT * FROM sections 
+where primary_professor_id = 'Alan.Labouseur@marist.edu'; 
+
+select * from courses where number = '424N';
+
+SELECT
+  sequence,
+  table_name,
+  pk_fields,
+  sync_action,
+  relevant_fields
+FROM
+(SELECT
+    *,
+    ROW_NUMBER() OVER (PARTITION BY school_id, table_name, composite_hash ORDER BY sequence ASC) AS rn
+    FROM
+    sync_diffs s
+    WHERE s.sequence > 3000
+) as RankedData
+WHERE
+  rn = 1;
+
+
+select * from historic_class_information where table_name = 'term_collections' ;
+select * from historic_class_information where table_name = 'schools' ;
+select * from historic_class_information where table_name = 'meeting_times' and sync_action = 'update' ;
+select * from historic_class_information where table_name = 'professors' and sync_action = 'insert' ;
+
+select * from sections;
+
+SELECT
+  sequence,
+  table_name,
+  pk_fields,
+  sync_action,
+  relevant_fields,
+  COUNT(*) OVER() AS total_rows
+FROM
+(SELECT
+    *,
+    ROW_NUMBER() OVER (PARTITION BY school_id, table_name, composite_hash ORDER BY sequence ASC) AS rn
+    FROM
+    sync_diffs s
+    WHERE s.sequence > 0
+) as RankedData
+WHERE
+  rn = 1
+ORDER BY sequence
+LIMIT 500
+;
+
+select * from term_collections;
+
+select * from sections where term_collection_id = '202540';
+
+select * from sections where primary_professor_id = 'Alan.Labouseur@marist.edu' and term_collection_id = '202540';
+
+select * from sync_diffs where "sequence" > 9000;
+
+select * from historic_class_information;

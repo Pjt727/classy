@@ -47,9 +47,6 @@ BEGIN
         ) AS new_data
         JOIN LATERAL jsonb_each(to_jsonb(OLD)) AS old_data(key, value) ON new_data.key = old_data.key
         WHERE new_data.value IS DISTINCT FROM old_data.value;
-        _pk_fields := jsonb_object_agg(key, value) -- Extract only PK fields
-                     FROM jsonb_each(to_jsonb(NEW))
-                     WHERE key = ANY(_pk_columns);
     ELSIF TG_OP = 'DELETE' THEN
         _sync_action := 'delete';
         _relevant_fields := NULL;

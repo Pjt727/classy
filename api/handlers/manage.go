@@ -357,6 +357,7 @@ func (h *ManageHandler) CollectTerm(w http.ResponseWriter, r *http.Request) {
 			serviceName,
 		)
 		if err != nil {
+			oneOffLogger.Error(err)
 			hook.finish(ctx, components.JobError)
 			return
 		}

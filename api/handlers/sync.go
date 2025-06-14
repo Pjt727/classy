@@ -5,26 +5,34 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"sync"
 
 	"github.com/Pjt727/classy/data/db"
-	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	log "github.com/sirupsen/logrus"
 )
+
+type SyncChange struct {
+	Sequence       int32                  `json:"sequence"`
+	TableName      string                 `json:"table_name"`
+	PkFields       map[string]interface{} `json:"pk_fields"`
+	SyncAction     string                 `json:"sync_action"`
+	RelevantFields map[string]interface{} `json:"relevant_fields"`
+}
 
 type SyncHandler struct {
 	DbPool *pgxpool.Pool
 }
 
+// all syncs
 type syncResult struct {
-	SyncData     []db.GetLastestSyncChangesRow `json:"sync_data"`
-	LastSequence int                           `json:"last_update"`
+	SyncData     []db.GetLastestSyncChangesRow `json:"data"`
+	LastSequence int                           `json:"new_latest_sync"`
 }
 
 func (h *SyncHandler) SyncAll(w http.ResponseWriter, r *http.Request) {
 
-	inputSequence := chi.URLParam(r, "lastSyncSequence")
+	inputSequence := r.URL.Query().Get("lastSyncSequence")
+	log.Info(inputSequence)
 	var sequence int
 	if inputSequence == "" {
 		// default time sequence which includes everything
@@ -41,42 +49,34 @@ func (h *SyncHandler) SyncAll(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	q := db.New(h.DbPool)
-	var wg sync.WaitGroup
-	wg.Add(2)
 	errCh := make(chan error, 2)
-	var syncChangeRows []db.GetLastestSyncChangesRow
-	go func() {
-		defer wg.Done()
-		var err error
-		syncChangeRows, err = q.GetLastestSyncChanges(ctx, int32(sequence))
-		if err != nil {
-			errCh <- err
-			log.Error("Could not get lastest sync rows: ", err)
-			return
+	syncChangeRows, err := q.GetLastestSyncChanges(ctx, db.GetLastestSyncChangesParams{
+		LastSequence: int32(sequence),
+		MaxRecords:   500, // TODO: Change to what is in query params
+	})
+	if err != nil {
+		errCh <- err
+		log.Error("Could not get lastest sync rows: ", err)
+		return
+	}
+	syncChanges := make([]SyncChange, len(syncChangeRows))
+	for i, syncChangeRow := range syncChangeRows {
+		syncChanges[i] = SyncChange{
+			Sequence:       syncChangeRow.Sequence,
+			TableName:      syncChangeRow.TableName,
+			PkFields:       syncChangeRow.PkFields,
+			SyncAction:     syncChangeRow.SyncAction,
+			RelevantFields: syncChangeRow.RelevantFields,
 		}
+	}
 
-	}()
-	var lastCommonUpdate int32
-	go func() {
-		defer wg.Done()
-		var err error
-		lastCommonUpdate, err = q.GetLastSequence(ctx)
-		if err != nil {
-			errCh <- err
-			log.Error("Could not get lastest sync common rows: ", err)
-			return
-		}
-
-	}()
-
-	wg.Wait()
 	if len(errCh) > 0 {
 		http.Error(w, http.StatusText(500), 500)
 	}
 
 	result := syncResult{
 		SyncData:     syncChangeRows,
-		LastSequence: int(lastCommonUpdate),
+		LastSequence: int(syncChangeRows[len(syncChangeRows)-1].Sequence),
 	}
 	resultJson, err := json.Marshal(result)
 	if err != nil {
@@ -87,6 +87,8 @@ func (h *SyncHandler) SyncAll(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(resultJson)
 }
+
+// select syncs
 
 type CommonTable string
 
@@ -190,8 +192,20 @@ func (h *SyncHandler) SyncTerms(w http.ResponseWriter, r *http.Request) {
 			CommonSequences:         commonTableSequences,
 			TermCollectionID:        termCollectionIDs,
 			TermCollectionSequences: termCollectionSequences,
+			MaxRecords:              500, // TODO: Change to what is in body
 		},
 	)
+
+	syncChanges := make([]SyncChange, len(syncRows))
+	for i, syncChangeRow := range syncRows {
+		syncChanges[i] = SyncChange{
+			Sequence:       syncChangeRow.Sequence,
+			TableName:      syncChangeRow.TableName,
+			PkFields:       syncChangeRow.PkFields,
+			SyncAction:     syncChangeRow.SyncAction,
+			RelevantFields: syncChangeRow.RelevantFields,
+		}
+	}
 
 	result := syncTermsResult{
 		NewSyncTermSequences: map[string]selectSchoolEntry{},

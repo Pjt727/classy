@@ -9,46 +9,44 @@ import (
 	"context"
 )
 
-const getLastSequence = `-- name: GetLastSequence :one
-SELECT MAX(sequence)::int FROM historic_class_information
-`
-
-func (q *Queries) GetLastSequence(ctx context.Context) (int32, error) {
-	row := q.db.QueryRow(ctx, getLastSequence)
-	var column_1 int32
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
 const getLastestSyncChanges = `-- name: GetLastestSyncChanges :many
 SELECT
   sequence,
   table_name,
   pk_fields,
   sync_action,
-  relevant_fields
+  relevant_fields,
+  COUNT(*) OVER() AS total_rows
 FROM
 (SELECT
     sequence, table_name, updated_input_at, composite_hash, school_id, pk_fields, sync_action, relevant_fields,
     ROW_NUMBER() OVER (PARTITION BY school_id, table_name, composite_hash ORDER BY sequence ASC) AS rn
     FROM
     sync_diffs s
-    WHERE sync_diffs.sequence > $1
+    WHERE s.sequence > $1
 ) as RankedData
 WHERE
   rn = 1
+ORDER BY sequence
+LIMIT $2::int
 `
+
+type GetLastestSyncChangesParams struct {
+	LastSequence int32 `json:"last_sequence"`
+	MaxRecords   int32 `json:"max_records"`
+}
 
 type GetLastestSyncChangesRow struct {
 	Sequence       int32                  `json:"sequence"`
 	TableName      string                 `json:"table_name"`
-	PkFields       []string               `json:"pk_fields"`
+	PkFields       map[string]interface{} `json:"pk_fields"`
 	SyncAction     string                 `json:"sync_action"`
 	RelevantFields map[string]interface{} `json:"relevant_fields"`
+	TotalRows      int64                  `json:"total_rows"`
 }
 
-func (q *Queries) GetLastestSyncChanges(ctx context.Context, lastSequence int32) ([]GetLastestSyncChangesRow, error) {
-	rows, err := q.db.Query(ctx, getLastestSyncChanges, lastSequence)
+func (q *Queries) GetLastestSyncChanges(ctx context.Context, arg GetLastestSyncChangesParams) ([]GetLastestSyncChangesRow, error) {
+	rows, err := q.db.Query(ctx, getLastestSyncChanges, arg.LastSequence, arg.MaxRecords)
 	if err != nil {
 		return nil, err
 	}
@@ -62,6 +60,7 @@ func (q *Queries) GetLastestSyncChanges(ctx context.Context, lastSequence int32)
 			&i.PkFields,
 			&i.SyncAction,
 			&i.RelevantFields,
+			&i.TotalRows,
 		); err != nil {
 			return nil, err
 		}
@@ -79,7 +78,8 @@ SELECT
   table_name,
   pk_fields,
   sync_action,
-  relevant_fields
+  relevant_fields,
+  COUNT(*) OVER() AS total_rows
 FROM
 (SELECT
     sequence, table_name, updated_input_at, composite_hash, school_id, pk_fields, sync_action, relevant_fields,
@@ -102,6 +102,8 @@ FROM
             )) as RankedData
 WHERE
   rn = 1
+ORDER BY sequence
+LIMIT $6::int
 `
 
 type GetLastestSyncChangesForTermsParams struct {
@@ -110,14 +112,16 @@ type GetLastestSyncChangesForTermsParams struct {
 	CommonSequences         []int32  `json:"common_sequences"`
 	TermCollectionID        []string `json:"term_collection_id"`
 	TermCollectionSequences []int32  `json:"term_collection_sequences"`
+	MaxRecords              int32    `json:"max_records"`
 }
 
 type GetLastestSyncChangesForTermsRow struct {
 	Sequence       int32                  `json:"sequence"`
 	TableName      string                 `json:"table_name"`
-	PkFields       []string               `json:"pk_fields"`
+	PkFields       map[string]interface{} `json:"pk_fields"`
 	SyncAction     string                 `json:"sync_action"`
 	RelevantFields map[string]interface{} `json:"relevant_fields"`
+	TotalRows      int64                  `json:"total_rows"`
 }
 
 // all array inputs must be flattened to be the same length
@@ -128,6 +132,7 @@ func (q *Queries) GetLastestSyncChangesForTerms(ctx context.Context, arg GetLast
 		arg.CommonSequences,
 		arg.TermCollectionID,
 		arg.TermCollectionSequences,
+		arg.MaxRecords,
 	)
 	if err != nil {
 		return nil, err
@@ -142,6 +147,7 @@ func (q *Queries) GetLastestSyncChangesForTerms(ctx context.Context, arg GetLast
 			&i.PkFields,
 			&i.SyncAction,
 			&i.RelevantFields,
+			&i.TotalRows,
 		); err != nil {
 			return nil, err
 		}

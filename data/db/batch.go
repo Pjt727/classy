@@ -209,6 +209,8 @@ ON CONFLICT (id, school_id) DO UPDATE
 SET
     still_collecting = EXCLUDED.still_collecting,
     name = EXCLUDED.name
+WHERE term_collections.still_collecting != EXCLUDED.still_collecting
+      OR term_collections.name != EXCLUDED.name
 `
 
 type UpsertTermCollectionBatchResults struct {

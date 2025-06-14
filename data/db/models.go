@@ -232,7 +232,7 @@ type SyncDiff struct {
 	UpdatedInputAt pgtype.Timestamptz     `json:"updated_input_at"`
 	CompositeHash  string                 `json:"composite_hash"`
 	SchoolID       string                 `json:"school_id"`
-	PkFields       []string               `json:"pk_fields"`
+	PkFields       map[string]interface{} `json:"pk_fields"`
 	SyncAction     string                 `json:"sync_action"`
 	RelevantFields map[string]interface{} `json:"relevant_fields"`
 }
@@ -243,7 +243,7 @@ type SyncDiffsNested struct {
 	UpdatedInputAt  pgtype.Timestamptz `json:"updated_input_at"`
 	CompositeHash   string             `json:"composite_hash"`
 	SchoolID        string             `json:"school_id"`
-	UpdatedPkFields []byte             `json:"updated_pk_fields"`
+	UpdatedPkFields interface{}        `json:"updated_pk_fields"`
 	SyncChanges     interface{}        `json:"sync_changes"`
 }
 

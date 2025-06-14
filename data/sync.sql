@@ -4,20 +4,21 @@ SELECT
   table_name,
   pk_fields,
   sync_action,
-  relevant_fields
+  relevant_fields,
+  COUNT(*) OVER() AS total_rows
 FROM
 (SELECT
     *,
     ROW_NUMBER() OVER (PARTITION BY school_id, table_name, composite_hash ORDER BY sequence ASC) AS rn
     FROM
     sync_diffs s
-    WHERE sync_diffs.sequence > @last_sequence
+    WHERE s.sequence > @last_sequence
 ) as RankedData
 WHERE
-  rn = 1;
-
--- name: GetLastSequence :one
-SELECT MAX(sequence)::int FROM historic_class_information;
+  rn = 1
+ORDER BY sequence
+LIMIT @max_records::int
+;
 
 -- name: GetLastestSyncChangesForTerms :many
 -- all array inputs must be flattened to be the same length
@@ -26,7 +27,8 @@ SELECT
   table_name,
   pk_fields,
   sync_action,
-  relevant_fields
+  relevant_fields,
+  COUNT(*) OVER() AS total_rows
 FROM
 (SELECT
     *,
@@ -48,4 +50,7 @@ FROM
                 AND sequence > (@term_collection_sequences::int[])[i]
             )) as RankedData
 WHERE
-  rn = 1;
+  rn = 1
+ORDER BY sequence
+LIMIT @max_records::int
+;

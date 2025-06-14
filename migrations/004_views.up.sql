@@ -83,7 +83,10 @@ SELECT h1.sequence,
        h1.input_at AS updated_input_at,
        h1.composite_hash,
        h1.school_id,
-       jsonb_set(h1.pk_fields::jsonb, '{school_id}', to_jsonb(h1.school_id), true) AS updated_pk_fields, 
+       CASE
+           WHEN h1.table_name = 'schools' THEN h1.pk_fields::jsonb
+           ELSE jsonb_set(h1.pk_fields::jsonb, '{school_id}', to_jsonb(h1.school_id), true)
+       END AS updated_pk_fields,
         -- unpacking this tuple or duplicating sync_changes seems to make the expensive json joins happen twice
         --    doubling the cost of the query
        (SELECT combined_json(
@@ -98,7 +101,7 @@ SELECT h1.sequence,
        ) AS sync_changes
 FROM 
     historic_class_information h1
-ORDER BY h1.input_at
+ORDER BY h1.sequence
 );
 
 CREATE VIEW sync_diffs AS (

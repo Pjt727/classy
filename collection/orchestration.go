@@ -238,7 +238,10 @@ func (o Orchestrator) UpsertSchoolTerms(
 		)
 	}
 	service := serviceManager.GetService()
-	o.UpsertSchoolTermsWithService(ctx, logger, school, (*service).GetName())
+	err := o.UpsertSchoolTermsWithService(ctx, logger, school, (*service).GetName())
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -286,15 +289,16 @@ func (o Orchestrator) UpsertSchoolTermsWithService(
 	}
 
 	dt := q.UpsertTerm(ctx, terms)
+	var outerErr error = nil
 	dt.Exec(func(i int, e error) {
 		if e != nil {
 			tx.Rollback(ctx)
-			err = e
+			outerErr = e
 			return
 		}
 	})
-	if err != nil {
-		return err
+	if outerErr != nil {
+		return outerErr
 	}
 
 	dbTermCollections := make([]db.UpsertTermCollectionParams, len(termCollections))
@@ -313,13 +317,14 @@ func (o Orchestrator) UpsertSchoolTermsWithService(
 	dtc.Exec(func(i int, e error) {
 		if e != nil {
 			tx.Rollback(ctx)
-			err = e
+			outerErr = e
 			return
 		}
 	})
-	if err != nil {
-		return err
+	if outerErr != nil {
+		return outerErr
 	}
+
 	logger.Infof(`finished adding %d collection terms to db`, len(termCollections))
 	tx.Commit(ctx)
 	return nil

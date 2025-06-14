@@ -88,7 +88,7 @@ WHERE meeting_times.start_date != EXCLUDED.start_date
     OR meeting_times.is_sunday != EXCLUDED.is_sunday
 `
 
-// reducing write locks makes this way faster
+// reducing write locks makes this way faster AND for triggers
 func (q *Queries) MoveStagedMeetingTimes(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, moveStagedMeetingTimes)
 	return err
@@ -121,7 +121,7 @@ WHERE sections.campus != EXCLUDED.campus
     OR sections.primary_professor_id != EXCLUDED.primary_professor_id
 `
 
-// reducing write locks makes this way faster
+// reducing write locks makes this way faster ALSO simplfies trigger logic
 func (q *Queries) MoveStagedSections(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, moveStagedSections)
 	return err

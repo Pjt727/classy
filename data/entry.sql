@@ -73,7 +73,9 @@ VALUES
 ON CONFLICT (id, school_id) DO UPDATE
 SET
     still_collecting = EXCLUDED.still_collecting,
-    name = EXCLUDED.name;
+    name = EXCLUDED.name
+WHERE term_collections.still_collecting != EXCLUDED.still_collecting
+      OR term_collections.name != EXCLUDED.name
 ;
 
 -- name: UpsertTerm :batchexec
@@ -117,7 +119,7 @@ SET
     max_enrollment = EXCLUDED.max_enrollment,
     instruction_method = EXCLUDED.instruction_method,
     primary_professor_id = EXCLUDED.primary_professor_id
--- reducing write locks makes this way faster
+-- reducing write locks makes this way faster ALSO simplfies trigger logic
 WHERE sections.campus != EXCLUDED.campus
     OR sections.enrollment != EXCLUDED.enrollment
     OR sections.max_enrollment != EXCLUDED.max_enrollment
@@ -173,7 +175,7 @@ SET
     is_friday = EXCLUDED.is_friday,
     is_saturday = EXCLUDED.is_saturday,
     is_sunday = EXCLUDED.is_sunday
--- reducing write locks makes this way faster
+-- reducing write locks makes this way faster AND for triggers
 WHERE meeting_times.start_date != EXCLUDED.start_date
     OR meeting_times.end_date != EXCLUDED.end_date
     OR meeting_times.meeting_type != EXCLUDED.meeting_type
