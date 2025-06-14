@@ -12,11 +12,11 @@ import (
 )
 
 type SyncChange struct {
-	Sequence       int32                  `json:"sequence"`
-	TableName      string                 `json:"table_name"`
-	PkFields       map[string]interface{} `json:"pk_fields"`
-	SyncAction     string                 `json:"sync_action"`
-	RelevantFields map[string]interface{} `json:"relevant_fields"`
+	Sequence       int32          `json:"sequence"`
+	TableName      string         `json:"table_name"`
+	PkFields       map[string]any `json:"pk_fields"`
+	SyncAction     string         `json:"sync_action"`
+	RelevantFields map[string]any `json:"relevant_fields"`
 }
 
 type SyncHandler struct {
@@ -84,6 +84,7 @@ func (h *SyncHandler) SyncAll(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
+	w.Header().Set("Content-Encoding", "gzip")
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(resultJson)
 }
@@ -108,7 +109,7 @@ func (e CommonTable) validate() error {
 	}
 }
 
-func (e *CommonTable) Scan(src interface{}) error {
+func (e *CommonTable) Scan(src any) error {
 	var source string
 	switch s := src.(type) {
 	case []byte:
@@ -128,23 +129,43 @@ func (e *CommonTable) Scan(src interface{}) error {
 	return nil
 }
 
-type commonTableSyncEntry struct {
-	TableName string `json:"table_name"`
-	LastSync  int    `json:"last_sync"`
-}
-
-type selectTermEntry struct {
-	TermCollectionID string `json:"term_collection_id"`
-	LastSync         int    `json:"last_sync"`
-}
-
 type selectSchoolEntry struct {
-	CommonTables []commonTableSyncEntry `json:"common_tables"`
-	SelectTerms  []selectTermEntry      `json:"select_terms"`
+	CommonTableToSync map[string]int `json:"common_tables"`
+	SelectTermToSync  map[string]int `json:"select_terms"`
 }
 
 type syncTerms struct {
 	SelectSchools map[string]selectSchoolEntry `json:"select_schools"`
+}
+
+type selectSchoolEntryMap struct {
+	CommonTables map[string]int `json:"common_tables"`
+	SelectTerms  map[string]int `json:"select_terms"`
+}
+
+// mutates the syncTerms into updated ints
+func (s *syncTerms) toMaps(syncChanges []SyncChange) {
+
+	for _, syncChange := range syncChanges {
+		var schoolID string
+		if syncChange.TableName == "schools" {
+			schoolID = syncChange.PkFields["id"].(string)
+		} else {
+			schoolID = syncChange.PkFields["school_id"].(string)
+		}
+
+		var possibleCommonTable CommonTable
+		err := possibleCommonTable.Scan(syncChange.TableName)
+		if err == nil {
+			// this is a common table
+			s.SelectSchools[schoolID].CommonTableToSync[syncChange.TableName] = max(
+				s.SelectSchools[schoolID].CommonTableToSync[syncChange.TableName], int(syncChange.Sequence))
+		} else {
+			termCollectionID := syncChange.PkFields["term_collection_id"].(string)
+			s.SelectSchools[schoolID].SelectTermToSync[termCollectionID] = max(
+				s.SelectSchools[schoolID].SelectTermToSync[termCollectionID], int(syncChange.Sequence))
+		}
+	}
 }
 
 type syncTermsResult struct {
@@ -172,14 +193,14 @@ func (h *SyncHandler) SyncTerms(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := db.New(h.DbPool)
 	for schoolID, schoolEntry := range syncData.SelectSchools {
-		for _, commonTableEntry := range schoolEntry.CommonTables {
-			commonTables = append(commonTables, commonTableEntry.TableName)
-			commonTableSequences = append(commonTableSequences, int32(commonTableEntry.LastSync))
+		for commonTable, lastSync := range schoolEntry.CommonTableToSync {
+			commonTables = append(commonTables, commonTable)
+			commonTableSequences = append(commonTableSequences, int32(lastSync))
 			schoolIDs = append(schoolIDs, schoolID)
 		}
-		for _, selectTermEntry := range schoolEntry.SelectTerms {
-			commonTables = append(commonTables, selectTermEntry.TermCollectionID)
-			commonTableSequences = append(commonTableSequences, int32(selectTermEntry.LastSync))
+		for termCollectionID, lastSync := range schoolEntry.SelectTermToSync {
+			commonTables = append(commonTables, termCollectionID)
+			commonTableSequences = append(commonTableSequences, int32(lastSync))
 		}
 
 	}
@@ -207,8 +228,11 @@ func (h *SyncHandler) SyncTerms(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// update the select schools sync
+	syncData.toMaps(syncChanges)
+
 	result := syncTermsResult{
-		NewSyncTermSequences: map[string]selectSchoolEntry{},
+		NewSyncTermSequences: syncData.SelectSchools,
 		SyncData:             syncRows,
 	}
 	resultJson, err := json.Marshal(result)
@@ -217,6 +241,7 @@ func (h *SyncHandler) SyncTerms(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
+	w.Header().Set("Content-Encoding", "gzip")
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(resultJson)
 }

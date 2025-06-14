@@ -1,0 +1,23 @@
+@hostname=localhost:3000
+
+GET {{hostname}}/sync/all?lastSyncSequence=100
+
+###
+
+POST https://{{hostname}}/sync/select
+Content-Type: application/json
+Accept: application/json
+Cookie: JSESSIONID={{REQUEST_SEARCH_PAGE.response.cookies.JSESSIONID.value}}
+
+{
+    "select_schools": {
+        "marist":{
+            "common_tables": {
+                "professors": 100
+            },
+            "select_terms": {
+                "10103": 20
+            }
+        }
+    }
+}
