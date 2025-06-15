@@ -48,19 +48,21 @@ BEGIN
         ELSIF next_sync_kind = 'update' THEN
             RETURN ROW('insert', current_relevant_fields || next_relevant_fields)::sync_change;
         ELSIF next_sync_kind = 'delete' THEN
-            RETURN ROW('delete', jsonb_build_object())::sync_change;
+            RETURN NULL;
         END IF;
 
     -- update + insert = impossible
     -- update + update = new update with updated fields
-    -- update + delete = no operation (null)
+    -- update + delete = delete (it is NOT a null op ex: 
+    --                           create -> update -> delete = create -> delete -> no op
+    --                           update -> delete           = delete)
     ELSIF current_sync_kind = 'update' THEN
         IF next_sync_kind = 'insert' THEN
             RAISE EXCEPTION 'Cannot have an insert after an update';
         ELSIF next_sync_kind = 'update' THEN
             RETURN ROW('update', current_relevant_fields || next_relevant_fields)::sync_change;
         ELSIF next_sync_kind = 'delete' THEN
-            RETURN NULL;
+            RETURN ROW('delete', jsonb_build_object())::sync_change;
         END IF;
 
     -- delete + insert = just do the insert

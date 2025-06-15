@@ -373,4 +373,28 @@ select * from sections where primary_professor_id = 'Alan.Labouseur@marist.edu' 
 
 select * from sync_diffs where "sequence" > 9000;
 
-select * from historic_class_information;
+select 
+       MIN(sequence) as sequence, 
+       table_name,
+       MIN(input_at) AS updated_input_at,
+       composite_hash,
+       school_id,
+       CASE
+           WHEN table_name = 'schools' THEN pk_fields::jsonb
+           ELSE jsonb_set(pk_fields::jsonb, '{school_id}', to_jsonb(school_id), true)
+       END AS updated_pk_fields,
+       combined_json(
+                (sync_action, relevant_fields)::sync_change
+                ORDER BY sequence
+       ) as sync_changes
+from historic_class_information
+where sequence > 3000 
+group by composite_hash, table_name, composite_hash, school_id, updated_pk_fields
+HAVING combined_json(
+                (sync_action, relevant_fields)::sync_change
+                ORDER BY sequence
+       ) IS NOT NULL
+
+
+
+select * from historic_class_information where composite_hash = '0575f25903e00e9a3621ae0ba637a264';

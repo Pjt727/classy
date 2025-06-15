@@ -32,12 +32,12 @@ LIMIT $2::int
 `
 
 type GetLastestSyncChangesParams struct {
-	LastSequence int32 `json:"last_sequence"`
-	MaxRecords   int32 `json:"max_records"`
+	LastSequence interface{} `json:"last_sequence"`
+	MaxRecords   int32       `json:"max_records"`
 }
 
 type GetLastestSyncChangesRow struct {
-	Sequence       int32                  `json:"sequence"`
+	Sequence       interface{}            `json:"sequence"`
 	TableName      string                 `json:"table_name"`
 	PkFields       map[string]interface{} `json:"pk_fields"`
 	SyncAction     string                 `json:"sync_action"`
@@ -116,7 +116,7 @@ type GetLastestSyncChangesForTermsParams struct {
 }
 
 type GetLastestSyncChangesForTermsRow struct {
-	Sequence       int32                  `json:"sequence"`
+	Sequence       interface{}            `json:"sequence"`
 	TableName      string                 `json:"table_name"`
 	PkFields       map[string]interface{} `json:"pk_fields"`
 	SyncAction     string                 `json:"sync_action"`

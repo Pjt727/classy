@@ -78,30 +78,27 @@ GROUP BY (
 
 
 CREATE VIEW sync_diffs_nested AS (
-SELECT h1.sequence,
-       h1.table_name,
-       h1.input_at AS updated_input_at,
-       h1.composite_hash,
-       h1.school_id,
+SELECT 
+       MIN(sequence) AS sequence, 
+       table_name,
+       MIN(input_at) AS updated_input_at,
+       composite_hash,
+       school_id,
        CASE
-           WHEN h1.table_name = 'schools' THEN h1.pk_fields::jsonb
-           ELSE jsonb_set(h1.pk_fields::jsonb, '{school_id}', to_jsonb(h1.school_id), true)
+           WHEN table_name = 'schools' THEN pk_fields::jsonb
+           ELSE jsonb_set(pk_fields::jsonb, '{school_id}', to_jsonb(school_id), true)
        END AS updated_pk_fields,
-        -- unpacking this tuple or duplicating sync_changes seems to make the expensive json joins happen twice
-        --    doubling the cost of the query
-       (SELECT combined_json(
-                (h2.sync_action, h2.relevant_fields)::sync_change
-                ORDER BY h2.sequence
-       )
-       FROM historic_class_information h2
-       WHERE h2.school_id = h1.school_id
-             AND h2.table_name = h1.table_name
-             AND h2.composite_hash = h1.composite_hash
-             AND h2.sequence >= h1.sequence
+       combined_json(
+                (sync_action, relevant_fields)::sync_change
+                ORDER BY sequence
        ) AS sync_changes
-FROM 
-    historic_class_information h1
-ORDER BY h1.sequence
+FROM historic_class_information
+GROUP BY composite_hash, table_name, composite_hash, school_id, updated_pk_fields
+-- if combined_json is NULL it means that 
+HAVING combined_json(
+                (sync_action, relevant_fields)::sync_change
+                ORDER BY sequence
+       ) IS NOT NULL
 );
 
 CREATE VIEW sync_diffs AS (

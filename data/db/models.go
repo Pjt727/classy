@@ -227,9 +227,9 @@ type StagingSection struct {
 }
 
 type SyncDiff struct {
-	Sequence       int32                  `json:"sequence"`
+	Sequence       interface{}            `json:"sequence"`
 	TableName      string                 `json:"table_name"`
-	UpdatedInputAt pgtype.Timestamptz     `json:"updated_input_at"`
+	UpdatedInputAt interface{}            `json:"updated_input_at"`
 	CompositeHash  string                 `json:"composite_hash"`
 	SchoolID       string                 `json:"school_id"`
 	PkFields       map[string]interface{} `json:"pk_fields"`
@@ -238,13 +238,13 @@ type SyncDiff struct {
 }
 
 type SyncDiffsNested struct {
-	Sequence        int32              `json:"sequence"`
-	TableName       string             `json:"table_name"`
-	UpdatedInputAt  pgtype.Timestamptz `json:"updated_input_at"`
-	CompositeHash   string             `json:"composite_hash"`
-	SchoolID        string             `json:"school_id"`
-	UpdatedPkFields interface{}        `json:"updated_pk_fields"`
-	SyncChanges     interface{}        `json:"sync_changes"`
+	Sequence        interface{} `json:"sequence"`
+	TableName       string      `json:"table_name"`
+	UpdatedInputAt  interface{} `json:"updated_input_at"`
+	CompositeHash   string      `json:"composite_hash"`
+	SchoolID        string      `json:"school_id"`
+	UpdatedPkFields interface{} `json:"updated_pk_fields"`
+	SyncChanges     interface{} `json:"sync_changes"`
 }
 
 type Term struct {
