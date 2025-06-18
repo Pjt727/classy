@@ -1,10 +1,13 @@
 @hostname=localhost:3000
 
+GET {{hostname}}/sync/all
+
+###
 GET {{hostname}}/sync/all?lastSyncSequence=100
 
 ###
 
-POST https://{{hostname}}/sync/select
+POST {{hostname}}/sync/select
 Content-Type: application/json
 Accept: application/json
 Cookie: JSESSIONID={{REQUEST_SEARCH_PAGE.response.cookies.JSESSIONID.value}}

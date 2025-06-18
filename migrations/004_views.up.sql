@@ -102,7 +102,7 @@ HAVING combined_json(
 );
 
 CREATE VIEW sync_diffs AS (
-SELECT s.sequence,
+SELECT s.sequence AS sequence,
        s.table_name,
        s.updated_input_at,
        s.composite_hash,

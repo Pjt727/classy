@@ -1,3 +1,9 @@
+CREATE TYPE term_collection_pair AS (
+  id TEXT,
+  school_id TEXT
+);
+
+
 CREATE OR REPLACE FUNCTION log_historic_class_information()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -8,6 +14,7 @@ DECLARE
     _sync_action sync_kind;
     _pk_columns TEXT[];
 BEGIN
+
     -- hash collisions would be isolated on table and school and
     --  would be excedingly rare it is likely no feasible combination
     --  of key values would ever produce a collision
@@ -76,6 +83,32 @@ BEGIN
         _sync_action,
         _relevant_fields
     );
+
+    RETURN COALESCE(NEW, OLD);
+END;
+
+
+$$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION professor_depedent_terms_trigger()
+RETURNS TRIGGER AS $$
+DECLARE
+    _pk_fields TEXT[];
+    _hash_text TEXT;
+BEGIN
+    SELECT array_agg(column_name::TEXT)
+    INTO _pk_columns
+    FROM information_schema.key_column_usage
+    WHERE table_name = 'professors'
+      AND table_schema = TG_TABLE_SCHEMA
+      AND constraint_name = (
+          SELECT constraint_name
+          FROM information_schema.table_constraints
+          WHERE table_name = 'professors'
+            AND table_schema = TG_TABLE_SCHEMA
+            AND constraint_type = 'PRIMARY KEY'
+      );
+    _hash_text := STRING_AGG(key || '%' || value, '%%' ORDER BY key)
+            FROM jsonb_each(_pk_fields);
 
     RETURN COALESCE(NEW, OLD);
 END;

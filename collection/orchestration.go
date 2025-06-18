@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/Pjt727/classy/collection/services/banner"
 
@@ -331,41 +331,37 @@ func (o Orchestrator) UpsertSchoolTermsWithService(
 }
 
 func (o Orchestrator) UpsertAllTerms(ctx context.Context) error {
-	var wg sync.WaitGroup
-	errCh := make(chan error)
+	var eg errgroup.Group
 	numberOfWorkers := len(o.schoolIdToServiceManager)
 	o.orchestrationLogger.Infof(`Starting to add %d school's terms`, numberOfWorkers)
-	wg.Add(numberOfWorkers)
+
 	for schoolID, serviceManager := range o.schoolIdToServiceManager {
-		s := serviceManager.GetService()
-		school := o.schoolIdToSchool[schoolID]
-		termLogger := o.orchestrationLogger.WithFields(log.Fields{
-			"school_id": schoolID,
-			"service":   (*s).GetName(),
-		})
-		go func() {
-			defer wg.Done()
+		schoolID := schoolID             // Capture loop variable
+		serviceManager := serviceManager // Capture loop variable
+		eg.Go(func() error {
+			s := serviceManager.GetService()
+			school := o.schoolIdToSchool[schoolID]
+			termLogger := o.orchestrationLogger.WithFields(log.Fields{
+				"school_id": schoolID,
+				"service":   (*s).GetName(),
+			})
 			if err := o.UpsertSchoolTerms(ctx, termLogger, school); err != nil {
-				errCh <- err
+				termLogger.Error("There was an error collecting terms: ", err)
+				return errors.New(
+					fmt.Sprintf("error upserting terms for school %d: %s", schoolID, err),
+				)
 			}
-		}()
+			termLogger.Info("Successfully upserted terms")
+			return nil
+		})
 	}
 
-	go func() {
-		wg.Wait()
-		close(errCh)
-	}()
-
-	errorCount := 0
-	for err := range errCh {
-		o.orchestrationLogger.Error("There was an error collecting terms: ", err)
-		errorCount++
+	if err := eg.Wait(); err != nil {
+		o.orchestrationLogger.Errorf("One or more schools failed to upsert terms: %v", err)
+		return fmt.Errorf("one or more schools failed to upsert terms: %w", err)
 	}
 
-	o.orchestrationLogger.Infof(`Added %d school's terms successfully`, numberOfWorkers-errorCount)
-	if errorCount > 0 {
-		return errors.New(fmt.Sprintf("There were %d school errors", errorCount))
-	}
+	o.orchestrationLogger.Infof(`Added %d school's terms successfully`, numberOfWorkers)
 	return nil
 }
 

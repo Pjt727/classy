@@ -398,3 +398,57 @@ HAVING combined_json(
 
 
 select * from historic_class_information where composite_hash = '0575f25903e00e9a3621ae0ba637a264';
+
+SELECT
+  sequence,
+  table_name,
+  pk_fields,
+  sync_action,
+  relevant_fields,
+  COUNT(*) OVER() AS total_rows
+FROM
+(SELECT
+    *,
+    ROW_NUMBER() OVER (PARTITION BY school_id, table_name, composite_hash ORDER BY sequence ASC) AS rn
+    FROM
+    sync_diffs s
+    WHERE s.sequence > 0
+) as RankedData
+WHERE
+  rn = 1
+ORDER BY sequence;
+
+
+select * from historic_class_information;
+
+select * from professors p where p.id in (select primary_professor_id from sections where sections.term_collection_id = '202440')
+
+EXPLAIN(
+    SELECT DISTINCT s.school_id, s.term_collection_id
+    FROM sections s WHERE s.primary_professor_id like '%A%';
+);
+
+EXPLAIN(
+    select DISTINCT sections.term_collection_id from sections where sections.course_number = '100L'
+);
+
+SELECT array_agg(column_name::TEXT)
+FROM information_schema.key_column_usage
+WHERE table_name = 'professors'
+  AND constraint_name = (
+      SELECT constraint_name
+      FROM information_schema.table_constraints
+      WHERE table_name = 'professors'
+        AND constraint_type = 'PRIMARY KEY'
+  );
+
+
+/*
+1. professor inserted
+2. section   inserted
+3. section   triggers 
+
+2. section   inserted
+
+*/
+

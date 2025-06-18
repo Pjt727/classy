@@ -36,3 +36,6 @@ sql:
           - column: "sync_diffs.pk_fields"
             go_type:
               type: "map[string]interface{}"
+          - column: "sync_diffs.sequence"
+            go_type:
+              type: "int32"

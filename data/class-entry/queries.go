@@ -3,10 +3,10 @@ package classentry
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	"github.com/jackc/pgx/v5"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/Pjt727/classy/data/db"
 )
@@ -45,35 +45,30 @@ func (q *EntryQueries) WithTx(tx pgx.Tx) *EntryQueries {
 // if those triggers did not matter then we would simply delete all respective meeting / section data
 //    and use copy from or batch inserts directly on the table
 
-func (q *EntryQueries) DeleteSectionsMeetingsStaging(ctx context.Context, termCollection TermCollection) error {
-	errCh := make(chan error, 2)
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		if err := q.q.DeleteStagingMeetingTimes(ctx, db.DeleteStagingMeetingTimesParams{
+func (q *EntryQueries) DeleteSectionsMeetingsStaging(
+	ctx context.Context,
+	termCollection TermCollection,
+) error {
+	var eg errgroup.Group
+
+	eg.Go(func() error {
+		return q.q.DeleteStagingMeetingTimes(ctx, db.DeleteStagingMeetingTimesParams{
 			TermCollectionID: termCollection.ID,
 			SchoolID:         q.schoolID,
-		}); err != nil {
-			errCh <- err
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		if err := q.q.DeleteStagingSections(ctx, db.DeleteStagingSectionsParams{
+		})
+	})
+
+	eg.Go(func() error {
+		return q.q.DeleteStagingSections(ctx, db.DeleteStagingSectionsParams{
 			TermCollectionID: termCollection.ID,
 			SchoolID:         q.schoolID,
-		}); err != nil {
-			errCh <- err
-		}
-	}()
-	go func() {
-		wg.Wait()
-		close(errCh)
-	}()
-	for err := range errCh {
-		return err
+		})
+	})
+
+	if err := eg.Wait(); err != nil {
+		return fmt.Errorf("one or more deletions failed: %w", err)
 	}
+
 	return nil
 }
 

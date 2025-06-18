@@ -13,6 +13,17 @@ CREATE TABLE historic_class_information (
     relevant_fields jsonb
 );
 
+-- stores the dependent courses/ professors by composite_hash
+--    note that hash collisions 
+CREATE TABLE historic_class_information_term_dependencies (
+    table_name TEXT,
+    historic_composite_hash TEXT,
+    term_collection_id STRING,
+    school_id STRING,
+
+    PRIMARY KEY (table_name, historic_composite_hash, term_collection_id, school_id)
+);
+
 CREATE TYPE sync_change AS (
     sync_action sync_kind,
     relevant_fields jsonb
@@ -54,7 +65,7 @@ BEGIN
     -- update + insert = impossible
     -- update + update = new update with updated fields
     -- update + delete = delete (it is NOT a null op ex: 
-    --                           create -> update -> delete = create -> delete -> no op
+    --                           create -> update -> delete = create -> delete = no op
     --                           update -> delete           = delete)
     ELSIF current_sync_kind = 'update' THEN
         IF next_sync_kind = 'insert' THEN
