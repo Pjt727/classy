@@ -451,4 +451,86 @@ WHERE table_name = 'professors'
 2. section   inserted
 
 */
+WITH data AS (
+    SELECT '{"field1": "value1", "field3": "value3", "field2": "value2"}'::jsonb AS _pk_fields
+),
+ordered_json AS (
+    SELECT STRING_AGG(key || '%' || value, '%%' ORDER BY key) AS ordered_string
+    FROM jsonb_each((SELECT _pk_fields FROM data))
+)
+SELECT md5(ordered_string)
+FROM ordered_json;
 
+WITH data AS (
+  SELECT '{"school_id": "marist", "id": "Alan.Labouseur@marist.edu"}'::jsonb AS _pk_fields
+)
+SELECT
+  md5(STRING_AGG(key || '%' || value, '%%' ORDER BY key))
+FROM
+  jsonb_each((SELECT _pk_fields FROM data));
+
+select 
+    md5('id' || '%"' || sections.primary_professor_id || '"')
+from sections
+where sections.primary_professor_id like '%Alan%';
+
+select 
+    md5('number' || '%"' || sections.course_number || '"%%'
+    'subject_code' || '%"' || sections.subject_code || '"'), *
+from sections
+where sections.course_number = '103L' and 
+sections.subject_code = 'CMPT'
+LIMIT 1;
+
+ -- id%Alan.Labouseur@marist.edu%%school_id%marist
+ -- id%"Alan.Labouseur@marist.edu"%%school_id%"marist"
+ -- id%"Alan.Labouseur@marist.edu"%%school_id%"marist"
+SELECT *
+FROM historic_class_information
+WHERE CASE
+    WHEN 
+        historic_class_information.pk_fields ? 'number' THEN historic_class_information.pk_fields ->> 'number' = '103L'
+    ELSE FALSE
+END;
+-- 71113f03f00ef2f5ee7fdccb21e81890
+
+select * from professors where email_address like '%Alan%' ;
+
+
+WITH data AS (
+  SELECT '{"number": "103L", "subject_code": "CMPT"}'::jsonb AS _pk_fields
+)
+SELECT
+  md5(STRING_AGG(key || '%' || value, '%%' ORDER BY key))
+FROM
+  jsonb_each((SELECT _pk_fields FROM data));
+
+-- d540284f9ea6fe08737c67783bd1fc7a
+-- d540284f9ea6fe08737c67783bd1fc7a
+
+select * from historic_class_information where composite_hash = '71113f03f00ef2f5ee7fdccb21e81890';
+select * from historic_class_information_term_dependencies;
+
+SELECT
+    s.sequence, s.table_name, s.composite_hash
+    FROM
+    sync_diffs s
+    WHERE 
+    s.sequence > 0
+    AND (
+    (s.composite_hash, s.table_name) IN (
+        SELECT h.historic_composite_hash, h.table_name
+        FROM historic_class_information_term_dependencies h
+        WHERE h.term_collection_id IN ('202440')
+    ) OR (s.pk_fields ? 'term_collection_id' AND s.pk_fields ->> 'term_collection_id' IN ('202440')))
+    AND NOT EXISTS (
+        SELECT 1
+        FROM generate_series(1, array_length(('202440'), 1)) AS i
+        WHERE s.school_id = (('202440'))[i]
+        AND s.sequence > ((0))[i]
+        ))
+    )
+
+
+    ;
+;

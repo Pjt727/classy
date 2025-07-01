@@ -18,8 +18,8 @@ CREATE TABLE historic_class_information (
 CREATE TABLE historic_class_information_term_dependencies (
     table_name TEXT,
     historic_composite_hash TEXT,
-    term_collection_id STRING,
-    school_id STRING,
+    term_collection_id TEXT,
+    school_id TEXT,
 
     PRIMARY KEY (table_name, historic_composite_hash, term_collection_id, school_id)
 );

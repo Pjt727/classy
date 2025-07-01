@@ -1,9 +1,3 @@
-CREATE TYPE term_collection_pair AS (
-  id TEXT,
-  school_id TEXT
-);
-
-
 CREATE OR REPLACE FUNCTION log_historic_class_information()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -38,7 +32,7 @@ BEGIN
                  WHERE key = ANY(_pk_columns)
                      AND key != 'school_id'
                  ;
-    _hash_text := STRING_AGG(key || '%' || value, '%%' ORDER BY key)
+    _hash_text := STRING_AGG(key || '%' || value::TEXT, '%%' ORDER BY key)
             FROM jsonb_each(_pk_fields);
     IF TG_OP = 'INSERT' THEN
         _sync_action := 'insert';
@@ -85,32 +79,7 @@ BEGIN
     );
 
     RETURN COALESCE(NEW, OLD);
-END;
 
-
-$$ LANGUAGE plpgsql;
-CREATE OR REPLACE FUNCTION professor_depedent_terms_trigger()
-RETURNS TRIGGER AS $$
-DECLARE
-    _pk_fields TEXT[];
-    _hash_text TEXT;
-BEGIN
-    SELECT array_agg(column_name::TEXT)
-    INTO _pk_columns
-    FROM information_schema.key_column_usage
-    WHERE table_name = 'professors'
-      AND table_schema = TG_TABLE_SCHEMA
-      AND constraint_name = (
-          SELECT constraint_name
-          FROM information_schema.table_constraints
-          WHERE table_name = 'professors'
-            AND table_schema = TG_TABLE_SCHEMA
-            AND constraint_type = 'PRIMARY KEY'
-      );
-    _hash_text := STRING_AGG(key || '%' || value, '%%' ORDER BY key)
-            FROM jsonb_each(_pk_fields);
-
-    RETURN COALESCE(NEW, OLD);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -143,3 +112,47 @@ CREATE TRIGGER historic_log
 AFTER INSERT OR UPDATE OR DELETE ON meeting_times
 FOR EACH ROW
 EXECUTE FUNCTION log_historic_class_information();
+
+
+-- these are triggers to populate the dependencies for a particular term
+--    they help to answer the question of what associated records do I need from
+--    the historic data for this particular term
+-- for instance a section being added which has a particular course and professor
+--    knowing which data is need for each term in  h
+-- it is OK for a term to have a dependency even if that dependency is not used in all
+--     snapshots e.i. a course was dropped and no longer is taught during a semester
+-- the main reason why this is worth doing is that schools which have many terms will accrue 
+--     a ton of courses + professors which are not needed when looking at a specific term
+CREATE OR REPLACE FUNCTION section_term_depedents_trigger()
+RETURNS TRIGGER AS $$
+DECLARE
+    _professor_hash_text TEXT;
+    _course_hash_text TEXT;
+BEGIN
+    -- insert professor
+    IF NEW.primary_professor_id IS NOT NULL THEN
+        _professor_hash_text := md5('id' || '%"' || NEW.primary_professor_id || '"');
+        INSERT INTO historic_class_information_term_dependencies
+        (table_name, historic_composite_hash, term_collection_id, school_id)
+        VALUES ('professors', _professor_hash_text, NEW.term_collection_id, NEW.school_id)
+        ON CONFLICT DO NOTHING;
+    END IF;
+
+    -- insert courses
+    _course_hash_text := md5('number' || '%"' || NEW.course_number || '"%%'
+                             'subject_code' || '%"' || NEW.subject_code || '"');
+    INSERT INTO historic_class_information_term_dependencies
+    (table_name, historic_composite_hash, term_collection_id, school_id)
+    VALUES ('courses', _course_hash_text, NEW.term_collection_id, NEW.school_id)
+    ON CONFLICT DO NOTHING;
+
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER insert_term_dependencies
+AFTER INSERT OR UPDATE ON sections
+FOR EACH ROW
+EXECUTE FUNCTION section_term_depedents_trigger();
+
