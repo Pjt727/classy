@@ -15,6 +15,7 @@ func populateGetRoutes(r *chi.Router, pool *pgxpool.Pool) {
 	getHandler := handlers.GetHandler{
 		DbPool: pool,
 	}
+
 	// TODO
 	(*r).Use(populatePagnation)
 	(*r).Get("/", getHandler.GetSchools)
