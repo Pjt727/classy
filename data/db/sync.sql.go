@@ -9,7 +9,7 @@ import (
 	"context"
 )
 
-const getLastestSyncChanges = `-- name: GetLastestSyncChanges :many
+const syncAll = `-- name: SyncAll :many
 SELECT
   sequence,
   table_name,
@@ -31,12 +31,12 @@ ORDER BY sequence
 LIMIT $2::int
 `
 
-type GetLastestSyncChangesParams struct {
+type SyncAllParams struct {
 	LastSequence int32 `json:"last_sequence"`
 	MaxRecords   int32 `json:"max_records"`
 }
 
-type GetLastestSyncChangesRow struct {
+type SyncAllRow struct {
 	Sequence       int32                  `json:"sequence"`
 	TableName      string                 `json:"table_name"`
 	PkFields       map[string]interface{} `json:"pk_fields"`
@@ -45,15 +45,15 @@ type GetLastestSyncChangesRow struct {
 	TotalRows      int64                  `json:"total_rows"`
 }
 
-func (q *Queries) GetLastestSyncChanges(ctx context.Context, arg GetLastestSyncChangesParams) ([]GetLastestSyncChangesRow, error) {
-	rows, err := q.db.Query(ctx, getLastestSyncChanges, arg.LastSequence, arg.MaxRecords)
+func (q *Queries) SyncAll(ctx context.Context, arg SyncAllParams) ([]SyncAllRow, error) {
+	rows, err := q.db.Query(ctx, syncAll, arg.LastSequence, arg.MaxRecords)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetLastestSyncChangesRow
+	var items []SyncAllRow
 	for rows.Next() {
-		var i GetLastestSyncChangesRow
+		var i SyncAllRow
 		if err := rows.Scan(
 			&i.Sequence,
 			&i.TableName,
@@ -72,7 +72,7 @@ func (q *Queries) GetLastestSyncChanges(ctx context.Context, arg GetLastestSyncC
 	return items, nil
 }
 
-const getLastestSyncChangesForTerms = `-- name: GetLastestSyncChangesForTerms :many
+const syncSchool = `-- name: SyncSchool :many
 SELECT
   sequence,
   table_name,
@@ -85,37 +85,23 @@ FROM
     sequence, table_name, updated_input_at, composite_hash, school_id, pk_fields, sync_action, relevant_fields,
     ROW_NUMBER() OVER (PARTITION BY school_id, table_name, composite_hash ORDER BY sequence ASC) AS rn
     FROM
-    sync_diffs
-    WHERE (updated_pk_fields->'term_collection_id' IS NULL AND EXISTS ( -- see if this improves performance
-            SELECT 1
-            FROM generate_series(1, array_length($1::string[], 1)) AS i
-            WHERE school_id = ($2::string[])[i]
-            AND table_name = ($1::string[])[i]
-            AND sequence > ($3::int[])[i]
-            ))
-            OR (
-                SELECT 1
-                FROM generate_series(1, array_length($4::string[], 1)) AS i
-                WHERE school_id = ($2::string[])[i]
-                AND term_collection_id = ($4::string[])[i]
-                AND sequence > ($5::int[])[i]
-            )) as RankedData
+    sync_diffs s
+    WHERE s.sequence > $1 
+          AND s.school_id = $2
+) as RankedData
 WHERE
   rn = 1
 ORDER BY sequence
-LIMIT $6::int
+LIMIT $3::int
 `
 
-type GetLastestSyncChangesForTermsParams struct {
-	CommonTables            []string `json:"common_tables"`
-	SchoolID                []string `json:"school_id"`
-	CommonSequences         []int32  `json:"common_sequences"`
-	TermCollectionID        []string `json:"term_collection_id"`
-	TermCollectionSequences []int32  `json:"term_collection_sequences"`
-	MaxRecords              int32    `json:"max_records"`
+type SyncSchoolParams struct {
+	LastSequence int32  `json:"last_sequence"`
+	SchoolID     string `json:"school_id"`
+	MaxRecords   int32  `json:"max_records"`
 }
 
-type GetLastestSyncChangesForTermsRow struct {
+type SyncSchoolRow struct {
 	Sequence       int32                  `json:"sequence"`
 	TableName      string                 `json:"table_name"`
 	PkFields       map[string]interface{} `json:"pk_fields"`
@@ -124,23 +110,102 @@ type GetLastestSyncChangesForTermsRow struct {
 	TotalRows      int64                  `json:"total_rows"`
 }
 
-// all array inputs must be flattened to be the same length
-func (q *Queries) GetLastestSyncChangesForTerms(ctx context.Context, arg GetLastestSyncChangesForTermsParams) ([]GetLastestSyncChangesForTermsRow, error) {
-	rows, err := q.db.Query(ctx, getLastestSyncChangesForTerms,
-		arg.CommonTables,
+func (q *Queries) SyncSchool(ctx context.Context, arg SyncSchoolParams) ([]SyncSchoolRow, error) {
+	rows, err := q.db.Query(ctx, syncSchool, arg.LastSequence, arg.SchoolID, arg.MaxRecords)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SyncSchoolRow
+	for rows.Next() {
+		var i SyncSchoolRow
+		if err := rows.Scan(
+			&i.Sequence,
+			&i.TableName,
+			&i.PkFields,
+			&i.SyncAction,
+			&i.RelevantFields,
+			&i.TotalRows,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const syncTerm = `-- name: SyncTerm :many
+SELECT
+  sequence,
+  table_name,
+  pk_fields,
+  sync_action,
+  relevant_fields,
+  COUNT(*) OVER() AS total_rows
+FROM
+(SELECT
+    sequence, table_name, updated_input_at, composite_hash, school_id, pk_fields, sync_action, relevant_fields,
+    ROW_NUMBER() OVER (PARTITION BY school_id, table_name, composite_hash ORDER BY sequence ASC) AS rn
+    FROM
+    sync_diffs s
+    WHERE 
+    s.school_id = $1
+    AND s.sequence > $2
+    AND (
+    -- records that are/ were invovled in the term e.i. professors teaching a section in that term
+    (s.composite_hash, s.table_name) IN (
+            SELECT h.historic_composite_hash, h.table_name
+            FROM historic_class_information_term_dependencies h
+            WHERE h.term_collection_id = $3 and h.school_id = $1
+        )
+    -- sections / meeting times that are directly in the term
+    OR (s.pk_fields ? 'term_collection_id' AND s.pk_fields ->> 'term_collection_id' = $3)
+    -- possible updated data on the school 
+    OR table_name = 'schools'
+    -- possible updated data on the term collection
+    OR (table_name = 'term_collections' AND s.pk_fields ->> 'id' = $3)
+    )
+) as RankedData
+WHERE
+  rn = 1
+ORDER BY sequence
+LIMIT $4::int
+`
+
+type SyncTermParams struct {
+	SchoolID         string `json:"school_id"`
+	LastTermSequence int32  `json:"last_term_sequence"`
+	TermCollectionID string `json:"term_collection_id"`
+	MaxRecords       int32  `json:"max_records"`
+}
+
+type SyncTermRow struct {
+	Sequence       int32                  `json:"sequence"`
+	TableName      string                 `json:"table_name"`
+	PkFields       map[string]interface{} `json:"pk_fields"`
+	SyncAction     string                 `json:"sync_action"`
+	RelevantFields map[string]interface{} `json:"relevant_fields"`
+	TotalRows      int64                  `json:"total_rows"`
+}
+
+// gives only the data that is directly related with that term at any point of time
+func (q *Queries) SyncTerm(ctx context.Context, arg SyncTermParams) ([]SyncTermRow, error) {
+	rows, err := q.db.Query(ctx, syncTerm,
 		arg.SchoolID,
-		arg.CommonSequences,
+		arg.LastTermSequence,
 		arg.TermCollectionID,
-		arg.TermCollectionSequences,
 		arg.MaxRecords,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetLastestSyncChangesForTermsRow
+	var items []SyncTermRow
 	for rows.Next() {
-		var i GetLastestSyncChangesForTermsRow
+		var i SyncTermRow
 		if err := rows.Scan(
 			&i.Sequence,
 			&i.TableName,

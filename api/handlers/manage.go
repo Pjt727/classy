@@ -123,14 +123,6 @@ func (h *ManageHandler) DashboardHome(w http.ResponseWriter, r *http.Request) {
 
 	// servicesForSchools := h.Orchestrator.GetSchoolsWithService()
 
-	ctx := r.Context()
-	q := db.New(h.DbPool)
-	err := q.GetPreviousCollections(ctx)
-	if err != nil {
-		log.Error("Could not get school rows: ", err)
-		Notify(w, r, components.NotifyError, "Database not working")
-		return
-	}
 	managementOrchs := make([]*components.ManagementOrchestrator, len(h.orchestrators))
 	i := 0
 	for _, o := range h.orchestrators {
@@ -139,7 +131,7 @@ func (h *ManageHandler) DashboardHome(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	err = components.Dashboard(managementOrchs).Render(r.Context(), w)
+	err := components.Dashboard(managementOrchs).Render(r.Context(), w)
 
 	if err != nil {
 		log.Error("Could not render template: ", err)

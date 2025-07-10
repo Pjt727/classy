@@ -7,20 +7,27 @@ GET {{hostname}}/sync/all?lastSyncSequence=100
 
 ###
 
-POST {{hostname}}/sync/select
+POST {{hostname}}/sync/schools
 Content-Type: application/json
 Accept: application/json
-Cookie: JSESSIONID={{REQUEST_SEARCH_PAGE.response.cookies.JSESSIONID.value}}
 
 {
-    "select_schools": {
-        "marist":{
-            "common_tables": {
-                "professors": 100
-            },
-            "select_terms": {
-                "10103": 20
-            }
+    "schools": {
+        "marist": {
+            "202540": 0
         }
     }
 }
+
+###
+
+POST {{hostname}}/sync/schools
+Content-Type: application/json
+Accept: application/json
+
+{
+    "schools": {
+        "marist": 0
+    }
+}
+

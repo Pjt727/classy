@@ -511,6 +511,7 @@ FROM
 select * from historic_class_information where composite_hash = '71113f03f00ef2f5ee7fdccb21e81890';
 select * from historic_class_information_term_dependencies;
 
+
 SELECT
     s.sequence, s.table_name, s.composite_hash
     FROM
@@ -523,14 +524,5 @@ SELECT
         FROM historic_class_information_term_dependencies h
         WHERE h.term_collection_id IN ('202440')
     ) OR (s.pk_fields ? 'term_collection_id' AND s.pk_fields ->> 'term_collection_id' IN ('202440')))
-    AND NOT EXISTS (
-        SELECT 1
-        FROM generate_series(1, array_length(('202440'), 1)) AS i
-        WHERE s.school_id = (('202440'))[i]
-        AND s.sequence > ((0))[i]
-        ))
-    )
 
-
-    ;
-;
+select * from historic_class_information
