@@ -8,7 +8,6 @@ import (
 	"strconv"
 
 	"github.com/Pjt727/classy/data/db"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	log "github.com/sirupsen/logrus"
 )
@@ -37,7 +36,6 @@ type syncResult struct {
 func (h *SyncHandler) SyncAll(w http.ResponseWriter, r *http.Request) {
 
 	inputSequence := r.URL.Query().Get("lastSyncSequence")
-	log.Info(inputSequence)
 	var sequence int
 	if inputSequence == "" {
 		// default time sequence which includes everything
@@ -46,8 +44,7 @@ func (h *SyncHandler) SyncAll(w http.ResponseWriter, r *http.Request) {
 		var err error
 		sequence, err = strconv.Atoi(inputSequence)
 		if err != nil {
-			log.Error("Could not parse sequence", err)
-			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			http.Error(w, fmt.Sprintf("Could not parse sequence: %s", err), http.StatusBadRequest)
 			return
 		}
 	}
@@ -76,6 +73,9 @@ func (h *SyncHandler) SyncAll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(errCh) > 0 {
+		for err := range errCh {
+			log.Error("Failed getting all sync row changes ", err)
+		}
 		http.Error(w, http.StatusText(500), 500)
 	}
 
@@ -104,7 +104,7 @@ type selectSchoolEntry struct {
 	/// map[string]int            -> school to last sequence for or
 	/// map[string]map[string]int -> school to terms to last sequence
 	Schools              map[string]any `json:"schools"`
-	MaxRecordsPerRequest pgtype.Uint32  `json:"max_records_per_request"`
+	MaxRecordsPerRequest *uint32        `json:"max_records_per_request"`
 }
 
 type syncTermsResult struct {
@@ -128,21 +128,17 @@ func (h *SyncHandler) SyncSchoolTerms(w http.ResponseWriter, r *http.Request) {
 	// it is a little odd that this has to be per school bc there is not a single sql query for everything
 	//    overloading this endpoint with difficult requests from bad actors is far too easy
 	var maxRequestsPerRequest uint32
-	if syncData.MaxRecordsPerRequest.Valid {
-		maxRequestsPerRequest = min(LIMIT_MAX_RECORDS, syncData.MaxRecordsPerRequest.Uint32)
+	if syncData.MaxRecordsPerRequest != nil {
+		maxRequestsPerRequest = min(LIMIT_MAX_RECORDS, uint32(*syncData.MaxRecordsPerRequest))
 	} else {
 		maxRequestsPerRequest = DEFAULT_MAX_RECORDS
 	}
 
 	syncChanges := make([]SyncChange, 0)
-	log.Info(syncData.Schools)
 	for schoolID, sequenceOrTermMap := range syncData.Schools {
-		log.Info(schoolID)
-		log.Info(sequenceOrTermMap)
 		var newSyncChanges []SyncChange
 		switch schoolChoice := sequenceOrTermMap.(type) {
 		case float64: // this school last sequence
-			log.Info(sequenceOrTermMap)
 			if schoolChoice < 0 {
 				http.Error(w, fmt.Sprintf("Invalid sequence number: %f", schoolChoice), http.StatusBadRequest)
 				return

@@ -16,7 +16,8 @@ Accept: application/json
         "marist": {
             "202540": 0
         }
-    }
+    },
+    "max_records_per_request": 10000
 }
 
 ###
@@ -28,6 +29,7 @@ Accept: application/json
 {
     "schools": {
         "marist": 0
-    }
+    },
+    "max_records_per_request": 10000
 }
 
