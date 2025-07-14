@@ -43,6 +43,77 @@ func (q *Queries) DeleteStagingSections(ctx context.Context, arg DeleteStagingSe
 	return err
 }
 
+const finishTermCollectionHistory = `-- name: FinishTermCollectionHistory :exec
+UPDATE term_collection_history SET
+    status = $1,
+    end_time = now()
+WHERE id = $2
+`
+
+type FinishTermCollectionHistoryParams struct {
+	NewFinishedStatus       TermCollectionStatusEnum `json:"new_finished_status"`
+	TermCollectionHistoryID int32                    `json:"term_collection_history_id"`
+}
+
+func (q *Queries) FinishTermCollectionHistory(ctx context.Context, arg FinishTermCollectionHistoryParams) error {
+	_, err := q.db.Exec(ctx, finishTermCollectionHistory, arg.NewFinishedStatus, arg.TermCollectionHistoryID)
+	return err
+}
+
+const getChangesFromMoveTermCollection = `-- name: GetChangesFromMoveTermCollection :one
+SELECT
+    t.id,
+    SUM(CASE WHEN sync_action = 'insert' THEN 1 ELSE 0 END) AS insert_records,
+    SUM(CASE WHEN sync_action = 'update' THEN 1 ELSE 0 END) AS updated_records,
+    SUM(CASE WHEN sync_action = 'delete' THEN 1 ELSE 0 END) AS deleted_records,
+    (end_time - start_time)::INTERVAL AS elapsed_time
+FROM term_collection_history t 
+LEFT JOIN historic_class_information h ON t.id = h.term_collection_history_id
+WHERE t.id = $1::INTEGER
+GROUP BY (t.id, t.end_time, t.start_time)
+`
+
+type GetChangesFromMoveTermCollectionRow struct {
+	ID             int32           `json:"id"`
+	InsertRecords  int64           `json:"insert_records"`
+	UpdatedRecords int64           `json:"updated_records"`
+	DeletedRecords int64           `json:"deleted_records"`
+	ElapsedTime    pgtype.Interval `json:"elapsed_time"`
+}
+
+func (q *Queries) GetChangesFromMoveTermCollection(ctx context.Context, termCollectionHistoryID int32) (GetChangesFromMoveTermCollectionRow, error) {
+	row := q.db.QueryRow(ctx, getChangesFromMoveTermCollection, termCollectionHistoryID)
+	var i GetChangesFromMoveTermCollectionRow
+	err := row.Scan(
+		&i.ID,
+		&i.InsertRecords,
+		&i.UpdatedRecords,
+		&i.DeletedRecords,
+		&i.ElapsedTime,
+	)
+	return i, err
+}
+
+const insertTermCollectionHistory = `-- name: InsertTermCollectionHistory :one
+INSERT INTO term_collection_history
+    (term_collection_id, school_id, is_full)
+VALUES ($1, $2, $3)
+RETURNING id
+`
+
+type InsertTermCollectionHistoryParams struct {
+	TermCollectionID string `json:"term_collection_id"`
+	SchoolID         string `json:"school_id"`
+	IsFull           bool   `json:"is_full"`
+}
+
+func (q *Queries) InsertTermCollectionHistory(ctx context.Context, arg InsertTermCollectionHistoryParams) (int32, error) {
+	row := q.db.QueryRow(ctx, insertTermCollectionHistory, arg.TermCollectionID, arg.SchoolID, arg.IsFull)
+	var id int32
+	err := row.Scan(&id)
+	return id, err
+}
+
 const moveStagedMeetingTimes = `-- name: MoveStagedMeetingTimes :exec
 INSERT INTO meeting_times
     (sequence, section_sequence, subject_code,

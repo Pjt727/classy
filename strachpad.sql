@@ -523,6 +523,28 @@ SELECT
         SELECT h.historic_composite_hash, h.table_name
         FROM historic_class_information_term_dependencies h
         WHERE h.term_collection_id IN ('202440')
-    ) OR (s.pk_fields ? 'term_collection_id' AND s.pk_fields ->> 'term_collection_id' IN ('202440')))
+    ) OR (s.pk_fields ? 'term_collection_id' AND s.pk_fields ->> 'term_collection_id' IN ('202440')));
 
-select * from historic_class_information
+select * from historic_class_information;
+
+select * from term_collection_history;
+
+
+
+SELECT
+    t.id,
+    SUM(CASE WHEN sync_action = 'insert' THEN 1 ELSE 0 END) AS insert_records,
+    SUM(CASE WHEN sync_action = 'update' THEN 1 ELSE 0 END) AS updated_records,
+    SUM(CASE WHEN sync_action = 'delete' THEN 1 ELSE 0 END) AS deleted_records,
+    end_time - start_time AS elapsed_time
+FROM term_collection_history t 
+LEFT JOIN historic_class_information h ON t.id = h.term_collection_history_id
+GROUP BY (t.id, t.end_time, t.start_time)
+ORDER BY t.id
+;
+
+select * from professors where school_id = 'temple';
+select COUNT(*) from professors where school_id = 'temple';
+
+select *  from historic_class_information where school_id = 'temple' and table_name = 'professors';
+

@@ -5,6 +5,7 @@
 -- migrate's drops will not delete types
 DROP TYPE IF EXISTS season_enum;
 CREATE TYPE season_enum AS ENUM ('Spring', 'Fall', 'Winter', 'Summer');
+CREATE TYPE term_collection_status_enum AS ENUM ('Active', 'Success', 'Failure');
 
 CREATE TABLE schools (
     id TEXT PRIMARY KEY,
@@ -33,12 +34,14 @@ CREATE TABLE term_collections (
     CONSTRAINT id CHECK (id ~ '^[a-zA-Z0-9]*$')
 );
 
-CREATE TABLE previous_section_collections (
+CREATE TABLE term_collection_history (
     id SERIAL PRIMARY KEY,
 
-    school_id TEXT,
-    term_collection_id TEXT,
-    time_of_collection TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    status term_collection_status_enum NOT NULL DEFAULT 'Active',
+    term_collection_id TEXT NOT NULL,
+    school_id TEXT NOT NULL,
+    start_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    end_time TIMESTAMP WITH TIME ZONE,
     is_full BOOL NOT NULL,
 
     FOREIGN KEY (term_collection_id, school_id) REFERENCES term_collections(id, school_id)
@@ -56,6 +59,11 @@ CREATE TABLE professors (
     PRIMARY KEY (id, school_id)
 );
 
+CREATE TABLE staging_professors (
+    like professors
+    including defaults
+);
+
 CREATE TABLE courses (
     school_id TEXT,
     subject_code TEXT,
@@ -69,6 +77,11 @@ CREATE TABLE courses (
     PRIMARY KEY (school_id, subject_code, number),
     CONSTRAINT subject_code CHECK (subject_code ~ '^[a-zA-Z0-9]*$'),
     CONSTRAINT number CHECK (number ~ '^[a-zA-Z0-9]*$')
+);
+
+CREATE TABLE staging_courses (
+    like courses
+    including defaults
 );
 
 CREATE TABLE sections (

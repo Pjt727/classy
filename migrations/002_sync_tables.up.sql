@@ -10,7 +10,9 @@ CREATE TABLE historic_class_information (
     input_at TIMESTAMP WITH TIME ZONE,
     pk_fields jsonb NOT NULL,
     sync_action sync_kind NOT NULL,
-    relevant_fields jsonb
+    relevant_fields jsonb,
+    term_collection_history_id INTEGER,
+    FOREIGN KEY (term_collection_history_id) REFERENCES term_collection_history(id)
 );
 
 -- stores the dependent courses/ professors by composite_hash

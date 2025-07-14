@@ -318,6 +318,9 @@ func (h *ManageHandler) CollectTerm(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		ctx := context.Background()
 		customLogger := log.New()
+		if orchestrator.isTest {
+			customLogger.SetReportCaller(true)
+		}
 
 		oneOffLogger := customLogger.WithFields(log.Fields{
 			"job":    "User driven",
@@ -349,7 +352,7 @@ func (h *ManageHandler) CollectTerm(w http.ResponseWriter, r *http.Request) {
 			serviceName,
 		)
 		if err != nil {
-			oneOffLogger.Error(err)
+			oneOffLogger.Error("upsert schools terms failed", err)
 			hook.finish(ctx, components.JobError)
 			return
 		}

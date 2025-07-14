@@ -76,30 +76,30 @@ func (q *EntryQueries) DeleteSectionsMeetingsStaging(
 func (q *EntryQueries) MoveStagedCoursesAndMeetings(
 	ctx context.Context,
 	termCollection TermCollection,
-) (int, error) {
+) error {
 	err := q.q.RemoveUnstagedMeetings(ctx, db.RemoveUnstagedMeetingsParams{
 		TermCollectionID: termCollection.ID,
 		SchoolID:         q.schoolID,
 	})
 	if err != nil {
-		return 0, fmt.Errorf("error unstaging meeting %v", err)
+		return fmt.Errorf("error unstaging meeting %v", err)
 	}
 	err = q.q.RemoveUnstagedSections(ctx, db.RemoveUnstagedSectionsParams{
 		TermCollectionID: termCollection.ID,
 		SchoolID:         q.schoolID,
 	})
 	if err != nil {
-		return 0, fmt.Errorf("error unstaging sections %v", err)
+		return fmt.Errorf("error unstaging sections %v", err)
 	}
 	err = q.q.MoveStagedSections(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("error staging sections %v", err)
+		return fmt.Errorf("error staging sections %v", err)
 	}
 	err = q.q.MoveStagedMeetingTimes(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("error staging meetings %v", err)
+		return fmt.Errorf("error staging meetings %v", err)
 	}
-	return 0, nil
+	return nil
 }
 
 // helper to add class information

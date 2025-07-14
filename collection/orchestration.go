@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
 	"golang.org/x/sync/errgroup"
 
 	"github.com/Pjt727/classy/collection/services/banner"
@@ -233,9 +235,7 @@ func (o Orchestrator) UpsertSchoolTerms(
 ) error {
 	serviceManager, ok := o.schoolIdToServiceManager[school.ID]
 	if !ok {
-		return errors.New(
-			fmt.Sprintf("Do not know how to scrape %s. No service was found.", school.ID),
-		)
+		return fmt.Errorf("Do not know how to scrape %s. No service was found.", school.ID)
 	}
 	service := serviceManager.GetService()
 	err := o.UpsertSchoolTermsWithService(ctx, logger, school, (*service).GetName())
@@ -255,20 +255,16 @@ func (o Orchestrator) UpsertSchoolTermsWithService(
 	logger.Info("starting collection and db addition of collection terms")
 	service, ok := o.serviceEntries[serviceName]
 	if !ok {
-		return errors.New(fmt.Sprintf("The service `%s` was not found.", serviceName))
+		return fmt.Errorf("The service `%s` was not found.", serviceName)
 	}
 	tx, err := o.dbPool.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Commit(ctx)
+	defer tx.Rollback(ctx)
 	q := db.New(tx)
-	logger.Tracef(`starting collection from service of terms`)
 	termCollections, err := (*service).GetTermCollections(*logger, ctx, school)
-	logger.Tracef(`finished collecting %d collection terms`, len(termCollections))
 	if err != nil {
-		logger.Trace(`propagating commit err: `, err)
-		tx.Rollback(ctx)
 		return err
 	}
 
@@ -292,7 +288,6 @@ func (o Orchestrator) UpsertSchoolTermsWithService(
 	var outerErr error = nil
 	dt.Exec(func(i int, e error) {
 		if e != nil {
-			tx.Rollback(ctx)
 			outerErr = e
 			return
 		}
@@ -316,7 +311,6 @@ func (o Orchestrator) UpsertSchoolTermsWithService(
 	dtc := q.UpsertTermCollection(ctx, dbTermCollections)
 	dtc.Exec(func(i int, e error) {
 		if e != nil {
-			tx.Rollback(ctx)
 			outerErr = e
 			return
 		}
@@ -325,8 +319,8 @@ func (o Orchestrator) UpsertSchoolTermsWithService(
 		return outerErr
 	}
 
-	logger.Infof(`finished adding %d collection terms to db`, len(termCollections))
 	tx.Commit(ctx)
+	logger.Infof(`finished adding %d collection terms to db`, len(termCollections))
 	return nil
 }
 
@@ -336,8 +330,6 @@ func (o Orchestrator) UpsertAllTerms(ctx context.Context) error {
 	o.orchestrationLogger.Infof(`Starting to add %d school's terms`, numberOfWorkers)
 
 	for schoolID, serviceManager := range o.schoolIdToServiceManager {
-		schoolID := schoolID             // Capture loop variable
-		serviceManager := serviceManager // Capture loop variable
 		eg.Go(func() error {
 			s := serviceManager.GetService()
 			school := o.schoolIdToSchool[schoolID]
@@ -347,9 +339,7 @@ func (o Orchestrator) UpsertAllTerms(ctx context.Context) error {
 			})
 			if err := o.UpsertSchoolTerms(ctx, termLogger, school); err != nil {
 				termLogger.Error("There was an error collecting terms: ", err)
-				return errors.New(
-					fmt.Sprintf("error upserting terms for school %d: %s", schoolID, err),
-				)
+				return fmt.Errorf("error upserting terms for school %s: %s", schoolID, err)
 			}
 			termLogger.Info("Successfully upserted terms")
 			return nil
@@ -398,11 +388,14 @@ func (o *Orchestrator) UpdateAllSectionsOfSchoolWithService(
 	logger *log.Entry,
 	serviceName string,
 ) error {
+	// TODO: generate this from somewhere
+	isFullCollection := false
+
 	service, ok := o.serviceEntries[serviceName]
 	if !ok {
-		return errors.New(fmt.Sprintf("The service `%s` was not found.", serviceName))
+		return fmt.Errorf("The service `%s` was not found.", serviceName)
 	}
-	// take care of locking until this is done
+	// Only one collection per term should be carried out at once
 	if _, ok := o.termCollectionStagingLocks[termCollection]; ok {
 		return errors.New(
 			fmt.Sprint("Already updating sections for this term collection ", termCollection),
@@ -411,13 +404,38 @@ func (o *Orchestrator) UpdateAllSectionsOfSchoolWithService(
 	o.termCollectionStagingLocks[termCollection] = true
 	defer delete(o.termCollectionStagingLocks, termCollection)
 
+	// setting up logging
 	school := o.schoolIdToSchool[termCollection.SchoolID]
 	updateLogger := logger.WithFields(log.Fields{
 		"service":        (*service).GetName(),
 		"school":         school,
 		"termCollection": termCollection,
 	})
-	q := classentry.NewEntryQuery(o.dbPool, termCollection.SchoolID, &termCollection.ID)
+
+	// inserting the new term collection attempt in the history
+	priviledgedQueryObject := db.New(o.dbPool)
+	termCollectionHistoryID, err := priviledgedQueryObject.InsertTermCollectionHistory(ctx, db.InsertTermCollectionHistoryParams{
+		TermCollectionID: termCollection.ID,
+		SchoolID:         termCollection.SchoolID,
+		IsFull:           isFullCollection,
+	})
+	collectionStatus := db.TermCollectionStatusEnumFailure
+	defer func() {
+		priviledgedQueryObject.FinishTermCollectionHistory(ctx, db.FinishTermCollectionHistoryParams{
+			NewFinishedStatus:       collectionStatus,
+			TermCollectionHistoryID: termCollectionHistoryID,
+		})
+		// now that the transacation is committed the historic data table should be populated by the AFTER
+		// triggers telling us what information was changed
+		// knowing the updated, inserted, deleted data numbers might be helpful to inform automatic scheduling
+		//    of collections and it is also nice to have for logging
+		changeInformation, _ := priviledgedQueryObject.GetChangesFromMoveTermCollection(ctx, termCollectionHistoryID)
+		duration := time.Duration(changeInformation.ElapsedTime.Microseconds) * time.Microsecond
+		updateLogger.Infof("Inserted %d, updated %d, deleted %d records in %s",
+			changeInformation.InsertRecords, changeInformation.UpdatedRecords, changeInformation.DeletedRecords, duration)
+
+	}()
+
 	classEntryTermCollection := classentry.TermCollection{
 		ID: termCollection.ID,
 		Term: classentry.Term{
@@ -427,31 +445,46 @@ func (o *Orchestrator) UpdateAllSectionsOfSchoolWithService(
 		Name:            termCollection.Name,
 		StillCollecting: termCollection.StillCollecting,
 	}
+
+	// prepare the staging area and use the service to get the class information
+	q := classentry.NewEntryQuery(o.dbPool, termCollection.SchoolID, &termCollection.ID)
 	if err := q.DeleteSectionsMeetingsStaging(ctx, classEntryTermCollection); err != nil {
-		updateLogger.Error("Could not ready staging tables", err)
+		updateLogger.Error("Could not ready staging tables: ", err)
 		return err
 	}
-	// defer q.CleanupCoursesMeetingsStaging(ctx)
-	if err := (*service).StageAllClasses(*updateLogger, ctx, q, school.ID, classEntryTermCollection, false); err != nil {
+	if err := (*service).StageAllClasses(*updateLogger, ctx, q, school.ID, classEntryTermCollection, isFullCollection); err != nil {
 		updateLogger.Error("Update sections failed aborting any staged sections/ meetings", err)
 		return err
 	}
-	tx, err := o.dbPool.Begin(ctx)
 
+	tx, err := o.dbPool.Begin(ctx)
 	if err != nil {
 		updateLogger.Error("couldn't begin transaction: ", err)
 		return err
 	}
-	defer tx.Commit(ctx)
-
-	q = q.WithTx(tx)
-	changesCount, err := q.MoveStagedCoursesAndMeetings(ctx, classEntryTermCollection)
-	if err != nil {
-		updateLogger.Error("Failed moving courses: ", err)
-		tx.Rollback(ctx)
+	defer tx.Rollback(ctx)
+	// setting this variable so triggers are aware of the collection class information is coming from
+	// this did not work using sqlc for some reason
+	if _, err = tx.Exec(ctx, fmt.Sprintf("SET LOCAL app.term_collection_history_id = '%d';", termCollectionHistoryID)); err != nil {
+		updateLogger.Error("Could set app term_collection_history_id variable: ", err)
 		return err
 	}
-	updateLogger.Infof("updated %d meetings and sections", changesCount)
+
+	q = q.WithTx(tx)
+	err = q.MoveStagedCoursesAndMeetings(ctx, classEntryTermCollection)
+	if err != nil {
+		updateLogger.Error("Failed moving courses: ", err)
+		return err
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		updateLogger.Error("Failed commiting move class data transacation: ", err)
+		return err
+	}
+
+	collectionStatus = db.TermCollectionStatusEnumSuccess
+
 	return nil
 }
 

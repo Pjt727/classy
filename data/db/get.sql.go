@@ -174,49 +174,6 @@ func (q *Queries) GetCoursesForSchoolAndSubject(ctx context.Context, arg GetCour
 	return items, nil
 }
 
-const getMostRecentTermCollection = `-- name: GetMostRecentTermCollection :many
-SELECT  
-FROM term_collections t
-JOIN previous_section_collections p 
-                    ON t.school_id    = p.school_id
-                    AND t.term_year   = p.term_year
-                    AND t.term_season = p.term_season
-                    AND t.season_kind = p.season_kind
-ORDER BY p.time_of_collection DESC
-LIMIT 1
-`
-
-type GetMostRecentTermCollectionRow struct {
-	TermCollection TermCollection `json:"term_collection"`
-}
-
-func (q *Queries) GetMostRecentTermCollection(ctx context.Context) ([]GetMostRecentTermCollectionRow, error) {
-	rows, err := q.db.Query(ctx, getMostRecentTermCollection)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []GetMostRecentTermCollectionRow
-	for rows.Next() {
-		var i GetMostRecentTermCollectionRow
-		if err := rows.Scan(
-			&i.TermCollection.ID,
-			&i.TermCollection.SchoolID,
-			&i.TermCollection.Year,
-			&i.TermCollection.Season,
-			&i.TermCollection.Name,
-			&i.TermCollection.StillCollecting,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const getSchools = `-- name: GetSchools :many
 SELECT schools.id, schools.name
 FROM schools

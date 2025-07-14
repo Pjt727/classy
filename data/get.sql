@@ -100,15 +100,3 @@ ORDER BY sections."sequence", sections.subject_code, sections.course_number,
 LIMIT @limitValue
 OFFSET @offsetValue
 ;
-
--- name: GetMostRecentTermCollection :many
-SELECT sqlc.embed(term_collections) 
-FROM term_collections t
-JOIN previous_section_collections p 
-                    ON t.school_id    = p.school_id
-                    AND t.term_year   = p.term_year
-                    AND t.term_season = p.term_season
-                    AND t.season_kind = p.season_kind
-ORDER BY p.time_of_collection DESC
-LIMIT 1
-;

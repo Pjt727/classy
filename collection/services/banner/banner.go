@@ -472,7 +472,7 @@ func (b *bannerSchool) insertGroupOfSections(
 	}
 	classData := ProcessSectionSearch(sections)
 
-	// add all of the coures
+	// add all of the extra course data
 	if fullCollection {
 		var wg sync.WaitGroup
 		var mu sync.Mutex

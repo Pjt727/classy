@@ -189,3 +189,31 @@ WHERE meeting_times.start_date != EXCLUDED.start_date
     OR meeting_times.is_saturday != EXCLUDED.is_saturday
     OR meeting_times.is_sunday != EXCLUDED.is_sunday
 ;
+
+-- name: InsertTermCollectionHistory :one
+INSERT INTO term_collection_history
+    (term_collection_id, school_id, is_full)
+VALUES (@term_collection_id, @school_id, @is_full)
+RETURNING id;
+
+-- name: FinishTermCollectionHistory :exec
+UPDATE term_collection_history SET
+    status = @new_finished_status,
+    end_time = now()
+WHERE id = @term_collection_history_id
+;
+
+-- name: GetChangesFromMoveTermCollection :one
+SELECT
+    t.id,
+    SUM(CASE WHEN sync_action = 'insert' THEN 1 ELSE 0 END) AS insert_records,
+    SUM(CASE WHEN sync_action = 'update' THEN 1 ELSE 0 END) AS updated_records,
+    SUM(CASE WHEN sync_action = 'delete' THEN 1 ELSE 0 END) AS deleted_records,
+    (end_time - start_time)::INTERVAL AS elapsed_time
+FROM term_collection_history t 
+LEFT JOIN historic_class_information h ON t.id = h.term_collection_history_id
+WHERE t.id = @term_collection_history_id::INTEGER
+GROUP BY (t.id, t.end_time, t.start_time)
+;
+
+Select * from courses;

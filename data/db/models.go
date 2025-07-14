@@ -98,6 +98,49 @@ func (ns NullSyncKind) Value() (driver.Value, error) {
 	return string(ns.SyncKind), nil
 }
 
+type TermCollectionStatusEnum string
+
+const (
+	TermCollectionStatusEnumActive  TermCollectionStatusEnum = "Active"
+	TermCollectionStatusEnumSuccess TermCollectionStatusEnum = "Success"
+	TermCollectionStatusEnumFailure TermCollectionStatusEnum = "Failure"
+)
+
+func (e *TermCollectionStatusEnum) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = TermCollectionStatusEnum(s)
+	case string:
+		*e = TermCollectionStatusEnum(s)
+	default:
+		return fmt.Errorf("unsupported scan type for TermCollectionStatusEnum: %T", src)
+	}
+	return nil
+}
+
+type NullTermCollectionStatusEnum struct {
+	TermCollectionStatusEnum TermCollectionStatusEnum `json:"term_collection_status_enum"`
+	Valid                    bool                     `json:"valid"` // Valid is true if TermCollectionStatusEnum is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullTermCollectionStatusEnum) Scan(value interface{}) error {
+	if value == nil {
+		ns.TermCollectionStatusEnum, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.TermCollectionStatusEnum.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullTermCollectionStatusEnum) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.TermCollectionStatusEnum), nil
+}
+
 type Course struct {
 	SchoolID           string      `json:"school_id"`
 	SubjectCode        string      `json:"subject_code"`
@@ -117,14 +160,15 @@ type CourseHeuristic struct {
 }
 
 type HistoricClassInformation struct {
-	Sequence       int32              `json:"sequence"`
-	SchoolID       string             `json:"school_id"`
-	TableName      string             `json:"table_name"`
-	CompositeHash  string             `json:"composite_hash"`
-	InputAt        pgtype.Timestamptz `json:"input_at"`
-	PkFields       []byte             `json:"pk_fields"`
-	SyncAction     SyncKind           `json:"sync_action"`
-	RelevantFields []byte             `json:"relevant_fields"`
+	Sequence                int32              `json:"sequence"`
+	SchoolID                string             `json:"school_id"`
+	TableName               string             `json:"table_name"`
+	CompositeHash           string             `json:"composite_hash"`
+	InputAt                 pgtype.Timestamptz `json:"input_at"`
+	PkFields                []byte             `json:"pk_fields"`
+	SyncAction              SyncKind           `json:"sync_action"`
+	RelevantFields          []byte             `json:"relevant_fields"`
+	TermCollectionHistoryID pgtype.Int4        `json:"term_collection_history_id"`
 }
 
 type HistoricClassInformationTermDependency struct {
@@ -153,14 +197,6 @@ type MeetingTime struct {
 	IsFriday         bool             `json:"is_friday"`
 	IsSaturday       bool             `json:"is_saturday"`
 	IsSunday         bool             `json:"is_sunday"`
-}
-
-type PreviousSectionCollection struct {
-	ID               int32              `json:"id"`
-	SchoolID         pgtype.Text        `json:"school_id"`
-	TermCollectionID pgtype.Text        `json:"term_collection_id"`
-	TimeOfCollection pgtype.Timestamptz `json:"time_of_collection"`
-	IsFull           bool               `json:"is_full"`
 }
 
 type Professor struct {
@@ -199,6 +235,16 @@ type SectionMeeting struct {
 	MeetingTimes     []PartialMeetingTime `json:"meeting_times"`
 }
 
+type StagingCourse struct {
+	SchoolID           string      `json:"school_id"`
+	SubjectCode        string      `json:"subject_code"`
+	Number             string      `json:"number"`
+	SubjectDescription pgtype.Text `json:"subject_description"`
+	Title              pgtype.Text `json:"title"`
+	Description        pgtype.Text `json:"description"`
+	CreditHours        float32     `json:"credit_hours"`
+}
+
 type StagingMeetingTime struct {
 	Sequence         int32            `json:"sequence"`
 	SectionSequence  string           `json:"section_sequence"`
@@ -218,6 +264,15 @@ type StagingMeetingTime struct {
 	IsFriday         bool             `json:"is_friday"`
 	IsSaturday       bool             `json:"is_saturday"`
 	IsSunday         bool             `json:"is_sunday"`
+}
+
+type StagingProfessor struct {
+	ID           string      `json:"id"`
+	SchoolID     string      `json:"school_id"`
+	Name         string      `json:"name"`
+	EmailAddress pgtype.Text `json:"email_address"`
+	FirstName    pgtype.Text `json:"first_name"`
+	LastName     pgtype.Text `json:"last_name"`
 }
 
 type StagingSection struct {
@@ -266,4 +321,14 @@ type TermCollection struct {
 	Season          SeasonEnum  `json:"season"`
 	Name            pgtype.Text `json:"name"`
 	StillCollecting bool        `json:"still_collecting"`
+}
+
+type TermCollectionHistory struct {
+	ID               int32                    `json:"id"`
+	Status           TermCollectionStatusEnum `json:"status"`
+	TermCollectionID string                   `json:"term_collection_id"`
+	SchoolID         string                   `json:"school_id"`
+	StartTime        pgtype.Timestamptz       `json:"start_time"`
+	EndTime          pgtype.Timestamptz       `json:"end_time"`
+	IsFull           bool                     `json:"is_full"`
 }

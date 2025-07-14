@@ -67,7 +67,8 @@ BEGIN
         input_at,
         pk_fields,
         sync_action,
-        relevant_fields
+        relevant_fields,
+        term_collection_history_id
     ) VALUES (
         _school_id,
         TG_TABLE_NAME,
@@ -75,7 +76,8 @@ BEGIN
         NOW(),
         _pk_fields,
         _sync_action,
-        _relevant_fields
+        _relevant_fields,
+        current_setting('app.term_collection_history_id', TRUE)::INTEGER
     );
 
     RETURN COALESCE(NEW, OLD);
