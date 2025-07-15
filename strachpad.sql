@@ -548,3 +548,5 @@ select COUNT(*) from professors where school_id = 'temple';
 
 select *  from historic_class_information where school_id = 'temple' and table_name = 'professors';
 
+
+select * from professors

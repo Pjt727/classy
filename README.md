@@ -1,11 +1,10 @@
 # Overview
 Classy is a **WIP** project made to provide a centralized API to access basic class information for many schools.
-It is aimed to be used by developers
-who want to create apps for schools (think something like [coursicle](https://www.coursicle.com/)),
-but do not want to, or cannot, scrape the information themselves.
+It is aimed to be help developers
+create apps for colleges and universities (like [coursicle](https://www.coursicle.com/)).
 
 ## How can I use Classy?
-Classy will eventually expose a public API to help applications get class information.
+Classy will eventually expose a public API to enable applications to get and sync class information.
 ### [classy-api](https://github.com/Pjt727/classy-api)
 An explorer page for the basic API information.
 It is hosted [here](https://pjt727.github.io/classy-api/) on GitHub, but will only work once Classy itself is hosted.

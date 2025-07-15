@@ -55,10 +55,12 @@ CREATE TABLE professors (
     email_address TEXT,
     first_name TEXT,
     last_name TEXT,
+    other jsonb,
     FOREIGN KEY (school_id) REFERENCES schools(id),
     PRIMARY KEY (id, school_id)
 );
 
+-- TODO: test adding a HASH INDEX for school_id and or term for all staging tables
 CREATE TABLE staging_professors (
     like professors
     including defaults
@@ -73,6 +75,10 @@ CREATE TABLE courses (
     title TEXT,
     description TEXT,
     credit_hours REAL NOT NULL,
+    prerequisites TEXT,
+    corequisites TEXT,
+    other jsonb,
+
     FOREIGN KEY (school_id) REFERENCES schools(id),
     PRIMARY KEY (school_id, subject_code, number),
     CONSTRAINT subject_code CHECK (subject_code ~ '^[a-zA-Z0-9]*$'),
@@ -96,6 +102,7 @@ CREATE TABLE sections (
     campus TEXT,
     enrollment INTEGER,
     primary_professor_id TEXT,
+    other jsonb,
     FOREIGN KEY (school_id, subject_code, course_number) 
         REFERENCES courses(school_id, subject_code, number),
     FOREIGN KEY (primary_professor_id, school_id) REFERENCES professors(id, school_id),
@@ -131,6 +138,8 @@ CREATE TABLE meeting_times (
     is_friday BOOLEAN NOT NULL,
     is_saturday BOOLEAN NOT NULL,
     is_sunday BOOLEAN NOT NULL,
+    other jsonb,
+
     FOREIGN KEY (section_sequence, term_collection_id, school_id, subject_code, course_number)
         REFERENCES sections(sequence, term_collection_id, school_id, subject_code, course_number) ON DELETE CASCADE,
     PRIMARY KEY (sequence, section_sequence, term_collection_id, subject_code, course_number, school_id)

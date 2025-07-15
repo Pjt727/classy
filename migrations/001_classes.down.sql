@@ -1,5 +1,7 @@
 DROP TABLE IF EXISTS staging_meeting_times;
 DROP TABLE IF EXISTS staging_sections;
+DROP TABLE IF EXISTS staging_courses;
+DROP TABLE IF EXISTS staging_professors;
 DROP TABLE IF EXISTS meeting_times;
 DROP TABLE IF EXISTS sections;
 DROP TABLE IF EXISTS professors;

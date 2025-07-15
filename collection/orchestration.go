@@ -447,12 +447,13 @@ func (o *Orchestrator) UpdateAllSectionsOfSchoolWithService(
 	}
 
 	// prepare the staging area and use the service to get the class information
-	q := classentry.NewEntryQuery(o.dbPool, termCollection.SchoolID, &termCollection.ID)
-	if err := q.DeleteSectionsMeetingsStaging(ctx, classEntryTermCollection); err != nil {
+	q := db.New(o.dbPool)
+	if err := deleteSectionsMeetingsStaging(ctx, q, termCollection); err != nil {
 		updateLogger.Error("Could not ready staging tables: ", err)
 		return err
 	}
-	if err := (*service).StageAllClasses(*updateLogger, ctx, q, school.ID, classEntryTermCollection, isFullCollection); err != nil {
+	entryQ := classentry.NewEntryQuery(o.dbPool, termCollection.SchoolID, &termCollection.ID)
+	if err := (*service).StageAllClasses(*updateLogger, ctx, entryQ, school.ID, classEntryTermCollection, isFullCollection); err != nil {
 		updateLogger.Error("Update sections failed aborting any staged sections/ meetings", err)
 		return err
 	}
@@ -471,7 +472,8 @@ func (o *Orchestrator) UpdateAllSectionsOfSchoolWithService(
 	}
 
 	q = q.WithTx(tx)
-	err = q.MoveStagedCoursesAndMeetings(ctx, classEntryTermCollection)
+	defer tx.Rollback(ctx)
+	err = moveStagedCoursesAndMeetings(ctx, q, termCollection)
 	if err != nil {
 		updateLogger.Error("Failed moving courses: ", err)
 		return err
@@ -488,7 +490,7 @@ func (o *Orchestrator) UpdateAllSectionsOfSchoolWithService(
 	return nil
 }
 
-func (o Orchestrator) ListRunningCollections() []db.TermCollection {
+func (o *Orchestrator) ListRunningCollections() []db.TermCollection {
 	collections := make([]db.TermCollection, 0)
 
 	for collection, isValid := range o.termCollectionStagingLocks {
@@ -501,7 +503,7 @@ func (o Orchestrator) ListRunningCollections() []db.TermCollection {
 	return collections
 }
 
-func (o Orchestrator) GetTerms(
+func (o *Orchestrator) GetTerms(
 	ctx context.Context,
 	serviceName string,
 	schoolID string,
@@ -534,4 +536,67 @@ func (o Orchestrator) GetTerms(
 	}
 
 	return dbTermCollections, nil
+}
+
+func deleteSectionsMeetingsStaging(
+	ctx context.Context,
+	q *db.Queries,
+	termCollection db.TermCollection,
+) error {
+	var eg errgroup.Group
+
+	eg.Go(func() error {
+		return q.DeleteStagingMeetingTimes(ctx, db.DeleteStagingMeetingTimesParams{
+			TermCollectionID: termCollection.ID,
+			SchoolID:         termCollection.SchoolID,
+		})
+	})
+
+	eg.Go(func() error {
+		return q.DeleteStagingSections(ctx, db.DeleteStagingSectionsParams{
+			TermCollectionID: termCollection.ID,
+			SchoolID:         termCollection.SchoolID,
+		})
+	})
+
+	if err := eg.Wait(); err != nil {
+		return fmt.Errorf("one or more deletions failed: %w", err)
+	}
+
+	return nil
+}
+
+// moves all staged
+func moveStagedCoursesAndMeetings(
+	ctx context.Context,
+	q *db.Queries,
+	termCollection db.TermCollection,
+) error {
+	err := q.RemoveUnstagedMeetings(ctx, db.RemoveUnstagedMeetingsParams{
+		TermCollectionID: termCollection.ID,
+		SchoolID:         termCollection.SchoolID,
+	})
+	if err != nil {
+		return fmt.Errorf("error unstaging meeting %v", err)
+	}
+	err = q.RemoveUnstagedSections(ctx, db.RemoveUnstagedSectionsParams{
+		TermCollectionID: termCollection.ID,
+		SchoolID:         termCollection.SchoolID,
+	})
+	if err != nil {
+		return fmt.Errorf("error unstaging sections %v", err)
+	}
+	if err = q.MoveCourses(ctx); err != nil {
+		return fmt.Errorf("error moving staged courses %v", err)
+	}
+	if err = q.MoveProfessors(ctx); err != nil {
+		return fmt.Errorf("error moving staged professors %v", err)
+	}
+	if err = q.MoveStagedSections(ctx); err != nil {
+		return fmt.Errorf("error moving staged sections %v", err)
+	}
+	if err = q.MoveStagedMeetingTimes(ctx); err != nil {
+		return fmt.Errorf("error moving staged meetings %v", err)
+	}
+	return nil
 }

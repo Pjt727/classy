@@ -15,12 +15,12 @@ INSERT INTO staging_sections
     (sequence, campus, subject_code, course_number,
         school_id, term_collection_id,
         enrollment, max_enrollment, instruction_method,
-        primary_professor_id, campus)
+        primary_professor_id, campus, other)
 VALUES
     (@sequence, @campus, @subject_code, @course_number,
         @school_id, @term_collection_id,
         @enrollment, @max_enrollment, @instruction_method,
-        @primary_professor_id, @campus);
+        @primary_professor_id, @campus, @other);
 
 -- name: StageMeetingTimes :copyfrom
 INSERT INTO staging_meeting_times 
@@ -29,34 +29,32 @@ INSERT INTO staging_meeting_times
         start_date, end_date, meeting_type,
         start_minutes, end_minutes, is_monday,
         is_tuesday, is_wednesday, is_thursday,
-        is_friday, is_saturday, is_sunday)
+        is_friday, is_saturday, is_sunday, other)
 VALUES
     (@sequence, @section_sequence, @term_collection_id,
         @subject_code, @course_number, @school_id, 
         @start_date, @end_date, @meeting_type,
         @start_minutes, @end_minutes, @is_monday,
         @is_tuesday, @is_wednesday, @is_thursday,
-        @is_friday, @is_saturday, @is_sunday);
+        @is_friday, @is_saturday, @is_sunday, @other);
 
--- name: UpsertProfessors :batchexec
-INSERT INTO professors
+-- name: StageProfessors :copyfrom
+INSERT INTO staging_professors
     (id, school_id, name,
-        email_address, first_name, last_name)
+        email_address, first_name, last_name, other)
 VALUES
     (@id, @school_id, @name,
-        @email_address, @first_name, @last_name)
-ON CONFLICT DO NOTHING;
+        @email_address, @first_name, @last_name, @other);
 
--- name: UpsertCourses :batchexec
-INSERT INTO courses
+-- name: StageCourses :copyfrom
+INSERT INTO staging_courses
     (school_id, subject_code,
         number, subject_description, title,
-        description, credit_hours)
+        description, credit_hours, other)
 VALUES 
     (@school_id, @subject_code,
         @number, @subject_description, @title,
-        @description, @credit_hours)
-ON CONFLICT DO NOTHING;
+        @description, @credit_hours, @other);
 
 -- name: UpsertSchool :exec
 INSERT INTO schools
@@ -104,13 +102,13 @@ INSERT INTO sections
     (sequence, term_collection_id, subject_code,
         course_number, school_id, max_enrollment, 
         instruction_method, campus, enrollment,
-        primary_professor_id)
+        primary_professor_id, other)
 SELECT
     DISTINCT ON (sequence, term_collection_id, subject_code, course_number, school_id)
     sequence, term_collection_id, subject_code,
     course_number, school_id, max_enrollment, 
     instruction_method, campus, enrollment,
-    primary_professor_id
+    primary_professor_id, other
 FROM staging_sections
 ON CONFLICT ("sequence", subject_code, course_number, school_id, term_collection_id) DO UPDATE
 SET 
@@ -118,13 +116,15 @@ SET
     enrollment = EXCLUDED.enrollment,
     max_enrollment = EXCLUDED.max_enrollment,
     instruction_method = EXCLUDED.instruction_method,
-    primary_professor_id = EXCLUDED.primary_professor_id
+    primary_professor_id = EXCLUDED.primary_professor_id,
+    other = EXCLUDED.other
 -- reducing write locks makes this way faster ALSO simplfies trigger logic
 WHERE sections.campus != EXCLUDED.campus
     OR sections.enrollment != EXCLUDED.enrollment
     OR sections.max_enrollment != EXCLUDED.max_enrollment
     OR sections.instruction_method != EXCLUDED.instruction_method
     OR sections.primary_professor_id != EXCLUDED.primary_professor_id
+    OR sections.other != EXCLUDED.other
 ;
 
 -- name: RemoveUnstagedMeetings :exec
@@ -151,7 +151,7 @@ INSERT INTO meeting_times
         start_date, end_date, meeting_type,
         start_minutes, end_minutes, is_monday,
         is_tuesday, is_wednesday, is_thursday,
-        is_friday, is_saturday, is_sunday)
+        is_friday, is_saturday, is_sunday, other)
 SELECT 
     DISTINCT ON (sequence, section_sequence, term_collection_id, subject_code, course_number, school_id)
     sequence, section_sequence, subject_code, 
@@ -159,7 +159,7 @@ SELECT
     start_date, end_date, meeting_type,
     start_minutes, end_minutes, is_monday,
     is_tuesday, is_wednesday, is_thursday,
-    is_friday, is_saturday, is_sunday
+    is_friday, is_saturday, is_sunday, other
 FROM staging_meeting_times
 ON CONFLICT ("sequence", section_sequence, subject_code, course_number, school_id, term_collection_id) DO UPDATE
 SET 
@@ -174,7 +174,8 @@ SET
     is_thursday = EXCLUDED.is_thursday,
     is_friday = EXCLUDED.is_friday,
     is_saturday = EXCLUDED.is_saturday,
-    is_sunday = EXCLUDED.is_sunday
+    is_sunday = EXCLUDED.is_sunday,
+    other = EXCLUDED.other
 -- reducing write locks makes this way faster AND for triggers
 WHERE meeting_times.start_date != EXCLUDED.start_date
     OR meeting_times.end_date != EXCLUDED.end_date
@@ -188,7 +189,46 @@ WHERE meeting_times.start_date != EXCLUDED.start_date
     OR meeting_times.is_friday != EXCLUDED.is_friday
     OR meeting_times.is_saturday != EXCLUDED.is_saturday
     OR meeting_times.is_sunday != EXCLUDED.is_sunday
+    OR meeting_times.other != EXCLUDED.other
 ;
+
+-- name: MoveProfessors :exec
+INSERT INTO professors (id, school_id, name, email_address, first_name, last_name, other)
+SELECT DISTINCT ON (id, school_id) id, school_id, name, email_address, first_name, last_name, other
+FROM staging_professors
+ON CONFLICT (id, school_id) DO UPDATE
+SET name = EXCLUDED.name,
+    email_address = EXCLUDED.email_address,
+    first_name = EXCLUDED.first_name,
+    last_name = EXCLUDED.last_name,
+    other = EXCLUDED.other
+WHERE professors.name != EXCLUDED.name
+    OR professors.email_address != EXCLUDED.email_address
+    OR professors.first_name != EXCLUDED.first_name
+    OR professors.last_name != EXCLUDED.last_name
+    OR professors.other != EXCLUDED.other;
+
+-- name: MoveCourses :exec
+INSERT INTO courses 
+    (school_id, subject_code, number, subject_description, title,
+        description, credit_hours, prerequisites, corequisites, other)
+SELECT DISTINCT ON (school_id, subject_code, number) 
+    school_id, subject_code, number, subject_description, title, 
+    description, credit_hours, prerequisites, corequisites, other
+FROM staging_courses
+ON CONFLICT (school_id, subject_code, number) DO UPDATE
+SET subject_description = EXCLUDED.subject_description,
+    title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    credit_hours = EXCLUDED.credit_hours,
+    prerequisites = EXCLUDED.prerequisites,
+    corequisites = EXCLUDED.corequisites,
+    other = EXCLUDED.other
+WHERE courses.subject_description != EXCLUDED.subject_description
+    OR courses.title != EXCLUDED.title
+    OR courses.description != EXCLUDED.description
+    OR courses.credit_hours != EXCLUDED.credit_hours
+    OR courses.other != EXCLUDED.other;
 
 -- name: InsertTermCollectionHistory :one
 INSERT INTO term_collection_history
@@ -216,4 +256,4 @@ WHERE t.id = @term_collection_history_id::INTEGER
 GROUP BY (t.id, t.end_time, t.start_time)
 ;
 
-Select * from courses;
+
