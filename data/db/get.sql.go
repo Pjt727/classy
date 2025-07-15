@@ -370,6 +370,56 @@ func (q *Queries) GetTermCollectionsForSchoolsSemester(ctx context.Context, arg 
 	return items, nil
 }
 
+const getTermHueristics = `-- name: GetTermHueristics :one
+SELECT
+    t.id, t.school_id, t.year, t.season, t.name, t.still_collecting,
+    (SELECT COUNT(*) FROM sections s WHERE 
+        s.school_id = $1
+        AND s.term_collection_id = $2)
+    AS section_count,
+    (SELECT COUNT(*) FROM historic_class_information_term_dependencies h WHERE 
+        h.school_id = $1
+        AND h.term_collection_id = $2
+        AND h.table_name = 'professors')
+    AS professor_dependents_count,
+    (SELECT COUNT(*) FROM historic_class_information_term_dependencies h WHERE 
+        h.school_id = $1
+        AND h.term_collection_id = $2
+        AND h.table_name = 'courses')
+    AS courses_dependents_count
+FROM term_collections t
+WHERE t.school_id = $1 AND t.id = $2
+`
+
+type GetTermHueristicsParams struct {
+	SchoolID         string `json:"school_id"`
+	TermCollectionID string `json:"term_collection_id"`
+}
+
+type GetTermHueristicsRow struct {
+	TermCollection           TermCollection `json:"term_collection"`
+	SectionCount             int64          `json:"section_count"`
+	ProfessorDependentsCount int64          `json:"professor_dependents_count"`
+	CoursesDependentsCount   int64          `json:"courses_dependents_count"`
+}
+
+func (q *Queries) GetTermHueristics(ctx context.Context, arg GetTermHueristicsParams) (GetTermHueristicsRow, error) {
+	row := q.db.QueryRow(ctx, getTermHueristics, arg.SchoolID, arg.TermCollectionID)
+	var i GetTermHueristicsRow
+	err := row.Scan(
+		&i.TermCollection.ID,
+		&i.TermCollection.SchoolID,
+		&i.TermCollection.Year,
+		&i.TermCollection.Season,
+		&i.TermCollection.Name,
+		&i.TermCollection.StillCollecting,
+		&i.SectionCount,
+		&i.ProfessorDependentsCount,
+		&i.CoursesDependentsCount,
+	)
+	return i, err
+}
+
 const schoolExists = `-- name: SchoolExists :one
 SELECT CASE 
         WHEN EXISTS (

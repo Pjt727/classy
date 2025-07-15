@@ -85,6 +85,26 @@ LIMIT @limitValue
 OFFSET @offsetValue
 ;
 
+-- name: GetTermHueristics :one
+SELECT
+    sqlc.embed(t),
+    (SELECT COUNT(*) FROM sections s WHERE 
+        s.school_id = @school_id
+        AND s.term_collection_id = @term_collection_id)
+    AS section_count,
+    (SELECT COUNT(*) FROM historic_class_information_term_dependencies h WHERE 
+        h.school_id = @school_id
+        AND h.term_collection_id = @term_collection_id
+        AND h.table_name = 'professors')
+    AS professor_dependents_count,
+    (SELECT COUNT(*) FROM historic_class_information_term_dependencies h WHERE 
+        h.school_id = @school_id
+        AND h.term_collection_id = @term_collection_id
+        AND h.table_name = 'courses')
+    AS courses_dependents_count
+FROM term_collections t
+WHERE t.school_id = @school_id AND t.id = @term_collection_id;
+
 -- name: GetSchoolsClassesForTermOrderedBySection :many
 SELECT sqlc.embed(sections), section_meetings.meeting_times
 FROM section_meetings

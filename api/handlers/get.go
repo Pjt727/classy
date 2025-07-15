@@ -148,6 +148,30 @@ func (h *GetHandler) GetSchools(w http.ResponseWriter, r *http.Request) {
 	w.Write(classRowsJSON)
 }
 
+func (h *GetHandler) GetTermHueristics(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	q := db.New(h.DbPool)
+	termHueristics, err := q.GetTermHueristics(ctx,
+		db.GetTermHueristicsParams{
+			SchoolID:         chi.URLParam(r, "schoolID"),
+			TermCollectionID: chi.URLParam(r, "termCollectionID"),
+		},
+	)
+	if err != nil {
+		log.Error("Could not get term hueristics rows: ", err)
+		http.Error(w, http.StatusText(500), 500)
+		return
+	}
+
+	classRowsJSON, err := json.Marshal(termHueristics)
+	if err != nil {
+		log.Error("Could not marshal term hueristics rows", err)
+		http.Error(w, http.StatusText(500), 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(classRowsJSON)
+}
 func (h *GetHandler) GetClasses(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := db.New(h.DbPool)
@@ -215,7 +239,7 @@ func (h *GetHandler) VerifySchool(next http.Handler) http.Handler {
 	})
 }
 
-func (h *GetHandler) verifyTermCollection(next http.Handler) http.Handler {
+func (h *GetHandler) VerifyTermCollection(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		q := db.New(h.DbPool)

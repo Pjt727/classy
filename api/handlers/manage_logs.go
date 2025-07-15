@@ -10,6 +10,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/robert-nix/ansihtml"
 	log "github.com/sirupsen/logrus"
+	"slices"
 )
 
 // logging is designed such that even if the user destroys their websocket
@@ -59,6 +60,9 @@ func (w *WebsocketLoggingHook) Fire(e *log.Entry) error {
 		return err
 	}
 	for _, c := range wsConn.connections {
+		if c == nil {
+			continue
+		}
 		c.send <- buf.Bytes()
 	}
 	return nil
@@ -82,6 +86,9 @@ func (w *WebsocketLoggingHook) start(ctx context.Context) error {
 	}
 
 	for _, c := range wsConn.connections {
+		if c == nil {
+			continue
+		}
 		c.send <- buf.Bytes()
 	}
 	log.Info("Finished term collection")
@@ -155,6 +162,7 @@ func (h *ManageHandler) LoggingWebSocket(w http.ResponseWriter, r *http.Request)
 	// go wsConn.readPump()
 }
 
+// TODO: Implement cancellactions of collections
 func (wsConn *WebSocketConnection) readPump() {
 	defer func() {
 		wsConn.disconnect()
@@ -203,7 +211,7 @@ func (wsConn *WebSocketConnection) disconnect() {
 	close(wsConn.send)
 	for i, c := range orch.connections {
 		if c == wsConn {
-			orch.connections = append(orch.connections[:i], orch.connections[i+1:]...)
+			orch.connections = slices.Delete(orch.connections, i, i+1)
 			break
 		}
 	}

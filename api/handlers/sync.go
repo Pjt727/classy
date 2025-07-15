@@ -44,7 +44,21 @@ func (h *SyncHandler) SyncAll(w http.ResponseWriter, r *http.Request) {
 		var err error
 		sequence, err = strconv.Atoi(inputSequence)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Could not parse sequence: %s", err), http.StatusBadRequest)
+			http.Error(w, fmt.Sprintf("Could not parse sequence: %s", inputSequence), http.StatusBadRequest)
+			return
+		}
+	}
+
+	inputMaxRecords := r.URL.Query().Get("lastSyncSequence")
+	var maxSequence int
+	if inputMaxRecords == "" {
+		// default time sequence which includes everything
+		maxSequence = int(DEFAULT_MAX_RECORDS)
+	} else {
+		var err error
+		maxSequence, err = strconv.Atoi(inputMaxRecords)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Could not parse sequence: %s", inputMaxRecords), http.StatusBadRequest)
 			return
 		}
 	}
@@ -54,7 +68,7 @@ func (h *SyncHandler) SyncAll(w http.ResponseWriter, r *http.Request) {
 	errCh := make(chan error, 2)
 	syncChangeRows, err := q.SyncAll(ctx, db.SyncAllParams{
 		LastSequence: int32(sequence),
-		MaxRecords:   int32(DEFAULT_MAX_RECORDS), // TODO: Change to what is in query params
+		MaxRecords:   int32(min(maxSequence, int(LIMIT_MAX_RECORDS))),
 	})
 	if err != nil {
 		errCh <- err

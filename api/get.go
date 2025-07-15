@@ -16,7 +16,6 @@ func populateGetRoutes(r *chi.Router, pool *pgxpool.Pool) {
 		DbPool: pool,
 	}
 
-	// TODO
 	(*r).Use(populatePagnation)
 	(*r).Get("/", getHandler.GetSchools)
 	(*r).Route("/{schoolID}", func(r chi.Router) {
@@ -35,7 +34,8 @@ func populateGetRoutes(r *chi.Router, pool *pgxpool.Pool) {
 		})
 
 		r.Route("/{termCollectionID}", func(r chi.Router) {
-			r.Use(getHandler.VerifyCourse)
+			r.Use(getHandler.VerifyTermCollection)
+			r.Get("/", getHandler.GetTermHueristics)
 			r.Get("/classes", getHandler.GetClasses)
 		})
 	})

@@ -549,4 +549,20 @@ select COUNT(*) from professors where school_id = 'temple';
 select *  from historic_class_information where school_id = 'temple' and table_name = 'professors';
 
 
-select * from professors
+select * from professors;
+
+select * from courses;
+select * from term_collections;
+
+SELECT 
+    t.*, 
+    COUNT(select * from) as sections_count,
+    COUNT(DISTINCT CASE WHEN h.table_name = 'courses' THEN h END) as course_depedents_count,
+    COUNT(DISTINCT CASE WHEN h.table_name = 'professors' THEN h END) as professor_depedents_count
+FROM term_collections t
+INNER JOIN sections s ON s.school_id = t.school_id AND s.term_collection_id = t.id
+INNER JOIN historic_class_information_term_dependencies h ON 
+    h.school_id = t.school_id AND h.term_collection_id = t.id
+GROUP BY t.id, t.school_id;
+;
+

@@ -300,6 +300,7 @@ func (h *ManageHandler) CollectTerm(w http.ResponseWriter, r *http.Request) {
 	serviceName := r.FormValue("serviceName")
 	schoolID := r.FormValue("schoolID")
 	termID := r.FormValue("termID")
+	isFullCollection := r.FormValue("isFullCollection") == "on"
 	orchestrator := h.orchestrators[label]
 
 	school, ok := orchestrator.data.O.GetSchoolById(schoolID)
@@ -381,6 +382,7 @@ func (h *ManageHandler) CollectTerm(w http.ResponseWriter, r *http.Request) {
 			termCollection,
 			oneOffLogger,
 			serviceName,
+			isFullCollection,
 		)
 		if err != nil {
 			hook.finish(ctx, components.JobError)

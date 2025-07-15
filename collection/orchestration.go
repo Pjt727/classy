@@ -379,6 +379,7 @@ func (o Orchestrator) UpdateAllSectionsOfSchool(
 		termCollection,
 		updateLogger,
 		(*service).GetName(),
+		false, // TODO: generate this from somewhere maybe if its first collection of the term?
 	)
 }
 
@@ -387,9 +388,8 @@ func (o *Orchestrator) UpdateAllSectionsOfSchoolWithService(
 	termCollection db.TermCollection,
 	logger *log.Entry,
 	serviceName string,
+	isFullCollection bool,
 ) error {
-	// TODO: generate this from somewhere
-	isFullCollection := false
 
 	service, ok := o.serviceEntries[serviceName]
 	if !ok {
