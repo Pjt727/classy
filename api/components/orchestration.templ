@@ -61,7 +61,13 @@ templ ManageOrchestrators(orchestrators []*ManagementOrchestrator) {
 
 templ OrchestratorDashboard(orchestrator *ManagementOrchestrator, collections []db.TermCollection) {
 @Base() {
-<h1>`{ orchestrator.Name }` Activity</h1>
+<div>
+    <h1 style="display: inline; padding-right: 25px;">`{ orchestrator.Name }` Activity</h1>
+    <label for="isFullCollection" style="display: inline">
+        Do Full Collection:
+        <input type="checkbox" id="isFullCollection" name="isFullCollection" />
+    </label>
+</div>
 <h2>Active collections</h2>
 @OrchestratorActiveCollections(orchestrator, collections)
 <h2>Available schools and services </h2>
@@ -221,15 +227,15 @@ serviceName string,
             for _, term := range terms {
             <tr>
                 <td>
+                    <a href="#" title="Collect" hx-swap="none" hx-include="#isFullCollection, next form" hx-patch={
+                        fmt.Sprintf("/manage/%d/terms", orchestrator.Label) }>
+                        { term.ID }
+                    </a>
                     <form hidden>
                         <input type="text" name="serviceName" value={ serviceName } />
                         <input type="text" name="schoolID" value={ term.SchoolID } />
                         <input type="text" name="termID" value={ term.ID } />
                     </form>
-                    <a href="#" title="Collect" hx-swap="none" hx-include="previous form" hx-patch={
-                        fmt.Sprintf("/manage/%d/terms", orchestrator.Label) }>
-                        { term.ID }
-                    </a>
                 </td>
                 <td>{ string(term.Season) }</td>
                 <td>{ strconv.Itoa(int(term.Year)) }</td>
@@ -238,6 +244,7 @@ serviceName string,
                 } else {
                 <td>No</td>
                 }
+                <td></td>
             </tr>
             }
         </tbody>

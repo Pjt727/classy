@@ -301,6 +301,7 @@ func (h *ManageHandler) CollectTerm(w http.ResponseWriter, r *http.Request) {
 	schoolID := r.FormValue("schoolID")
 	termID := r.FormValue("termID")
 	isFullCollection := r.FormValue("isFullCollection") == "on"
+	log.Info("Is full collection: ", isFullCollection)
 	orchestrator := h.orchestrators[label]
 
 	school, ok := orchestrator.data.O.GetSchoolById(schoolID)
