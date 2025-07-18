@@ -16,8 +16,8 @@ import (
 	"time"
 
 	"golang.org/x/net/html"
-	"golang.org/x/time/rate"
 
+	"github.com/Pjt727/classy/collection/services"
 	classentry "github.com/Pjt727/classy/data/class-entry"
 	"github.com/jackc/pgx/v5/pgtype"
 	log "github.com/sirupsen/logrus"
@@ -28,7 +28,7 @@ type bannerSchool struct {
 	hostname            string
 	MaxTermCount        int
 	MaxSectionPageCount int
-	RequestLimiter      *rate.Limiter
+	retryRequester      *services.RetryRequester
 }
 
 type banner struct {
@@ -47,14 +47,14 @@ func init() {
 			hostname:            "ssb1-reg.banner.marist.edu",
 			MaxTermCount:        100,
 			MaxSectionPageCount: 200,
-			RequestLimiter:      rate.NewLimiter(rate.Limit(100), 25),
+			retryRequester:      services.NewRetryRequest(3, services.NewAdaptiveRateLimiter(10, 1)),
 		},
 		temple.ID: {
 			school:              temple,
 			hostname:            "prd-xereg.temple.edu",
 			MaxTermCount:        100,
 			MaxSectionPageCount: 200,
-			RequestLimiter:      rate.NewLimiter(rate.Limit(100), 10),
+			retryRequester:      services.NewRetryRequest(3, services.NewAdaptiveRateLimiter(25, 10)),
 		},
 	}
 	Service = &banner{schools: schools}
@@ -92,7 +92,7 @@ func (b *banner) GetTermCollections(
 		logger.Error("Error getting school entry: ", err)
 		return termCollection, err
 	}
-	termCollections, err := bannerschool.getTerms(logger)
+	termCollections, err := bannerschool.getTerms(ctx, logger)
 	if err != nil {
 		return termCollection, err
 	}
@@ -114,13 +114,17 @@ func (b *banner) StageAllClasses(
 		logger.Error("Error getting school entry: ", err)
 		return err
 	}
-	bannerSchool.stageAllClasses(
+	err = bannerSchool.stageAllClasses(
 		logger,
 		ctx,
 		q,
 		termCollection,
 		fullCollection,
 	)
+	if err != nil {
+		logger.Error("Error getting all school entry: ", err)
+		return err
+	}
 	return nil
 }
 
@@ -238,12 +242,14 @@ func toBannerTime(dbTime pgtype.Text) pgtype.Time {
 }
 
 func (b *bannerSchool) getTerms(
+	ctx context.Context,
 	logger log.Entry,
 ) ([]classentry.TermCollection, error) {
 	const MAX_TERMS_COUNT = "100"
 	var termCollection []classentry.TermCollection
 	hostname := b.hostname
-	req, err := http.NewRequest(
+	req, err := http.NewRequestWithContext(
+		ctx,
 		"GET",
 		"https://"+hostname+"/StudentRegistrationSsb/ssb/classSearch/getTerms?searchTerm=&offset=1&max="+MAX_TERMS_COUNT,
 		nil,
@@ -254,7 +260,7 @@ func (b *bannerSchool) getTerms(
 	}
 
 	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := b.retryRequester.Do(ctx, &logger, client, req)
 	if err != nil {
 		logger.Error("Error getting term response: ", err)
 		return termCollection, err
@@ -311,7 +317,8 @@ func (b *bannerSchool) stageAllClasses(
 ) error {
 	termStr := termCollection.ID
 	// Get banner cookie(s)
-	req, err := http.NewRequest(
+	req, err := http.NewRequestWithContext(
+		ctx,
 		"GET",
 		"https://"+b.hostname+"/StudentRegistrationSsb/ssb/term/termSelection?mode=search",
 		nil,
@@ -321,8 +328,8 @@ func (b *bannerSchool) stageAllClasses(
 		return err
 	}
 	jar, _ := cookiejar.New(nil)
-	client := http.Client{Jar: jar}
-	resp, err := client.Do(req)
+	client := &http.Client{Jar: jar}
+	resp, err := b.retryRequester.Do(ctx, &logger, client, req)
 	if err != nil {
 		logger.Error("Error getting cookie response: ", err)
 		return err
@@ -332,7 +339,8 @@ func (b *bannerSchool) stageAllClasses(
 	formData := url.Values{
 		"term": {termStr},
 	}
-	req, err = http.NewRequest(
+	req, err = http.NewRequestWithContext(
+		ctx,
 		"POST",
 		"https://"+b.hostname+"/StudentRegistrationSsb/ssb/term/search?mode=search",
 		bytes.NewBufferString(formData.Encode()),
@@ -343,7 +351,7 @@ func (b *bannerSchool) stageAllClasses(
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
-	resp, err = client.Do(req)
+	resp, err = b.retryRequester.Do(ctx, &logger, client, req)
 	if err != nil {
 		logger.Error("Error setting term: ", err)
 		return err
@@ -351,7 +359,8 @@ func (b *bannerSchool) stageAllClasses(
 	resp.Body.Close()
 
 	// Make a request to get sections
-	req, err = http.NewRequest(
+	req, err = http.NewRequestWithContext(
+		ctx,
 		"GET",
 		"https://"+b.hostname+"/StudentRegistrationSsb/ssb/searchResults/searchResults",
 		nil,
@@ -366,7 +375,7 @@ func (b *bannerSchool) stageAllClasses(
 		"pageMaxSize": {"1"},
 	}
 	req.URL.RawQuery = queryParams.Encode()
-	resp, err = client.Do(req)
+	resp, err = b.retryRequester.Do(ctx, &logger, client, req)
 	if err != nil {
 		log.Println("Error requesting first sections: ", err)
 		return err
@@ -387,7 +396,7 @@ func (b *bannerSchool) stageAllClasses(
 	errCh := make(chan error)
 	numberOfWorkers := math.Ceil(float64(count) / float64(b.MaxSectionPageCount))
 	wg.Add(int(numberOfWorkers))
-	for i := 0; i < int(numberOfWorkers); i++ {
+	for i := range int(numberOfWorkers) {
 		workersReq := req.Clone(req.Context())
 		workerLog := logger.WithFields(log.Fields{
 			"pageOffSet":  strconv.Itoa(i * b.MaxSectionPageCount),
@@ -406,7 +415,7 @@ func (b *bannerSchool) stageAllClasses(
 				workersReq,
 				ctx,
 				q,
-				&client,
+				client,
 				termCollection,
 				fullCollection,
 			)
@@ -433,18 +442,6 @@ func (b *bannerSchool) stageAllClasses(
 	return nil
 }
 
-func dumpRequestInfo(req *http.Request) {
-	// Dump request method, URL, and headers
-	fmt.Printf("Method: %s\n", req.Method)
-	fmt.Printf("URL: %s\n", req.URL.String())
-	fmt.Println("Headers:")
-	for key, values := range req.Header {
-		for _, value := range values {
-			fmt.Printf("%s: %s\n", key, value)
-		}
-	}
-}
-
 func (b *bannerSchool) insertGroupOfSections(
 	logger *log.Entry,
 	sectionReq *http.Request,
@@ -454,11 +451,7 @@ func (b *bannerSchool) insertGroupOfSections(
 	termCollection classentry.TermCollection,
 	fullCollection bool,
 ) error {
-	if err := b.RequestLimiter.Wait(context.Background()); err != nil {
-		logger.Error("Limiter error:", err)
-		return err
-	}
-	resp, err := client.Do(sectionReq)
+	resp, err := b.retryRequester.Do(ctx, logger, client, sectionReq)
 	if err != nil {
 		logger.Error("Error getting sections")
 		return err
@@ -481,6 +474,7 @@ func (b *bannerSchool) insertGroupOfSections(
 			go func() {
 				defer wg.Done()
 				courseDesc, err := b.getCourseDetails(
+					ctx,
 					logger,
 					client,
 					termCollection,
@@ -671,20 +665,18 @@ func ProcessSectionSearch(sectionData SectionSearch) ClassData {
 }
 
 func (b *bannerSchool) getCourseDetails(
+	ctx context.Context,
 	logger *log.Entry,
 	client *http.Client,
 	termCollection classentry.TermCollection,
 	referenceNumber string,
 ) (*string, error) {
-	if err := b.RequestLimiter.Wait(context.Background()); err != nil {
-		logger.Error("Limiter error:", err)
-		return nil, err
-	}
 	formData := url.Values{
 		"term":                  {termCollection.ID},
 		"courseReferenceNumber": {referenceNumber},
 	}
-	courseDescReq, err := http.NewRequest(
+	courseDescReq, err := http.NewRequestWithContext(
+		ctx,
 		"POST",
 		"https://"+b.hostname+"/StudentRegistrationSsb/ssb/searchResults/getCourseDescription",
 		bytes.NewBufferString(formData.Encode()),
@@ -696,7 +688,7 @@ func (b *bannerSchool) getCourseDetails(
 		return nil, err
 	}
 
-	resp, err := client.Do(courseDescReq)
+	resp, err := b.retryRequester.Do(ctx, logger, client, courseDescReq)
 	if err != nil {
 		logger.Trace("Error doing course desc request: ", err)
 		return nil, err
@@ -707,11 +699,13 @@ func (b *bannerSchool) getCourseDetails(
 		logger.Trace("Error parsing body: ", err)
 		return nil, err
 	}
+	// TODO: use a query finder lib like goquery
+
 	// example target element
 	// <section aria-labelledby="courseDescription">
 	// ...
 	// </section>
-	// should we try to sanitize ouput e.i. marist (maybe other schools) do the following
+	// should we try to sanitize ouput e.i. marist (maybe other schools) to nulls?
 	// Text for no desc: "No course description is available."
 	// Prefix for desc (in different tag): "No course description is available."
 	var courseNode *html.Node

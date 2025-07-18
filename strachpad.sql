@@ -566,3 +566,5 @@ INNER JOIN historic_class_information_term_dependencies h ON
 GROUP BY t.id, t.school_id;
 ;
 
+
+select description from courses where courses.description is not null;
