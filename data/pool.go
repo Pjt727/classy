@@ -57,14 +57,14 @@ func NewPool(ctx context.Context, isTestDb bool) (*pgxpool.Pool, error) {
 	poolOnce[poolKey].Do(func() {
 		config, err := pgxpool.ParseConfig(connString)
 		if err != nil {
-			poolErr = fmt.Errorf("failed to parse connection string: %w", err)
+			poolErr = fmt.Errorf("failed to parse connection string: %s", err)
 			return
 		}
 
 		pgPool, err := pgxpool.NewWithConfig(ctx, config)
 
 		if err != nil {
-			poolErr = fmt.Errorf("unable to create connection pool: %w", err)
+			poolErr = fmt.Errorf("unable to create connection pool: %s", err)
 			log.Error(poolErr)
 			return
 		}

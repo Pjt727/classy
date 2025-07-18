@@ -348,7 +348,7 @@ func (o Orchestrator) UpsertAllTerms(ctx context.Context) error {
 
 	if err := eg.Wait(); err != nil {
 		o.orchestrationLogger.Errorf("One or more schools failed to upsert terms: %v", err)
-		return fmt.Errorf("one or more schools failed to upsert terms: %w", err)
+		return fmt.Errorf("one or more schools failed to upsert terms: %s", err)
 	}
 
 	o.orchestrationLogger.Infof(`Added %d school's terms successfully`, numberOfWorkers)
@@ -429,11 +429,23 @@ func (o *Orchestrator) UpdateAllSectionsOfSchoolWithService(
 		// triggers telling us what information was changed
 		// knowing the updated, inserted, deleted data numbers might be helpful to inform automatic scheduling
 		//    of collections and it is also nice to have for logging
-		changeInformation, _ := priviledgedQueryObject.GetChangesFromMoveTermCollection(ctx, termCollectionHistoryID)
+		changeInformation, err := priviledgedQueryObject.GetChangesFromMoveTermCollection(ctx, termCollectionHistoryID)
+		if err != nil {
+			updateLogger.Errorf("Could not query changed data %s", err)
+			return
+		}
 		duration := time.Duration(changeInformation.ElapsedTime.Microseconds) * time.Microsecond
 		updateLogger.Infof("Inserted %d, updated %d, deleted %d records in %s",
 			changeInformation.InsertRecords, changeInformation.UpdatedRecords, changeInformation.DeletedRecords, duration)
-
+		err = cleanupStagingTables(ctx, priviledgedQueryObject, termCollectionHistoryID)
+		if err != nil {
+			updateLogger.Errorf(
+				"!!! Could not clean up tables for collection `%d` !!! %s",
+				termCollectionHistoryID,
+				err,
+			)
+			return
+		}
 	}()
 
 	classEntryTermCollection := classentry.TermCollection{
@@ -448,11 +460,11 @@ func (o *Orchestrator) UpdateAllSectionsOfSchoolWithService(
 
 	// prepare the staging area and use the service to get the class information
 	q := db.New(o.dbPool)
-	if err := deleteSectionsMeetingsStaging(ctx, q, termCollection); err != nil {
+	if err := cleanupStagingTables(ctx, q, termCollectionHistoryID); err != nil {
 		updateLogger.Error("Could not ready staging tables: ", err)
 		return err
 	}
-	entryQ := classentry.NewEntryQuery(o.dbPool, termCollection.SchoolID, &termCollection.ID)
+	entryQ := classentry.NewEntryQuery(o.dbPool, termCollection.SchoolID, &termCollection.ID, &termCollectionHistoryID)
 	if err := (*service).StageAllClasses(*updateLogger, ctx, entryQ, school.ID, classEntryTermCollection, isFullCollection); err != nil {
 		updateLogger.Error("Update sections failed aborting any staged sections/ meetings", err)
 		return err
@@ -473,7 +485,7 @@ func (o *Orchestrator) UpdateAllSectionsOfSchoolWithService(
 
 	q = q.WithTx(tx)
 	defer tx.Rollback(ctx)
-	err = moveStagedCoursesAndMeetings(ctx, q, termCollection)
+	err = moveStagedTables(ctx, q, termCollection, termCollectionHistoryID)
 	if err != nil {
 		updateLogger.Error("Failed moving courses: ", err)
 		return err
@@ -538,39 +550,44 @@ func (o *Orchestrator) GetTerms(
 	return dbTermCollections, nil
 }
 
-func deleteSectionsMeetingsStaging(
+func cleanupStagingTables(
 	ctx context.Context,
 	q *db.Queries,
-	termCollection db.TermCollection,
+	termCollectionHistoryID int32,
 ) error {
 	var eg errgroup.Group
 
 	eg.Go(func() error {
-		return q.DeleteStagingMeetingTimes(ctx, db.DeleteStagingMeetingTimesParams{
-			TermCollectionID: termCollection.ID,
-			SchoolID:         termCollection.SchoolID,
-		})
+		return q.DeleteStagingCourses(ctx, termCollectionHistoryID)
 	})
 
 	eg.Go(func() error {
-		return q.DeleteStagingSections(ctx, db.DeleteStagingSectionsParams{
-			TermCollectionID: termCollection.ID,
-			SchoolID:         termCollection.SchoolID,
-		})
+		return q.DeleteStagingProfessors(ctx, termCollectionHistoryID)
+	})
+
+	eg.Go(func() error {
+		return q.DeleteStagingSections(ctx, termCollectionHistoryID)
+	})
+
+	eg.Go(func() error {
+		return q.DeleteStagingMeetingTimes(ctx, termCollectionHistoryID)
 	})
 
 	if err := eg.Wait(); err != nil {
-		return fmt.Errorf("one or more deletions failed: %w", err)
+		return fmt.Errorf("one or more deletions failed: %s", err)
 	}
 
 	return nil
 }
 
 // moves all staged
-func moveStagedCoursesAndMeetings(
+//
+// MUST be done in a transacation with the term collection history id set
+func moveStagedTables(
 	ctx context.Context,
 	q *db.Queries,
 	termCollection db.TermCollection,
+	termCollectionHistoryID int32,
 ) error {
 	err := q.RemoveUnstagedMeetings(ctx, db.RemoveUnstagedMeetingsParams{
 		TermCollectionID: termCollection.ID,
@@ -586,16 +603,16 @@ func moveStagedCoursesAndMeetings(
 	if err != nil {
 		return fmt.Errorf("error unstaging sections %v", err)
 	}
-	if err = q.MoveCourses(ctx); err != nil {
+	if err = q.MoveCourses(ctx, termCollectionHistoryID); err != nil {
 		return fmt.Errorf("error moving staged courses %v", err)
 	}
-	if err = q.MoveProfessors(ctx); err != nil {
+	if err = q.MoveProfessors(ctx, termCollectionHistoryID); err != nil {
 		return fmt.Errorf("error moving staged professors %v", err)
 	}
-	if err = q.MoveStagedSections(ctx); err != nil {
+	if err = q.MoveStagedSections(ctx, termCollectionHistoryID); err != nil {
 		return fmt.Errorf("error moving staged sections %v", err)
 	}
-	if err = q.MoveStagedMeetingTimes(ctx); err != nil {
+	if err = q.MoveStagedMeetingTimes(ctx, termCollectionHistoryID); err != nil {
 		return fmt.Errorf("error moving staged meetings %v", err)
 	}
 	return nil

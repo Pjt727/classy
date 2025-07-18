@@ -60,7 +60,7 @@ func (w *WebsocketLoggingHook) Fire(e *log.Entry) error {
 		return err
 	}
 	for _, c := range wsConn.connections {
-		if c == nil {
+		if c == nil || c.send == nil {
 			continue
 		}
 		c.send <- buf.Bytes()
@@ -86,7 +86,7 @@ func (w *WebsocketLoggingHook) start(ctx context.Context) error {
 	}
 
 	for _, c := range wsConn.connections {
-		if c == nil {
+		if c == nil || c.send == nil {
 			continue
 		}
 		c.send <- buf.Bytes()

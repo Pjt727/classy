@@ -242,62 +242,66 @@ type SectionMeeting struct {
 }
 
 type StagingCourse struct {
-	SchoolID           string      `json:"school_id"`
-	SubjectCode        string      `json:"subject_code"`
-	Number             string      `json:"number"`
-	SubjectDescription pgtype.Text `json:"subject_description"`
-	Title              pgtype.Text `json:"title"`
-	Description        pgtype.Text `json:"description"`
-	CreditHours        float32     `json:"credit_hours"`
-	Prerequisites      pgtype.Text `json:"prerequisites"`
-	Corequisites       pgtype.Text `json:"corequisites"`
-	Other              []byte      `json:"other"`
+	SchoolID                string      `json:"school_id"`
+	SubjectCode             string      `json:"subject_code"`
+	Number                  string      `json:"number"`
+	SubjectDescription      pgtype.Text `json:"subject_description"`
+	Title                   pgtype.Text `json:"title"`
+	Description             pgtype.Text `json:"description"`
+	CreditHours             float32     `json:"credit_hours"`
+	Prerequisites           pgtype.Text `json:"prerequisites"`
+	Corequisites            pgtype.Text `json:"corequisites"`
+	Other                   []byte      `json:"other"`
+	TermCollectionHistoryID int32       `json:"term_collection_history_id"`
 }
 
 type StagingMeetingTime struct {
-	Sequence         int32            `json:"sequence"`
-	SectionSequence  string           `json:"section_sequence"`
-	TermCollectionID string           `json:"term_collection_id"`
-	SubjectCode      string           `json:"subject_code"`
-	CourseNumber     string           `json:"course_number"`
-	SchoolID         string           `json:"school_id"`
-	StartDate        pgtype.Timestamp `json:"start_date"`
-	EndDate          pgtype.Timestamp `json:"end_date"`
-	MeetingType      pgtype.Text      `json:"meeting_type"`
-	StartMinutes     pgtype.Time      `json:"start_minutes"`
-	EndMinutes       pgtype.Time      `json:"end_minutes"`
-	IsMonday         bool             `json:"is_monday"`
-	IsTuesday        bool             `json:"is_tuesday"`
-	IsWednesday      bool             `json:"is_wednesday"`
-	IsThursday       bool             `json:"is_thursday"`
-	IsFriday         bool             `json:"is_friday"`
-	IsSaturday       bool             `json:"is_saturday"`
-	IsSunday         bool             `json:"is_sunday"`
-	Other            []byte           `json:"other"`
+	Sequence                int32            `json:"sequence"`
+	SectionSequence         string           `json:"section_sequence"`
+	TermCollectionID        string           `json:"term_collection_id"`
+	SubjectCode             string           `json:"subject_code"`
+	CourseNumber            string           `json:"course_number"`
+	SchoolID                string           `json:"school_id"`
+	StartDate               pgtype.Timestamp `json:"start_date"`
+	EndDate                 pgtype.Timestamp `json:"end_date"`
+	MeetingType             pgtype.Text      `json:"meeting_type"`
+	StartMinutes            pgtype.Time      `json:"start_minutes"`
+	EndMinutes              pgtype.Time      `json:"end_minutes"`
+	IsMonday                bool             `json:"is_monday"`
+	IsTuesday               bool             `json:"is_tuesday"`
+	IsWednesday             bool             `json:"is_wednesday"`
+	IsThursday              bool             `json:"is_thursday"`
+	IsFriday                bool             `json:"is_friday"`
+	IsSaturday              bool             `json:"is_saturday"`
+	IsSunday                bool             `json:"is_sunday"`
+	Other                   []byte           `json:"other"`
+	TermCollectionHistoryID int32            `json:"term_collection_history_id"`
 }
 
 type StagingProfessor struct {
-	ID           string      `json:"id"`
-	SchoolID     string      `json:"school_id"`
-	Name         string      `json:"name"`
-	EmailAddress pgtype.Text `json:"email_address"`
-	FirstName    pgtype.Text `json:"first_name"`
-	LastName     pgtype.Text `json:"last_name"`
-	Other        []byte      `json:"other"`
+	ID                      string      `json:"id"`
+	SchoolID                string      `json:"school_id"`
+	Name                    string      `json:"name"`
+	EmailAddress            pgtype.Text `json:"email_address"`
+	FirstName               pgtype.Text `json:"first_name"`
+	LastName                pgtype.Text `json:"last_name"`
+	Other                   []byte      `json:"other"`
+	TermCollectionHistoryID int32       `json:"term_collection_history_id"`
 }
 
 type StagingSection struct {
-	Sequence           string      `json:"sequence"`
-	TermCollectionID   string      `json:"term_collection_id"`
-	SubjectCode        string      `json:"subject_code"`
-	CourseNumber       string      `json:"course_number"`
-	SchoolID           string      `json:"school_id"`
-	MaxEnrollment      pgtype.Int4 `json:"max_enrollment"`
-	InstructionMethod  pgtype.Text `json:"instruction_method"`
-	Campus             pgtype.Text `json:"campus"`
-	Enrollment         pgtype.Int4 `json:"enrollment"`
-	PrimaryProfessorID pgtype.Text `json:"primary_professor_id"`
-	Other              []byte      `json:"other"`
+	Sequence                string      `json:"sequence"`
+	TermCollectionID        string      `json:"term_collection_id"`
+	SubjectCode             string      `json:"subject_code"`
+	CourseNumber            string      `json:"course_number"`
+	SchoolID                string      `json:"school_id"`
+	MaxEnrollment           pgtype.Int4 `json:"max_enrollment"`
+	InstructionMethod       pgtype.Text `json:"instruction_method"`
+	Campus                  pgtype.Text `json:"campus"`
+	Enrollment              pgtype.Int4 `json:"enrollment"`
+	PrimaryProfessorID      pgtype.Text `json:"primary_professor_id"`
+	Other                   []byte      `json:"other"`
+	TermCollectionHistoryID int32       `json:"term_collection_history_id"`
 }
 
 type SyncDiff struct {

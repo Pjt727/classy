@@ -29,6 +29,7 @@ func (r *iteratorForStageCourses) Next() bool {
 
 func (r iteratorForStageCourses) Values() ([]interface{}, error) {
 	return []interface{}{
+		r.rows[0].TermCollectionHistoryID,
 		r.rows[0].SchoolID,
 		r.rows[0].SubjectCode,
 		r.rows[0].Number,
@@ -45,7 +46,7 @@ func (r iteratorForStageCourses) Err() error {
 }
 
 func (q *Queries) StageCourses(ctx context.Context, arg []StageCoursesParams) (int64, error) {
-	return q.db.CopyFrom(ctx, []string{"staging_courses"}, []string{"school_id", "subject_code", "number", "subject_description", "title", "description", "credit_hours", "other"}, &iteratorForStageCourses{rows: arg})
+	return q.db.CopyFrom(ctx, []string{"staging_courses"}, []string{"term_collection_history_id", "school_id", "subject_code", "number", "subject_description", "title", "description", "credit_hours", "other"}, &iteratorForStageCourses{rows: arg})
 }
 
 // iteratorForStageMeetingTimes implements pgx.CopyFromSource.
@@ -68,6 +69,7 @@ func (r *iteratorForStageMeetingTimes) Next() bool {
 
 func (r iteratorForStageMeetingTimes) Values() ([]interface{}, error) {
 	return []interface{}{
+		r.rows[0].TermCollectionHistoryID,
 		r.rows[0].Sequence,
 		r.rows[0].SectionSequence,
 		r.rows[0].TermCollectionID,
@@ -95,7 +97,7 @@ func (r iteratorForStageMeetingTimes) Err() error {
 }
 
 func (q *Queries) StageMeetingTimes(ctx context.Context, arg []StageMeetingTimesParams) (int64, error) {
-	return q.db.CopyFrom(ctx, []string{"staging_meeting_times"}, []string{"sequence", "section_sequence", "term_collection_id", "subject_code", "course_number", "school_id", "start_date", "end_date", "meeting_type", "start_minutes", "end_minutes", "is_monday", "is_tuesday", "is_wednesday", "is_thursday", "is_friday", "is_saturday", "is_sunday", "other"}, &iteratorForStageMeetingTimes{rows: arg})
+	return q.db.CopyFrom(ctx, []string{"staging_meeting_times"}, []string{"term_collection_history_id", "sequence", "section_sequence", "term_collection_id", "subject_code", "course_number", "school_id", "start_date", "end_date", "meeting_type", "start_minutes", "end_minutes", "is_monday", "is_tuesday", "is_wednesday", "is_thursday", "is_friday", "is_saturday", "is_sunday", "other"}, &iteratorForStageMeetingTimes{rows: arg})
 }
 
 // iteratorForStageProfessors implements pgx.CopyFromSource.
@@ -118,6 +120,7 @@ func (r *iteratorForStageProfessors) Next() bool {
 
 func (r iteratorForStageProfessors) Values() ([]interface{}, error) {
 	return []interface{}{
+		r.rows[0].TermCollectionHistoryID,
 		r.rows[0].ID,
 		r.rows[0].SchoolID,
 		r.rows[0].Name,
@@ -133,7 +136,7 @@ func (r iteratorForStageProfessors) Err() error {
 }
 
 func (q *Queries) StageProfessors(ctx context.Context, arg []StageProfessorsParams) (int64, error) {
-	return q.db.CopyFrom(ctx, []string{"staging_professors"}, []string{"id", "school_id", "name", "email_address", "first_name", "last_name", "other"}, &iteratorForStageProfessors{rows: arg})
+	return q.db.CopyFrom(ctx, []string{"staging_professors"}, []string{"term_collection_history_id", "id", "school_id", "name", "email_address", "first_name", "last_name", "other"}, &iteratorForStageProfessors{rows: arg})
 }
 
 // iteratorForStageSections implements pgx.CopyFromSource.
@@ -156,6 +159,7 @@ func (r *iteratorForStageSections) Next() bool {
 
 func (r iteratorForStageSections) Values() ([]interface{}, error) {
 	return []interface{}{
+		r.rows[0].TermCollectionHistoryID,
 		r.rows[0].Sequence,
 		r.rows[0].Campus,
 		r.rows[0].SubjectCode,
@@ -175,5 +179,5 @@ func (r iteratorForStageSections) Err() error {
 }
 
 func (q *Queries) StageSections(ctx context.Context, arg []StageSectionsParams) (int64, error) {
-	return q.db.CopyFrom(ctx, []string{"staging_sections"}, []string{"sequence", "campus", "subject_code", "course_number", "school_id", "term_collection_id", "enrollment", "max_enrollment", "instruction_method", "primary_professor_id", "other"}, &iteratorForStageSections{rows: arg})
+	return q.db.CopyFrom(ctx, []string{"staging_sections"}, []string{"term_collection_history_id", "sequence", "campus", "subject_code", "course_number", "school_id", "term_collection_id", "enrollment", "max_enrollment", "instruction_method", "primary_professor_id", "other"}, &iteratorForStageSections{rows: arg})
 }

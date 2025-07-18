@@ -28,6 +28,7 @@ type Professor struct {
 	EmailAddress pgtype.Text
 	FirstName    pgtype.Text
 	LastName     pgtype.Text
+	Other        []byte
 }
 
 type Course struct {
@@ -37,6 +38,7 @@ type Course struct {
 	Title              pgtype.Text
 	Description        pgtype.Text
 	CreditHours        float32
+	Other              []byte
 }
 
 type Section struct {
@@ -48,6 +50,7 @@ type Section struct {
 	Campus             pgtype.Text
 	Enrollment         pgtype.Int4
 	PrimaryProfessorID pgtype.Text
+	Other              []byte
 }
 
 type MeetingTime struct {
@@ -67,4 +70,5 @@ type MeetingTime struct {
 	IsFriday        bool
 	IsSaturday      bool
 	IsSunday        bool
+	Other           []byte
 }

@@ -3,7 +3,7 @@
 # @hostname=prd-xereg.temple.edu
 @courseReferenceNumber=10002
 @hostname=ssb1-reg.banner.marist.edu
-@term=202440
+@term=202540
 # @term=202504
 # @term=202510
 # get the banner cookie(s)
@@ -38,10 +38,11 @@ GET https://{{hostname}}/StudentRegistrationSsb/ssb/searchResults/searchResults?
 Cookie: JSESSIONID={{REQUEST_SEARCH_PAGE.response.cookies.JSESSIONID.value}}
 
 ###
+# endpoint for getting sections
+# note that the pageOffset is the section count and not the page count of offset
 
 GET https://{{hostname}}/StudentRegistrationSsb/ssb/searchResults/searchResults?txt_term={{term}}&pageOffset=0&pageMaxSize=1
-Cookie: JSESSIONID={{REQUEST_SEARCH_PAGE.response.cookies.JSESSIONID.value}}
-
+Cookie: JSESSIONID=3A2C044DCE8BE255A9C6425D4D9583C8
 
 ###
 

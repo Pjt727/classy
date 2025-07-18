@@ -1,82 +1,63 @@
 package services
 
 import (
-	"bytes"
 	"context"
-	"fmt"
-	"io"
 	"net/http"
 	"sync"
-	"time"
 
+	"github.com/hashicorp/go-retryablehttp"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/time/rate"
-	"slices"
 )
 
 const (
-	decreaseFactor          = 0.5
-	increaseFactor          = 0.1
-	failureBurstTimeSeconds = 3
+	decreaseFactor = 0.8 // Reduce aggressively on failure
+	increaseFactor = 0.2 // Increase conservatively on success
+	minLimit       = 1   // Minimum requests per second
 )
 
-// there are probably a lot of improvements that can be made to
-//
-//	the algorithm
 type AdaptiveRateLimiter struct {
-	mu            sync.Mutex
-	startingLimit rate.Limit
-	// TODO: add a longer time interval which which slowly resets this value
-	//    when there are now more failures
-	newStartingLimit rate.Limit
-	startingBurst    int
-	currentLimit     rate.Limit
-	maxLimit         rate.Limit
-	limiter          *rate.Limiter
-	// try to prevent bursts of errors increasing the newStartingLimit
-	//  by so much
-	lastFailureGroup time.Time
+	mu          sync.Mutex
+	limit       rate.Limit
+	burst       int
+	limiter     *rate.Limiter
+	maxIncrease rate.Limit
 }
 
 func (a *AdaptiveRateLimiter) Fail() {
-	now := time.Now()
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	newLimit := max(rate.Limit(float64(a.currentLimit)*(1-decreaseFactor)), 1)
 
-	if now.After(a.lastFailureGroup) {
-		// we've failed making requests here so assume that the rate limit of the server is higher
-		a.newStartingLimit = newLimit
-		a.lastFailureGroup = time.Now().Add(failureBurstTimeSeconds * time.Second)
-	}
-
-	a.currentLimit = newLimit
-	a.limiter.SetLimit(a.currentLimit)
+	newLimit := max(rate.Limit(float64(a.limit)*(1-decreaseFactor)), minLimit)
+	a.setLimit(newLimit)
 }
 
 func (a *AdaptiveRateLimiter) Succeed() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	newLimit := min(rate.Limit(float64(a.currentLimit)*(1+increaseFactor)), a.newStartingLimit)
-	a.currentLimit = newLimit
-	a.limiter.SetLimit(a.currentLimit)
+	// Increase limit more conservatively, up to maxIncrease
+	newLimit := min(rate.Limit(float64(a.limit)*(1+increaseFactor)), a.limit+a.maxIncrease)
+
+	a.setLimit(newLimit)
 }
 
 func (a *AdaptiveRateLimiter) Wait(ctx context.Context) error {
 	return a.limiter.Wait(ctx)
 }
 
-func NewAdaptiveRateLimiter(startingLimit rate.Limit, startingBurst int) *AdaptiveRateLimiter {
+func (a *AdaptiveRateLimiter) setLimit(newLimit rate.Limit) {
+	a.limit = newLimit
+	a.limiter.SetLimit(a.limit)
+}
+
+func NewAdaptiveRateLimiter(startingLimit rate.Limit, startingBurst int, maxIncrease rate.Limit) *AdaptiveRateLimiter {
 	return &AdaptiveRateLimiter{
-		startingLimit:    startingLimit,
-		startingBurst:    startingBurst,
-		limiter:          rate.NewLimiter(startingLimit, startingBurst),
-		mu:               sync.Mutex{},
-		currentLimit:     0,
-		maxLimit:         startingLimit,
-		newStartingLimit: startingLimit,
-		lastFailureGroup: time.Now(),
+		limit:       startingLimit,
+		burst:       startingBurst,
+		limiter:     rate.NewLimiter(startingLimit, startingBurst),
+		mu:          sync.Mutex{},
+		maxIncrease: maxIncrease,
 	}
 }
 
@@ -86,105 +67,102 @@ type RateLimiter interface {
 	Wait(context.Context) error
 }
 
-type RetryRequester struct {
-	rateLimiter *RateLimiter
-	maxRetries  uint
+type rateLimitedRoundTripper struct {
+	transport http.RoundTripper
+	limiter   RateLimiter
 }
 
-// NewHTTPHelper creates a new HTTPHelper with the given options.
-func NewRetryRequest(retryCounter uint, rateLimiter RateLimiter) *RetryRequester {
-	helper := &RetryRequester{
-		maxRetries:  retryCounter,
-		rateLimiter: &rateLimiter,
+func (rt *rateLimitedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if err := rt.limiter.Wait(req.Context()); err != nil {
+		return nil, err
 	}
 
-	return helper
-}
-
-func dumpRequestInfo(req *http.Request) {
-	for key, values := range req.Header {
-		for _, value := range values {
-			fmt.Printf("%s: %s\n", key, value)
-		}
+	resp, err := rt.transport.RoundTrip(req)
+	if err != nil {
+		return nil, err
 	}
-}
 
-func (r *RetryRequester) Do(ctx context.Context, logger *log.Entry, client *http.Client, req *http.Request) (*http.Response, error) {
-	/// creates a deep clone of the request by copying the body reader
-	var (
-		resp *http.Response
-		err  error
-	)
-	retriesLeft := r.maxRetries
-
-	for r.maxRetries > 0 {
-
-		err = (*r.rateLimiter).Wait(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		reqCopy, _ := deepCopyRequest(req)
-
-		resp, err = client.Do(reqCopy)
-
-		if err != nil {
-			logger.Errorf("Failed %s request to `%s`: %s", req.Method, req.URL.String(), err)
-			retriesLeft -= 1
-			continue
-		}
-		if resp.StatusCode >= 400 {
-			logger.Warnf(
-				"Status error %d for %s request to `%s`",
-				resp.StatusCode,
-				req.Method,
-				req.URL.String(),
-			)
-			retriesLeft -= 1
-			continue
-		}
-		if retriesLeft < r.maxRetries {
-
-			logger.Warnf(
-				"Retried %s request to `%s`",
-				req.Method,
-				req.URL.String(),
-			)
-		}
-		break
-	}
-	if retriesLeft == 0 || resp == nil {
-		return nil, fmt.Errorf("Failed %s request to `%s` after %d tries",
-			req.Method, req.URL.String(), r.maxRetries)
+	if resp.StatusCode >= 400 {
+		rt.limiter.Fail()
+	} else {
+		rt.limiter.Succeed()
 	}
 
 	return resp, nil
 }
 
-func deepCopyRequest(r *http.Request) (*http.Request, error) {
-	r2 := new(http.Request)
-	*r2 = *r
-
-	if r.Body != nil {
-		var buf bytes.Buffer
-		if _, err := buf.ReadFrom(r.Body); err != nil {
-			return nil, err
-		}
-		r.Body = io.NopCloser(bytes.NewReader(buf.Bytes()))
-		r2.Body = io.NopCloser(bytes.NewReader(buf.Bytes()))
+func addRateLimiter(client *http.Client, limiter *RateLimiter) {
+	rt := &rateLimitedRoundTripper{
+		limiter: *limiter,
 	}
-
-	if r.URL != nil {
-		urlCopy := *r.URL
-		r2.URL = &urlCopy
+	if client.Transport == nil {
+		rt.transport = http.DefaultTransport
+	} else {
+		rt.transport = client.Transport
 	}
-	if r.Header != nil {
-		headerCopy := make(http.Header)
-		for k, v := range r.Header {
-			headerCopy[k] = slices.Clone(v)
-		}
-		r2.Header = headerCopy
-	}
+	client.Transport = rt
+}
 
-	return r2, nil
+// TODO: fix logs when this gets merged https://github.com/hashicorp/go-retryablehttp/pull/231
+func retryLog(l retryablehttp.Logger, req *http.Request, retryCount int) {
+	if retryCount == 0 {
+		return
+	}
+	switch v := l.(type) {
+	case *LogrusLogger:
+		v.Get().Warnf("try %d for %s: %s", retryCount, req.Method, req.URL)
+	default:
+		log.Warnf("FAILED TO TYPE LOGGER: try %d for %s: %s", retryCount, req.Method, req.URL)
+		log.Warnf("FAILED COOKIES: %s", req.Cookies())
+	}
+}
+
+func responseLog(l retryablehttp.Logger, res *http.Response) {
+	switch v := l.(type) {
+	case LogrusLogger:
+		v.Get().Tracef("%s: %s", res.Status, res.Request.URL)
+	default:
+		log.Tracef("(FAILED TO TYPE LOGGER) %s: %s", res.Status, res.Request.URL)
+	}
+}
+
+func NewRetryClientWithLimiter(logger *log.Entry, limiter *RateLimiter) *http.Client {
+	client := retryablehttp.NewClient()
+	var l retryablehttp.LeveledLogger = LogrusLogger{Entry: logger}
+	client.Logger = l
+
+	client.ResponseLogHook = responseLog
+	client.RequestLogHook = retryLog
+	stdClient := client.StandardClient()
+	addRateLimiter(stdClient, limiter)
+	return stdClient
+}
+
+// wrapper make the logrus logger a LeveledLogger
+type LogrusLogger struct {
+	Entry *log.Entry
+}
+
+func (l LogrusLogger) Error(msg string, keysAndValues ...any) {
+	l.Entry.Errorln(msg, keysAndValues)
+}
+
+func (l LogrusLogger) Info(msg string, keysAndValues ...any) {
+	l.Entry.Infoln(msg, keysAndValues)
+}
+
+func (l LogrusLogger) Debug(msg string, keysAndValues ...any) {
+	l.Entry.Debugln(msg, keysAndValues)
+}
+
+func (l LogrusLogger) Warn(msg string, keysAndValues ...any) {
+	l.Entry.Warnln(msg, keysAndValues)
+}
+
+func (l LogrusLogger) Printf(msg string, keysAndValues ...any) {
+	l.Entry.Printf(msg)
+}
+
+func (l LogrusLogger) Get() *log.Entry {
+	return l.Entry
 }

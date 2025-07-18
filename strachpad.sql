@@ -567,4 +567,57 @@ GROUP BY t.id, t.school_id;
 ;
 
 
-select description from courses where courses.description is not null;
+select description from courses where courses.description is not null and school_id = 'marist';
+
+select * from sections where school_id = 'marist';
+select * from courses where school_id = 'marist';
+
+
+select COUNT(*) from staging_courses where description is not null and school_id = 'marist';
+
+select * from term_collection_history;
+
+select * from professors where school_id = 'marist';
+
+select * from staging_courses where term_collection_history_id=7 and description is not null;
+
+select * from staging_courses;
+
+
+BEGIN;
+INSERT INTO courses 
+    (school_id, subject_code, number, subject_description, title,
+        description, credit_hours, prerequisites, corequisites, other)
+SELECT DISTINCT ON (school_id, subject_code, number) 
+    school_id, subject_code, number, subject_description, title, 
+    description, credit_hours, prerequisites, corequisites, other
+FROM staging_courses WHERE term_collection_history_id = 7
+ON CONFLICT (school_id, subject_code, number) DO UPDATE
+SET subject_description = EXCLUDED.subject_description,
+    title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    credit_hours = EXCLUDED.credit_hours,
+    prerequisites = EXCLUDED.prerequisites,
+    corequisites = EXCLUDED.corequisites,
+    other = EXCLUDED.other
+WHERE courses.title != EXCLUDED.title
+    OR courses.credit_hours != EXCLUDED.credit_hours
+    -- these are considered "extra" fields that may no always be populated
+    --     because they are difficult to get
+    OR courses.description IS DISTINCT FROM EXCLUDED.description
+    OR courses.subject_description != EXCLUDED.subject_description
+    OR courses.other != EXCLUDED.other
+    -- OR (EXCLUDED.description IS NOT NULL AND courses.description != EXCLUDED.description)
+    -- OR (EXCLUDED.subject_description IS NOT NULL AND courses.subject_description != EXCLUDED.subject_description)
+    -- OR (EXCLUDED.other IS NOT NULL AND courses.other != EXCLUDED.other)
+;
+
+select c.subject_description != s.subject_description,
+    c.title != s.title,
+    'foos' IS DISTINCT FROM 'foo',
+    c.credit_hours != s.credit_hours,
+    c.prerequisites != s.prerequisites,
+    c.corequisites != s.corequisites,
+    c.other != s.other
+from courses c
+inner join staging_courses s ON c.school_id = s.school_id AND c.subject_code = s.subject_code AND c.number = s.number

@@ -15,18 +15,25 @@ import (
 // ideally other componements of the project might have their own interfaces
 //   but it feels a bit pointless to wrapper functions everywhere
 
-func NewEntryQuery(database db.DBTX, schoolID string, termCollectionID *string) *EntryQueries {
+func NewEntryQuery(
+	database db.DBTX,
+	schoolID string,
+	termCollectionID *string,
+	termCollectionHistoryID *int32,
+) *EntryQueries {
 	return &EntryQueries{
-		q:                db.New(database),
-		schoolID:         schoolID,
-		termCollectionID: termCollectionID,
+		q:                       db.New(database),
+		schoolID:                schoolID,
+		termCollectionID:        termCollectionID,
+		termCollectionHistoryID: termCollectionHistoryID,
 	}
 }
 
 type EntryQueries struct {
-	q                *db.Queries
-	schoolID         string
-	termCollectionID *string
+	q                       *db.Queries
+	schoolID                string
+	termCollectionID        *string
+	termCollectionHistoryID *int32
 }
 
 func (q *EntryQueries) WithTx(tx pgx.Tx) *EntryQueries {
@@ -77,24 +84,26 @@ func (q *EntryQueries) StageMeetingTimes(ctx context.Context, meetingTimes []Mee
 	dbMeetingTimes := make([]db.StageMeetingTimesParams, len(meetingTimes))
 	for i, mt := range meetingTimes {
 		dbMeetingTimes[i] = db.StageMeetingTimesParams{
-			SchoolID:         q.schoolID,
-			TermCollectionID: *q.termCollectionID,
-			Sequence:         mt.Sequence,
-			SectionSequence:  mt.SectionSequence,
-			SubjectCode:      mt.SubjectCode,
-			CourseNumber:     mt.CourseNumber,
-			StartDate:        mt.StartDate,
-			EndDate:          mt.EndDate,
-			MeetingType:      mt.MeetingType,
-			StartMinutes:     mt.StartMinutes,
-			EndMinutes:       mt.EndMinutes,
-			IsMonday:         mt.IsMonday,
-			IsTuesday:        mt.IsTuesday,
-			IsWednesday:      mt.IsWednesday,
-			IsThursday:       mt.IsThursday,
-			IsFriday:         mt.IsFriday,
-			IsSaturday:       mt.IsSaturday,
-			IsSunday:         mt.IsSunday,
+			TermCollectionHistoryID: *q.termCollectionHistoryID,
+			SchoolID:                q.schoolID,
+			TermCollectionID:        *q.termCollectionID,
+			Sequence:                mt.Sequence,
+			SectionSequence:         mt.SectionSequence,
+			SubjectCode:             mt.SubjectCode,
+			CourseNumber:            mt.CourseNumber,
+			StartDate:               mt.StartDate,
+			EndDate:                 mt.EndDate,
+			MeetingType:             mt.MeetingType,
+			StartMinutes:            mt.StartMinutes,
+			EndMinutes:              mt.EndMinutes,
+			IsMonday:                mt.IsMonday,
+			IsTuesday:               mt.IsTuesday,
+			IsWednesday:             mt.IsWednesday,
+			IsThursday:              mt.IsThursday,
+			IsFriday:                mt.IsFriday,
+			IsSaturday:              mt.IsSaturday,
+			IsSunday:                mt.IsSunday,
+			Other:                   mt.Other,
 		}
 	}
 	_, err := q.q.StageMeetingTimes(ctx, dbMeetingTimes)
@@ -113,16 +122,18 @@ func (q *EntryQueries) StageSections(ctx context.Context, sections []Section, lo
 	dbSections := make([]db.StageSectionsParams, len(sections))
 	for i, s := range sections {
 		dbSections[i] = db.StageSectionsParams{
-			Sequence:           s.Sequence,
-			Campus:             s.Campus,
-			SubjectCode:        s.SubjectCode,
-			CourseNumber:       s.CourseNumber,
-			SchoolID:           q.schoolID,
-			TermCollectionID:   *q.termCollectionID,
-			Enrollment:         s.Enrollment,
-			MaxEnrollment:      s.MaxEnrollment,
-			InstructionMethod:  s.InstructionMethod,
-			PrimaryProfessorID: s.PrimaryProfessorID,
+			TermCollectionHistoryID: *q.termCollectionHistoryID,
+			Sequence:                s.Sequence,
+			Campus:                  s.Campus,
+			SubjectCode:             s.SubjectCode,
+			CourseNumber:            s.CourseNumber,
+			SchoolID:                q.schoolID,
+			TermCollectionID:        *q.termCollectionID,
+			Enrollment:              s.Enrollment,
+			MaxEnrollment:           s.MaxEnrollment,
+			InstructionMethod:       s.InstructionMethod,
+			PrimaryProfessorID:      s.PrimaryProfessorID,
+			Other:                   s.Other,
 		}
 	}
 	_, err := q.q.StageSections(ctx, dbSections)
@@ -141,12 +152,14 @@ func (q *EntryQueries) StageProfessors(ctx context.Context, professors []Profess
 	dbProfessors := make([]db.StageProfessorsParams, len(professors))
 	for i, p := range professors {
 		dbProfessors[i] = db.StageProfessorsParams{
-			ID:           p.ID,
-			SchoolID:     q.schoolID,
-			Name:         p.Name,
-			EmailAddress: p.EmailAddress,
-			FirstName:    p.FirstName,
-			LastName:     p.LastName,
+			TermCollectionHistoryID: *q.termCollectionHistoryID,
+			ID:                      p.ID,
+			SchoolID:                q.schoolID,
+			Name:                    p.Name,
+			EmailAddress:            p.EmailAddress,
+			FirstName:               p.FirstName,
+			LastName:                p.LastName,
+			Other:                   p.Other,
 		}
 	}
 	_, err := q.q.StageProfessors(ctx, dbProfessors)
@@ -165,13 +178,15 @@ func (q *EntryQueries) StageCourses(ctx context.Context, courses []Course, logge
 	dbCourses := make([]db.StageCoursesParams, len(courses))
 	for i, c := range courses {
 		dbCourses[i] = db.StageCoursesParams{
-			SchoolID:           q.schoolID,
-			SubjectCode:        c.SubjectCode,
-			Number:             c.Number,
-			SubjectDescription: c.SubjectDescription,
-			Title:              c.Title,
-			Description:        c.Description,
-			CreditHours:        c.CreditHours,
+			TermCollectionHistoryID: *q.termCollectionHistoryID,
+			SchoolID:                q.schoolID,
+			SubjectCode:             c.SubjectCode,
+			Number:                  c.Number,
+			SubjectDescription:      c.SubjectDescription,
+			Title:                   c.Title,
+			Description:             c.Description,
+			CreditHours:             c.CreditHours,
+			Other:                   c.Other,
 		}
 	}
 	_, err := q.q.StageCourses(ctx, dbCourses)

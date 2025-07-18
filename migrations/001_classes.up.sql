@@ -63,7 +63,8 @@ CREATE TABLE professors (
 -- TODO: test adding a HASH INDEX for school_id and or term for all staging tables
 CREATE TABLE staging_professors (
     like professors
-    including defaults
+    including defaults,
+    term_collection_history_id INT NOT NULL
 );
 
 CREATE TABLE courses (
@@ -87,7 +88,8 @@ CREATE TABLE courses (
 
 CREATE TABLE staging_courses (
     like courses
-    including defaults
+    including defaults,
+    term_collection_history_id INT NOT NULL
 );
 
 CREATE TABLE sections (
@@ -114,7 +116,8 @@ CREATE TABLE sections (
 
 CREATE TABLE staging_sections (
     like sections
-    including defaults
+    including defaults,
+    term_collection_history_id INT NOT NULL
 );
 
 
@@ -147,6 +150,7 @@ CREATE TABLE meeting_times (
 
 CREATE TABLE staging_meeting_times (
     like meeting_times
-    including defaults
+    including defaults,
+    term_collection_history_id INT NOT NULL
 );
 
