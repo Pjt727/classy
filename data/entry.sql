@@ -100,19 +100,19 @@ SELECT
 FROM staging_sections WHERE term_collection_history_id = @term_collection_history_id
 ON CONFLICT ("sequence", subject_code, course_number, school_id, term_collection_id) DO UPDATE
 SET 
-    campus = EXCLUDED.campus,
-    enrollment = EXCLUDED.enrollment,
-    max_enrollment = EXCLUDED.max_enrollment,
-    instruction_method = EXCLUDED.instruction_method,
-    primary_professor_id = EXCLUDED.primary_professor_id,
-    other = EXCLUDED.other
--- reducing write locks makes this way faster ALSO simplfies trigger logic
-WHERE sections.campus IS DISTINCT FROM EXCLUDED.campus
-    OR sections.enrollment IS DISTINCT FROM EXCLUDED.enrollment
-    OR sections.max_enrollment IS DISTINCT FROM EXCLUDED.max_enrollment
-    OR sections.instruction_method IS DISTINCT FROM EXCLUDED.instruction_method
-    OR sections.primary_professor_id IS DISTINCT FROM EXCLUDED.primary_professor_id
-    OR sections.other IS DISTINCT FROM EXCLUDED.other
+    campus = COALESCE(EXCLUDED.campus, sections.campus),
+    enrollment = COALESCE(EXCLUDED.enrollment, sections.enrollment),
+    max_enrollment = COALESCE(EXCLUDED.max_enrollment, sections.max_enrollment),
+    instruction_method = COALESCE(EXCLUDED.instruction_method, sections.instruction_method),
+    primary_professor_id = COALESCE(EXCLUDED.primary_professor_id, sections.primary_professor_id),
+    other = COALESCE(EXCLUDED.other, sections.other)
+  -- reducing write locks makes this way faster ALSO simplfies trigger logic
+  WHERE (sections.campus IS DISTINCT FROM EXCLUDED.campus AND EXCLUDED.campus IS NOT NULL)
+      OR (sections.enrollment IS DISTINCT FROM EXCLUDED.enrollment AND EXCLUDED.enrollment IS NOT NULL)
+      OR (sections.max_enrollment IS DISTINCT FROM EXCLUDED.max_enrollment AND EXCLUDED.max_enrollment IS NOT NULL)
+      OR (sections.instruction_method IS DISTINCT FROM EXCLUDED.instruction_method AND EXCLUDED.instruction_method IS NOT NULL)
+      OR (sections.primary_professor_id IS DISTINCT FROM EXCLUDED.primary_professor_id AND EXCLUDED.primary_professor_id IS NOT NULL)
+      OR (sections.other IS DISTINCT FROM EXCLUDED.other AND EXCLUDED.other IS NOT NULL)
 ;
 
 -- name: RemoveUnstagedMeetings :exec
@@ -151,11 +151,11 @@ SELECT
 FROM staging_meeting_times WHERE term_collection_history_id = @term_collection_history_id
 ON CONFLICT ("sequence", section_sequence, subject_code, course_number, school_id, term_collection_id) DO UPDATE
 SET 
-    start_date = EXCLUDED.start_date,
-    end_date = EXCLUDED.end_date,
-    meeting_type = EXCLUDED.meeting_type,
-    start_minutes = EXCLUDED.start_minutes,
-    end_minutes = EXCLUDED.end_minutes,
+    start_date = COALESCE(EXCLUDED.start_date, meeting_times.start_date),
+    end_date = COALESCE(EXCLUDED.end_date, meeting_times.end_date),
+    meeting_type = COALESCE(EXCLUDED.meeting_type, meeting_times.meeting_type),
+    start_minutes = COALESCE(EXCLUDED.start_minutes, meeting_times.start_minutes),
+    end_minutes = COALESCE(EXCLUDED.end_minutes, meeting_times.end_minutes),
     is_monday = EXCLUDED.is_monday,
     is_tuesday = EXCLUDED.is_tuesday,
     is_wednesday = EXCLUDED.is_wednesday,
@@ -163,21 +163,21 @@ SET
     is_friday = EXCLUDED.is_friday,
     is_saturday = EXCLUDED.is_saturday,
     is_sunday = EXCLUDED.is_sunday,
-    other = EXCLUDED.other
--- reducing write locks makes this way faster AND for triggers
-WHERE meeting_times.start_date IS DISTINCT FROM EXCLUDED.start_date
-    OR meeting_times.end_date IS DISTINCT FROM EXCLUDED.end_date
-    OR meeting_times.meeting_type IS DISTINCT FROM EXCLUDED.meeting_type
-    OR meeting_times.start_minutes IS DISTINCT FROM EXCLUDED.start_minutes
-    OR meeting_times.end_minutes IS DISTINCT FROM EXCLUDED.end_minutes
-    OR meeting_times.is_monday IS DISTINCT FROM EXCLUDED.is_monday
-    OR meeting_times.is_tuesday IS DISTINCT FROM EXCLUDED.is_tuesday
-    OR meeting_times.is_wednesday IS DISTINCT FROM EXCLUDED.is_wednesday
-    OR meeting_times.is_thursday IS DISTINCT FROM EXCLUDED.is_thursday
-    OR meeting_times.is_friday IS DISTINCT FROM EXCLUDED.is_friday
-    OR meeting_times.is_saturday IS DISTINCT FROM EXCLUDED.is_saturday
-    OR meeting_times.is_sunday IS DISTINCT FROM EXCLUDED.is_sunday
-    OR meeting_times.other IS DISTINCT FROM EXCLUDED.other
+    other = COALESCE(EXCLUDED.other, meeting_times.other)
+  -- reducing write locks makes this way faster AND for triggers
+  WHERE (meeting_times.start_date IS DISTINCT FROM EXCLUDED.start_date AND EXCLUDED.start_date IS NOT NULL)
+      OR (meeting_times.end_date IS DISTINCT FROM EXCLUDED.end_date AND EXCLUDED.end_date IS NOT NULL)
+      OR (meeting_times.meeting_type IS DISTINCT FROM EXCLUDED.meeting_type AND EXCLUDED.meeting_type IS NOT NULL)
+      OR (meeting_times.start_minutes IS DISTINCT FROM EXCLUDED.start_minutes AND EXCLUDED.start_minutes IS NOT NULL)
+      OR (meeting_times.end_minutes IS DISTINCT FROM EXCLUDED.end_minutes AND EXCLUDED.end_minutes IS NOT NULL)
+      OR meeting_times.is_monday IS DISTINCT FROM EXCLUDED.is_monday
+      OR meeting_times.is_tuesday IS DISTINCT FROM EXCLUDED.is_tuesday
+      OR meeting_times.is_wednesday IS DISTINCT FROM EXCLUDED.is_wednesday
+      OR meeting_times.is_thursday IS DISTINCT FROM EXCLUDED.is_thursday
+      OR meeting_times.is_friday IS DISTINCT FROM EXCLUDED.is_friday
+      OR meeting_times.is_saturday IS DISTINCT FROM EXCLUDED.is_saturday
+      OR meeting_times.is_sunday IS DISTINCT FROM EXCLUDED.is_sunday
+      OR (meeting_times.other IS DISTINCT FROM EXCLUDED.other AND EXCLUDED.other IS NOT NULL)
 ;
 
 -- name: MoveProfessors :exec
@@ -185,16 +185,17 @@ INSERT INTO professors (id, school_id, name, email_address, first_name, last_nam
 SELECT DISTINCT ON (id, school_id) id, school_id, name, email_address, first_name, last_name, other
 FROM staging_professors WHERE term_collection_history_id = @term_collection_history_id
 ON CONFLICT (id, school_id) DO UPDATE
-SET name = EXCLUDED.name,
-    email_address = EXCLUDED.email_address,
-    first_name = EXCLUDED.first_name,
-    last_name = EXCLUDED.last_name,
-    other = EXCLUDED.other
-WHERE professors.name IS DISTINCT FROM EXCLUDED.name
-    OR professors.email_address IS DISTINCT FROM EXCLUDED.email_address
-    OR professors.first_name IS DISTINCT FROM EXCLUDED.first_name
-    OR professors.last_name IS DISTINCT FROM EXCLUDED.last_name
-    OR professors.other IS DISTINCT FROM EXCLUDED.other;
+SET name = COALESCE(EXCLUDED.name, professors.name),
+    email_address = COALESCE(EXCLUDED.email_address, professors.email_address),
+    first_name = COALESCE(EXCLUDED.first_name, professors.first_name),
+    last_name = COALESCE(EXCLUDED.last_name, professors.last_name),
+    other = COALESCE(EXCLUDED.other, professors.other)
+  WHERE (professors.name IS DISTINCT FROM EXCLUDED.name AND EXCLUDED.name IS NOT NULL)
+      OR (professors.email_address IS DISTINCT FROM EXCLUDED.email_address AND EXCLUDED.email_address IS NOT NULL)
+      OR (professors.first_name IS DISTINCT FROM EXCLUDED.first_name AND EXCLUDED.first_name IS NOT NULL)
+      OR (professors.last_name IS DISTINCT FROM EXCLUDED.last_name AND EXCLUDED.last_name IS NOT NULL)
+      OR (professors.other IS DISTINCT FROM EXCLUDED.other AND EXCLUDED.other IS NOT NULL)
+;
 
 -- name: MoveCourses :exec
 INSERT INTO courses 
@@ -205,20 +206,22 @@ SELECT DISTINCT ON (school_id, subject_code, number)
     description, credit_hours, prerequisites, corequisites, other
 FROM staging_courses WHERE term_collection_history_id = @term_collection_history_id
 ON CONFLICT (school_id, subject_code, number) DO UPDATE
-SET subject_description = EXCLUDED.subject_description,
-    title = EXCLUDED.title,
-    description = EXCLUDED.description,
-    credit_hours = EXCLUDED.credit_hours,
-    prerequisites = EXCLUDED.prerequisites,
-    corequisites = EXCLUDED.corequisites,
-    other = EXCLUDED.other
-WHERE courses.title IS DISTINCT FROM EXCLUDED.title
-    OR courses.credit_hours IS DISTINCT FROM EXCLUDED.credit_hours
-    -- these are considered "extra" fields that may no always be populated
-    --     because they are difficult to get
-    OR courses.description IS DISTINCT FROM EXCLUDED.description
-    OR courses.subject_description IS DISTINCT FROM EXCLUDED.subject_description
-    OR courses.other IS DISTINCT FROM EXCLUDED.other
+SET subject_description = COALESCE(EXCLUDED.subject_description, courses.subject_description),
+    title = COALESCE(EXCLUDED.title, courses.title),
+    credit_hours = COALESCE(EXCLUDED.credit_hours, courses.credit_hours),
+    description = COALESCE(EXCLUDED.description, courses.description),
+    prerequisites = COALESCE(EXCLUDED.prerequisites, courses.prerequisites),
+    corequisites = COALESCE(EXCLUDED.corequisites, courses.corequisites),
+    other = COALESCE(EXCLUDED.other, courses.other)
+  WHERE (courses.title IS DISTINCT FROM EXCLUDED.title AND EXCLUDED.title IS NOT NULL)
+      OR (courses.credit_hours IS DISTINCT FROM EXCLUDED.credit_hours AND EXCLUDED.credit_hours IS NOT NULL)
+      OR (courses.subject_description IS DISTINCT FROM EXCLUDED.subject_description AND EXCLUDED.subject_description IS NOT NULL)
+      -- these are considered "extra" fields that may no always be populated
+      --     because they are difficult to get
+      OR (courses.prerequisites IS DISTINCT FROM EXCLUDED.prerequisites AND EXCLUDED.prerequisites IS NOT NULL)
+      OR (courses.corequisites IS DISTINCT FROM EXCLUDED.corequisites AND EXCLUDED.corequisites IS NOT NULL)
+      OR (courses.description IS DISTINCT FROM EXCLUDED.description AND EXCLUDED.description IS NOT NULL)
+      OR (courses.other IS DISTINCT FROM EXCLUDED.other AND EXCLUDED.other IS NOT NULL)
 ;
 
 -- name: InsertTermCollectionHistory :one

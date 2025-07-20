@@ -621,3 +621,9 @@ select c.subject_description != s.subject_description,
     c.other != s.other
 from courses c
 inner join staging_courses s ON c.school_id = s.school_id AND c.subject_code = s.subject_code AND c.number = s.number
+
+
+select * from term_collection_history;
+
+select * from historic_class_information where historic_class_information.term_collection_history_id = 16 
+            and relevant_fields is null;

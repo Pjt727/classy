@@ -412,7 +412,7 @@ func (b *bannerSchool) stageAllClasses(
 ) error {
 	termStr := termCollection.ID
 	// Get banner cookie(s)
-	client := services.NewRetryClientWithLimiter(&logger, &b.rateLimiter, 3)
+	client := &http.Client{}
 	err := b.refreshTermAssociatedCookies(logger, ctx, client, termStr)
 	if err != nil {
 		return fmt.Errorf("Error getting cookies %s", err)
@@ -521,7 +521,10 @@ func (b *bannerSchool) stageAllClasses(
 				// technically there could be other error in the code that aren't http related
 				//    some better error types would be helpful
 				logger.Infof("Retrying section get after %d failures", i+1)
-				b.refreshTermAssociatedCookies(logger, ctx, sectionClient, termStr)
+				err = b.refreshTermAssociatedCookies(logger, ctx, sectionClient, termStr)
+				if err != nil {
+					return err
+				}
 			}
 			if err != nil {
 				return err
@@ -593,6 +596,11 @@ func (b *bannerSchool) insertGroupOfSections(
 				break
 			}
 
+			logger.Infof("Retrying course get after %d failures", i+1)
+			err = b.refreshTermAssociatedCookies(*logger, ctx, client, termCollection.ID)
+			if err != nil {
+				return 0, err
+			}
 		}
 	}
 
