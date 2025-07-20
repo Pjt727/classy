@@ -1,3 +1,6 @@
+// reexporting the needed structs / types for representing class data
+// in the scope of an individual school / term collection therefore
+// school id and term collection are excluded when needed
 package classentry
 
 import (

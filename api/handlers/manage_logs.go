@@ -63,7 +63,10 @@ func (w *WebsocketLoggingHook) Fire(e *log.Entry) error {
 		if c == nil || c.send == nil {
 			continue
 		}
-		c.send <- buf.Bytes()
+		select {
+		case c.send <- buf.Bytes():
+		default:
+		}
 	}
 	return nil
 }
@@ -89,7 +92,10 @@ func (w *WebsocketLoggingHook) start(ctx context.Context) error {
 		if c == nil || c.send == nil {
 			continue
 		}
-		c.send <- buf.Bytes()
+		select {
+		case c.send <- buf.Bytes():
+		default:
+		}
 	}
 	log.Info("Finished term collection")
 	return nil
@@ -113,7 +119,13 @@ func (w *WebsocketLoggingHook) finish(ctx context.Context, status components.Job
 	}
 
 	for _, c := range wsConn.connections {
-		c.send <- buf.Bytes()
+		if c == nil || c.send == nil {
+			continue
+		}
+		select {
+		case c.send <- buf.Bytes():
+		default:
+		}
 	}
 	return nil
 }

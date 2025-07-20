@@ -2,6 +2,8 @@ package services
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"sync"
 
@@ -43,6 +45,16 @@ func (a *AdaptiveRateLimiter) Succeed() {
 }
 
 func (a *AdaptiveRateLimiter) Wait(ctx context.Context) error {
+	return a.limiter.Wait(ctx)
+}
+
+func (a *AdaptiveRateLimiter) Pause(ctx context.Context) error {
+	a.limiter.SetLimit(0)
+	return a.limiter.Wait(ctx)
+}
+
+func (a *AdaptiveRateLimiter) Cotinue(ctx context.Context) error {
+	a.limiter.SetLimit(a.limit)
 	return a.limiter.Wait(ctx)
 }
 
@@ -91,7 +103,7 @@ func (rt *rateLimitedRoundTripper) RoundTrip(req *http.Request) (*http.Response,
 	return resp, nil
 }
 
-func addRateLimiter(client *http.Client, limiter *RateLimiter) {
+func AddRateLimiter(client *http.Client, limiter *RateLimiter) {
 	rt := &rateLimitedRoundTripper{
 		limiter: *limiter,
 	}
@@ -104,6 +116,7 @@ func addRateLimiter(client *http.Client, limiter *RateLimiter) {
 }
 
 // TODO: fix logs when this gets merged https://github.com/hashicorp/go-retryablehttp/pull/231
+// doesn't look like it will happen 😥
 func retryLog(l retryablehttp.Logger, req *http.Request, retryCount int) {
 	if retryCount == 0 {
 		return
@@ -112,7 +125,7 @@ func retryLog(l retryablehttp.Logger, req *http.Request, retryCount int) {
 	case *LogrusLogger:
 		v.Get().Warnf("try %d for %s: %s", retryCount, req.Method, req.URL)
 	default:
-		log.Warnf("FAILED TO TYPE LOGGER: try %d for %s: %s", retryCount, req.Method, req.URL)
+		log.Warnf("(FAILED TO TYPE LOGGER): try %d for %s: %s", retryCount, req.Method, req.URL)
 		log.Warnf("FAILED COOKIES: %s", req.Cookies())
 	}
 }
@@ -126,15 +139,16 @@ func responseLog(l retryablehttp.Logger, res *http.Response) {
 	}
 }
 
-func NewRetryClientWithLimiter(logger *log.Entry, limiter *RateLimiter) *http.Client {
+func NewRetryClientWithLimiter(logger *log.Entry, limiter *RateLimiter, maxRetries int) *http.Client {
 	client := retryablehttp.NewClient()
+	client.RetryMax = maxRetries
 	var l retryablehttp.LeveledLogger = LogrusLogger{Entry: logger}
 	client.Logger = l
 
 	client.ResponseLogHook = responseLog
 	client.RequestLogHook = retryLog
 	stdClient := client.StandardClient()
-	addRateLimiter(stdClient, limiter)
+	AddRateLimiter(stdClient, limiter)
 	return stdClient
 }
 
@@ -165,4 +179,25 @@ func (l LogrusLogger) Printf(msg string, keysAndValues ...any) {
 
 func (l LogrusLogger) Get() *log.Entry {
 	return l.Entry
+}
+
+// shorthand to check if a response is within 200-299
+func IsOk(r *http.Response) bool {
+	return r.StatusCode >= 200 && r.StatusCode < 300
+}
+
+// returns a ErrTemporaryNetworkFailure wrapped error of either
+// the respErr if not nill or status code if non "Ok"
+func RespOrStatusErr(r *http.Response, respErr error) error {
+	if respErr != nil {
+		return errors.Join(ErrTemporaryNetworkFailure, respErr)
+	}
+	if !IsOk(r) {
+		return fmt.Errorf(
+			"%w Got status code %d",
+			ErrTemporaryNetworkFailure,
+			r.StatusCode,
+		)
+	}
+	return nil
 }

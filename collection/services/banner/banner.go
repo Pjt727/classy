@@ -13,9 +13,11 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/net/html"
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
 
 	"github.com/Pjt727/classy/collection/services"
@@ -32,6 +34,7 @@ type bannerSchool struct {
 	RegularCollectionSectionSemaphore int
 	FullCollectionSectionSemaphore    int
 	FullCollectionCourseSemaphore     int // keep in mind this is per section collection
+	RequestRetryCount                 int
 	MaxTermCount                      int
 	MaxSectionPageCount               int
 	rateLimiter                       services.RateLimiter
@@ -51,11 +54,12 @@ func init() {
 		marist.ID: {
 			school:                            marist,
 			hostname:                          "ssb1-reg.banner.marist.edu",
-			FullCollectionSectionSemaphore:    1,
+			FullCollectionSectionSemaphore:    2,
 			FullCollectionCourseSemaphore:     15,
 			RegularCollectionSectionSemaphore: 5,
 			MaxTermCount:                      100,
 			MaxSectionPageCount:               200,
+			RequestRetryCount:                 3,
 			rateLimiter:                       services.NewAdaptiveRateLimiter(rate.Every(250*time.Millisecond), 5, rate.Every(500*time.Millisecond)),
 		},
 		temple.ID: {
@@ -143,7 +147,11 @@ func (b *banner) StageAllClasses(
 func (b *banner) getBannerSchool(schoolID string) (*bannerSchool, error) {
 	schoolEntry, ok := b.schools[schoolID]
 	if !ok {
-		err := errors.New(fmt.Sprint("school not there: ", schoolID))
+		err := fmt.Errorf(
+			"%w school not known for this service: %s",
+			services.ErrIncorrectAssumption,
+			schoolID,
+		)
 		return nil, err
 	}
 	return &schoolEntry, nil
@@ -153,10 +161,24 @@ func termConversion(termEntry bannerTerm) (classentry.Term, error) {
 	desc := strings.ToLower(termEntry.Description)
 	var dbTerm classentry.Term
 	if len(termEntry.Code) != 6 {
-		err := errors.New(fmt.Sprint("term not right size must be 6: ", termEntry.Code))
+		err := fmt.Errorf(
+			"%w term code `%s` incorrect length must be 6 characters long",
+			services.ErrIncorrectAssumption,
+			termEntry.Code,
+		)
 		return dbTerm, err
 	}
-	year, _ := strconv.Atoi(termEntry.Code[:4])
+	yearSection := termEntry.Code[:4]
+	year, err := strconv.Atoi(yearSection)
+	// year sanity check
+	if err != nil || year > (time.Now().Year()+5) || year < 1850 {
+		err := fmt.Errorf(
+			"%w year section `%s` is a invalid/ infeasible year",
+			services.ErrIncorrectAssumption,
+			yearSection,
+		)
+		return dbTerm, err
+	}
 	var season classentry.SeasonEnum
 	if strings.Contains(desc, "winter") {
 		season = classentry.SeasonEnumWinter
@@ -167,7 +189,11 @@ func termConversion(termEntry bannerTerm) (classentry.Term, error) {
 	} else if strings.Contains(desc, "fall") {
 		season = classentry.SeasonEnumFall
 	} else {
-		err := errors.New(fmt.Sprint("invalid season section of term: ", termEntry.Code))
+		err := fmt.Errorf(
+			"%w season description `%s` has no season match in it",
+			services.ErrIncorrectAssumption,
+			desc,
+		)
 		return dbTerm, err
 	}
 	dbTerm = classentry.Term{Year: int32(year), Season: season}
@@ -268,11 +294,13 @@ func (b *bannerSchool) getTerms(
 	)
 	if err != nil {
 		logger.Error("Error creating term request: ", err)
-		return termCollection, err
+		return termCollection, errors.Join(services.ErrTemporaryNetworkFailure, err)
 	}
 
-	client := services.NewRetryClientWithLimiter(&logger, &b.rateLimiter)
+	client := &http.Client{}
+	services.AddRateLimiter(client, &b.rateLimiter)
 	resp, err := client.Do(req)
+	err = services.RespOrStatusErr(resp, err)
 	if err != nil {
 		logger.Error("Error getting term response: ", err)
 		return termCollection, err
@@ -280,9 +308,8 @@ func (b *bannerSchool) getTerms(
 	defer resp.Body.Close()
 	var terms []bannerTerm
 	if err := json.NewDecoder(resp.Body).Decode(&terms); err != nil {
-		logger.Trace(resp.Body)
 		logger.Error("Error decoding terms: ", err)
-		return termCollection, err
+		return termCollection, errors.Join(services.ErrIncorrectAssumption, err)
 	}
 
 	for _, term := range terms {
@@ -300,7 +327,7 @@ func (b *bannerSchool) getTerms(
 			logger.Error("Error decoding term code: ", err)
 			return termCollection, err
 		}
-		// the View Only appears on all terms which probably wont update
+		// the View Only appears on all marist terms which probably wont update
 		stillCollecting := !strings.HasSuffix(term.Description, "(View Only)")
 
 		termCollection = append(termCollection, classentry.TermCollection{
@@ -320,15 +347,17 @@ func (b *bannerSchool) getTerms(
 	return termCollection, nil
 
 }
-func (b *bannerSchool) stageAllClasses(
+
+func (b *bannerSchool) refreshTermAssociatedCookies(
 	logger log.Entry,
 	ctx context.Context,
-	q *classentry.EntryQueries,
-	termCollection classentry.TermCollection,
-	fullCollection bool,
+	client *http.Client,
+	bannerTerm string,
 ) error {
-	termStr := termCollection.ID
-	// Get banner cookie(s)
+	// reset cookie jar
+	newCookieJar, _ := cookiejar.New(nil)
+	client.Jar = newCookieJar
+
 	req, err := http.NewRequestWithContext(
 		ctx,
 		"GET",
@@ -337,25 +366,19 @@ func (b *bannerSchool) stageAllClasses(
 	)
 	if err != nil {
 		logger.Error("Error creating cookie request: ", err)
-		return err
-	}
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		logger.Error("Error creating cookie jar: ", err)
-		return err
+		return errors.Join(services.ErrIncorrectAssumption, err)
 	}
 
-	client := services.NewRetryClientWithLimiter(&logger, &b.rateLimiter)
-	client.Jar = jar
-	resp, err := client.Do(req)
+	cookieResp, err := client.Do(req)
+	err = services.RespOrStatusErr(cookieResp, err)
 	if err != nil {
 		logger.Error("Error getting cookie response: ", err)
 		return err
 	}
-	resp.Body.Close()
+	defer cookieResp.Body.Close()
 	// Associate the cookie with a term
 	formData := url.Values{
-		"term": {termStr},
+		"term": {bannerTerm},
 	}
 	req, err = http.NewRequestWithContext(
 		ctx,
@@ -369,15 +392,34 @@ func (b *bannerSchool) stageAllClasses(
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
-	resp, err = client.Do(req)
+	termAssociationResp, err := client.Do(req)
+	err = services.RespOrStatusErr(termAssociationResp, err)
 	if err != nil {
 		logger.Error("Error setting term: ", err)
 		return err
 	}
-	resp.Body.Close()
+	defer termAssociationResp.Body.Close()
+
+	return nil
+}
+
+func (b *bannerSchool) stageAllClasses(
+	logger log.Entry,
+	ctx context.Context,
+	q *classentry.EntryQueries,
+	termCollection classentry.TermCollection,
+	fullCollection bool,
+) error {
+	termStr := termCollection.ID
+	// Get banner cookie(s)
+	client := services.NewRetryClientWithLimiter(&logger, &b.rateLimiter, 3)
+	err := b.refreshTermAssociatedCookies(logger, ctx, client, termStr)
+	if err != nil {
+		return fmt.Errorf("Error getting cookies %s", err)
+	}
 
 	// Make a request to get sections
-	req, err = http.NewRequestWithContext(
+	req, err := http.NewRequestWithContext(
 		ctx,
 		"GET",
 		"https://"+b.hostname+"/StudentRegistrationSsb/ssb/searchResults/searchResults",
@@ -393,14 +435,15 @@ func (b *bannerSchool) stageAllClasses(
 		"pageMaxSize": {"1"},
 	}
 	req.URL.RawQuery = queryParams.Encode()
-	resp, err = client.Do(req)
+	resp, err := client.Do(req)
+	err = services.RespOrStatusErr(resp, err)
 	if err != nil {
-		log.Println("Error requesting first sections: ", err)
+		log.Error("Error requesting first sections: ", err)
 		return err
 	}
 	defer resp.Body.Close()
 	type Sectioncount struct {
-		Count int `json:"totalCount"`
+		Count int32 `json:"totalCount"`
 	}
 	var sectionCount Sectioncount
 	if err := json.NewDecoder(resp.Body).Decode(&sectionCount); err != nil {
@@ -410,77 +453,96 @@ func (b *bannerSchool) stageAllClasses(
 	count := sectionCount.Count
 	logger.Infof("starting collection on %d sections", count)
 
-	var actualTotalSectionCount int
-	var mu sync.Mutex
-	// if it is a full collection there will be n more requests per section request
-	//     this means if each section request has 200 sections then there will be
-	//     the order for 200 more requests
-	// so if it is full collection then only request a small number of section requests through
-	var wg sync.WaitGroup
-	errCh := make(chan error)
+	var actualTotalSectionCount int32
 	var semaphore chan struct{}
+
 	if fullCollection {
 		semaphore = make(chan struct{}, b.FullCollectionSectionSemaphore)
 	} else {
 		semaphore = make(chan struct{}, b.RegularCollectionSectionSemaphore)
 	}
+
 	numberOfWorkers := math.Ceil(float64(count) / float64(b.MaxSectionPageCount))
-	wg.Add(int(numberOfWorkers))
+
+	eg, ctx := errgroup.WithContext(ctx)
+	eg.SetLimit(int(numberOfWorkers))
+
+	// i is already scoped to each iteration for goroutines
 	for i := range int(numberOfWorkers) {
-		semaphore <- struct{}{} // Acquire semaphore
-		workersReq := req.Clone(req.Context())
-		workerLog := logger.WithFields(log.Fields{
-			"pageOffSet":  strconv.Itoa(i * b.MaxSectionPageCount),
-			"pageMaxSize": strconv.Itoa(b.MaxSectionPageCount),
-		})
-		queryParams := url.Values{
-			"txt_term":    {termStr},
-			"pageOffset":  {strconv.Itoa(i * b.MaxSectionPageCount)},
-			"pageMaxSize": {strconv.Itoa(b.MaxSectionPageCount)},
-		}
-		workersReq.URL.RawQuery = queryParams.Encode()
-		go func(req http.Request) {
-			defer func() {
-				<-semaphore
-				wg.Done()
-			}()
-			sectionCount, err := b.insertGroupOfSections(
-				workerLog,
-				workersReq,
-				ctx,
-				q,
-				client,
-				termCollection,
-				fullCollection,
-			)
-			if err != nil {
-				errCh <- err
+		eg.Go(func() error {
+			select {
+			case semaphore <- struct{}{}: // Acquire semaphore
+				defer func() { <-semaphore }() // Release semaphore
+			case <-ctx.Done():
+				return ctx.Err()
 			}
 
-			mu.Lock()
-			actualTotalSectionCount += sectionCount
-			mu.Unlock()
+			workersReq := req.Clone(req.Context())
+			workerLog := logger.WithFields(log.Fields{
+				"pageOffSet":  strconv.Itoa(i * b.MaxSectionPageCount),
+				"pageMaxSize": strconv.Itoa(b.MaxSectionPageCount),
+			})
+			queryParams := url.Values{
+				"txt_term":    {termStr},
+				"pageOffset":  {strconv.Itoa(i * b.MaxSectionPageCount)},
+				"pageMaxSize": {strconv.Itoa(b.MaxSectionPageCount)},
+			}
+			workersReq.URL.RawQuery = queryParams.Encode()
 
-		}(*workersReq)
+			var sectionClient *http.Client
+			if fullCollection {
+				sectionClient = &http.Client{}
+				services.AddRateLimiter(sectionClient, &b.rateLimiter)
+				err := b.refreshTermAssociatedCookies(logger, ctx, sectionClient, termStr)
+				if err != nil {
+					return err
+				}
+			} else {
+				sectionClient = client
+			}
+
+			var sectionCount int
+			var err error
+			for i := range b.RequestRetryCount {
+				sectionCount, err = b.insertGroupOfSections(
+					workerLog,
+					workersReq,
+					ctx,
+					q,
+					sectionClient,
+					termCollection,
+					fullCollection,
+				)
+				if err == nil {
+					break
+				}
+				// regardless of full collection or now after an error should an http error
+				//    should refresh client tokens
+				// technically there could be other error in the code that aren't http related
+				//    some better error types would be helpful
+				logger.Infof("Retrying section get after %d failures", i+1)
+				b.refreshTermAssociatedCookies(logger, ctx, sectionClient, termStr)
+			}
+			if err != nil {
+				return err
+			}
+
+			atomic.AddInt32(&actualTotalSectionCount, int32(sectionCount))
+			return nil
+		})
 	}
 
-	go func() {
-		wg.Wait()
-		close(errCh)
-	}()
-
-	for err := range errCh {
-		logger.Error("There was an error searching sections: ", err)
-	}
-	if len(errCh) > 0 {
-		return errors.New("error searching sections")
+	if err := eg.Wait(); err != nil {
+		return fmt.Errorf("one or more errors occurred: %w", err)
 	}
 
 	if actualTotalSectionCount == count {
 		logger.Infof("sections finished getting %d sections", actualTotalSectionCount)
 	} else {
 		// A record could have been added / delete while the collection was happening
-		//   but if the difference is large there is likely something more sinister going on
+		// but if the difference is large there is likely something more sinister going on
+		// this also should maybe be a full error to so that the move doesn't delete
+		// sections that just weren't found
 		logger.Warnf(
 			"finished section collection but expected section count (%d) does not match actual count (%d) difference of %d sections",
 			count,
@@ -502,8 +564,9 @@ func (b *bannerSchool) insertGroupOfSections(
 	fullCollection bool,
 ) (int, error) {
 	resp, err := client.Do(sectionReq)
+	err = services.RespOrStatusErr(resp, err)
 	if err != nil {
-		logger.Error("Error getting sections")
+		logger.Error("Error getting sections", err)
 		return 0, err
 	}
 	defer resp.Body.Close()
@@ -511,46 +574,26 @@ func (b *bannerSchool) insertGroupOfSections(
 	var sections SectionSearch
 	if err := json.NewDecoder(resp.Body).Decode(&sections); err != nil {
 		logger.Error("Error decoding sections: ", err)
-		return 0, err
+		return 0, errors.Join(services.ErrIncorrectAssumption, err)
 	}
+
 	classData := ProcessSectionSearch(sections)
 
 	// add all of the extra course data
 	if fullCollection {
-		var wg sync.WaitGroup
-		var mu sync.Mutex
-		semaphore := make(chan struct{}, b.FullCollectionCourseSemaphore)
-		wg.Add(len(classData.CourseReferenceNumbers))
-		for courseId, referenceNumber := range classData.CourseReferenceNumbers {
-			semaphore <- struct{}{} // Acquire semaphore
-			go func() {
-				defer func() {
-					<-semaphore
-					wg.Done()
-				}()
-				courseDesc, err := b.getCourseDetails(
-					ctx,
-					logger,
-					client,
-					termCollection,
-					referenceNumber,
-				)
-				if err != nil || courseDesc == nil {
-					return
-				}
-				mu.Lock()
-				defer mu.Unlock()
-				course := classData.Courses[courseId]
-				course.Description = pgtype.Text{
-					String: strings.TrimSpace(strings.TrimSpace(*courseDesc)),
-					Valid:  true,
-				}
-				classData.Courses[courseId] = course
+		for i := range b.RequestRetryCount {
+			err := b.processFullCollection(
+				ctx,
+				logger,
+				client,
+				termCollection,
+				&classData,
+			)
+			if err == nil {
+				break
+			}
 
-			}()
 		}
-
-		wg.Wait()
 	}
 
 	professors := make([]classentry.Professor, len(classData.Professors))
@@ -587,6 +630,51 @@ func (b *bannerSchool) insertGroupOfSections(
 	)
 
 	return len(classData.Sections), nil
+}
+
+func (b *bannerSchool) processFullCollection(
+	ctx context.Context,
+	logger *log.Entry,
+	client *http.Client,
+	termCollection classentry.TermCollection,
+	classData *ClassData,
+) error {
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	semaphore := make(chan struct{}, b.FullCollectionCourseSemaphore)
+	wg.Add(len(classData.CourseReferenceNumbers))
+	for courseId, referenceNumber := range classData.CourseReferenceNumbers {
+		semaphore <- struct{}{}                            // Acquire semaphore
+		go func(courseId string, referenceNumber string) { // Pass loop variables to the goroutine
+			defer func() {
+				<-semaphore
+				wg.Done()
+			}()
+			courseDesc, err := b.getCourseDetails(
+				ctx,
+				logger,
+				client,
+				termCollection,
+				referenceNumber,
+			)
+			if err != nil || courseDesc == nil {
+				return
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			course := classData.Courses[courseId]
+			course.Description = pgtype.Text{
+				String: strings.TrimSpace(strings.TrimSpace(*courseDesc)),
+				Valid:  true,
+			}
+			classData.Courses[courseId] = course
+
+		}(courseId, referenceNumber) // Pass loop variables
+
+	}
+
+	wg.Wait()
+	return nil
 }
 
 type ClassData struct {
@@ -737,10 +825,11 @@ func (b *bannerSchool) getCourseDetails(
 
 	if err != nil {
 		logger.Trace("Error making course desc request: ", err)
-		return nil, err
+		return nil, errors.Join(services.ErrIncorrectAssumption, err)
 	}
 
 	resp, err := client.Do(courseDescReq)
+	err = services.RespOrStatusErr(resp, err)
 	if err != nil {
 		logger.Trace("Error doing course desc request: ", err)
 		return nil, err
@@ -749,7 +838,7 @@ func (b *bannerSchool) getCourseDetails(
 	doc, err := html.Parse(resp.Body)
 	if err != nil {
 		logger.Trace("Error parsing body: ", err)
-		return nil, err
+		return nil, errors.Join(services.ErrIncorrectAssumption, err)
 	}
 	// TODO: use a query finder lib like goquery
 
