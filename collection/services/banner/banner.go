@@ -16,12 +16,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/net/html"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
 
 	"github.com/Pjt727/classy/collection/services"
 	classentry "github.com/Pjt727/classy/data/class-entry"
+	"github.com/PuerkitoBio/goquery"
 	"github.com/jackc/pgx/v5/pgtype"
 	log "github.com/sirupsen/logrus"
 )
@@ -54,8 +54,8 @@ func init() {
 		marist.ID: {
 			school:                            marist,
 			hostname:                          "ssb1-reg.banner.marist.edu",
-			FullCollectionSectionSemaphore:    2,
-			FullCollectionCourseSemaphore:     15,
+			FullCollectionSectionSemaphore:    3,
+			FullCollectionCourseSemaphore:     35,
 			RegularCollectionSectionSemaphore: 5,
 			MaxTermCount:                      100,
 			MaxSectionPageCount:               200,
@@ -604,27 +604,10 @@ func (b *bannerSchool) insertGroupOfSections(
 		}
 	}
 
-	professors := make([]classentry.Professor, len(classData.Professors))
-	i := 0
-	for _, professor := range classData.Professors {
-		professors[i] = professor
-		i += 1
-	}
-
-	courses := make([]classentry.Course, len(classData.Courses))
-	i = 0
-	for _, course := range classData.Courses {
-		courses[i] = course
-		i += 1
-	}
-
 	err = q.InsertClassData(
 		logger,
 		ctx,
-		classData.MeetingTimes,
-		classData.Sections,
-		professors,
-		courses,
+		classData.ToEntry(),
 	)
 
 	if err != nil {
@@ -691,6 +674,28 @@ type ClassData struct {
 	Professors             map[string]classentry.Professor
 	Courses                map[string]classentry.Course
 	CourseReferenceNumbers map[string]string
+}
+
+func (c *ClassData) ToEntry() classentry.ClassData {
+	professors := make([]classentry.Professor, len(c.Professors))
+	i := 0
+	for _, professor := range c.Professors {
+		professors[i] = professor
+		i += 1
+	}
+
+	courses := make([]classentry.Course, len(c.Courses))
+	i = 0
+	for _, course := range c.Courses {
+		courses[i] = course
+		i += 1
+	}
+	return classentry.ClassData{
+		MeetingTimes: c.MeetingTimes,
+		Sections:     c.Sections,
+		Professors:   professors,
+		Courses:      courses,
+	}
 }
 
 func ProcessSectionSearch(sectionData SectionSearch) ClassData {
@@ -843,49 +848,18 @@ func (b *bannerSchool) getCourseDetails(
 		return nil, err
 	}
 	defer resp.Body.Close()
-	doc, err := html.Parse(resp.Body)
+
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
 		logger.Trace("Error parsing body: ", err)
 		return nil, errors.Join(services.ErrIncorrectAssumption, err)
 	}
-	// TODO: use a query finder lib like goquery
 
-	// example target element
-	// <section aria-labelledby="courseDescription">
-	// ...
-	// </section>
-	// should we try to sanitize ouput e.i. marist (maybe other schools) to nulls?
-	// Text for no desc: "No course description is available."
-	// Prefix for desc (in different tag): "No course description is available."
-	var courseNode *html.Node
-	courseDesc := ""
+	courseDesc := doc.Find("section[aria-labelledby='courseDescription']").Text()
 
-	var f func(*html.Node)
-	f = func(n *html.Node) {
-
-		for _, attr := range n.Attr {
-			if attr.Key == "aria-labelledby" && attr.Val == "courseDescription" {
-				courseNode = n
-			}
-		}
-
-		if courseNode != nil {
-			if n.Type == html.TextNode {
-				courseDesc += n.Data
-			}
-		}
-
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			f(c)
-		}
-
-		if n == courseNode {
-			return
-		}
-	}
-	f(doc)
 	if courseDesc == "" {
 		return nil, nil
 	}
+
 	return &courseDesc, nil
 }

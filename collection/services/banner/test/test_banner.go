@@ -21,8 +21,8 @@ var TESTING_ASSETS_BASE_DIR = filepath.Join(
 	"test-assets",
 )
 
-func jsonToClassData(logger log.Entry, data []byte) (testservice.ClassData, error) {
-	var classData testservice.ClassData
+func jsonToClassData(logger log.Entry, data []byte) (classentry.ClassData, error) {
+	var classData classentry.ClassData
 	var sections banner.SectionSearch
 
 	if err := json.Unmarshal(data, &sections); err != nil {
@@ -30,24 +30,7 @@ func jsonToClassData(logger log.Entry, data []byte) (testservice.ClassData, erro
 		return classData, err
 	}
 	bannerInfo := banner.ProcessSectionSearch(sections)
-	professors := make([]classentry.Professor, len(bannerInfo.Professors))
-	i := 0
-	for _, professor := range bannerInfo.Professors {
-		professors[i] = professor
-		i += 1
-	}
-
-	courses := make([]classentry.Course, len(bannerInfo.Courses))
-	i = 0
-	for _, course := range bannerInfo.Courses {
-		courses[i] = course
-		i += 1
-	}
-	classData.Courses = courses
-	classData.Professors = professors
-	classData.MeetingTimes = bannerInfo.MeetingTimes
-	classData.Sections = bannerInfo.Sections
-	return classData, nil
+	return bannerInfo.ToEntry(), nil
 }
 
 func GetTestingService() (*testservice.FileTestService, error) {

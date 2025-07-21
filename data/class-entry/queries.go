@@ -44,6 +44,13 @@ func (q *EntryQueries) WithTx(tx pgx.Tx) *EntryQueries {
 	}
 }
 
+type ClassData struct {
+	MeetingTimes []MeetingTime
+	Sections     []Section
+	Professors   []Professor
+	Courses      []Course
+}
+
 // Staging is needed for multiple reasons:
 //   1. Accurate triggers for changing records
 //    For instance, to know if a section is deleted you must collect all sections and see that the
@@ -57,17 +64,14 @@ func (q *EntryQueries) WithTx(tx pgx.Tx) *EntryQueries {
 func (q *EntryQueries) InsertClassData(
 	logger *log.Entry,
 	ctx context.Context,
-	meetingTimes []MeetingTime,
-	sections []Section,
-	professors []Professor,
-	courses []Course,
+	classData ClassData,
 ) error {
 	var eg errgroup.Group
 
-	eg.Go(func() error { return q.StageMeetingTimes(ctx, meetingTimes, logger) })
-	eg.Go(func() error { return q.StageSections(ctx, sections, logger) })
-	eg.Go(func() error { return q.StageProfessors(ctx, professors, logger) })
-	eg.Go(func() error { return q.StageCourses(ctx, courses, logger) })
+	eg.Go(func() error { return q.StageMeetingTimes(ctx, classData.MeetingTimes, logger) })
+	eg.Go(func() error { return q.StageSections(ctx, classData.Sections, logger) })
+	eg.Go(func() error { return q.StageProfessors(ctx, classData.Professors, logger) })
+	eg.Go(func() error { return q.StageCourses(ctx, classData.Courses, logger) })
 
 	if err := eg.Wait(); err != nil {
 		return err

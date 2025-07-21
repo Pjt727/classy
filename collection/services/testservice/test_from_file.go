@@ -15,13 +15,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type ClassData struct {
-	Sections     []classentry.Section
-	MeetingTimes []classentry.MeetingTime
-	Professors   []classentry.Professor
-	Courses      []classentry.Course
-}
-
 type termDirectory struct {
 	term          classentry.TermCollection
 	directoryPath string
@@ -78,7 +71,7 @@ type fileTestsSchool struct {
 
 type FileTestService struct {
 	schoolIDToSchooolForTest map[string]fileTestsSchool
-	fileBytesToClassData     func(log.Entry, []byte) (ClassData, error)
+	fileBytesToClassData     func(log.Entry, []byte) (classentry.ClassData, error)
 }
 
 type TermDirectoryEntry struct {
@@ -119,7 +112,7 @@ func NewTermCollection(
 // and must provide the respective class data
 func NewService(
 	entries []TermDirectoryEntry,
-	fileMapper func(log.Entry, []byte) (ClassData, error),
+	fileMapper func(log.Entry, []byte) (classentry.ClassData, error),
 ) (FileTestService, error) {
 	var service FileTestService
 	schoolIDToSchooolForTest := make(map[string]fileTestsSchool)
@@ -200,27 +193,11 @@ func (t *FileTestService) StageAllClasses(
 		return err
 	}
 	logger.Infof("Adding %d sections from %s", len(classData.Sections), path)
-	professors := make([]classentry.Professor, len(classData.Professors))
-	i := 0
-	for _, professor := range classData.Professors {
-		professors[i] = professor
-		i += 1
-	}
-
-	courses := make([]classentry.Course, len(classData.Courses))
-	i = 0
-	for _, course := range classData.Courses {
-		courses[i] = course
-		i += 1
-	}
 
 	err = q.InsertClassData(
 		&logger,
 		ctx,
-		classData.MeetingTimes,
-		classData.Sections,
-		professors,
-		courses,
+		classData,
 	)
 	if err != nil {
 		return err

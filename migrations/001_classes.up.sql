@@ -60,7 +60,7 @@ CREATE TABLE professors (
     PRIMARY KEY (id, school_id)
 );
 
--- TODO: test adding a HASH INDEX for school_id and or term for all staging tables
+-- TODO: test adding a HASH INDEX for term_collection_history_id for all staging tables
 CREATE TABLE staging_professors (
     like professors
     including defaults,
