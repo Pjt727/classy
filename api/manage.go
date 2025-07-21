@@ -12,7 +12,10 @@ func populateManagementRoutes(r *chi.Router, pool *pgxpool.Pool, testPool *pgxpo
 	(*r).Use(
 		middleware.AllowContentType("application/x-www-form-urlencoded", "multipart/form-data"),
 	)
+
 	(*r).Use(handlers.EnsureCookie)
+	(*r).Get("/login", h.DashboardHome)
+	(*r).Post("/login", h.DashboardHome)
 
 	(*r).Get("/", h.DashboardHome)
 	(*r).Post("/", h.NewOrchestrator)

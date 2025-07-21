@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/Pjt727/classy/api/components"
 	"github.com/Pjt727/classy/collection"
@@ -26,6 +27,51 @@ const (
 	UserCookie
 )
 
+// auth for management is in memory as the expected number of users authenticated
+// is tiny
+const UserCookieName = "user_token"
+
+type tokenStore struct {
+	tokenToUsername   map[string]string
+	tokenToExpireTime map[string]time.Time
+	tokenDuration     time.Duration
+	mu                sync.RWMutex
+}
+
+func (t *tokenStore) GetToken(token string) (string, bool) {
+	t.RefreshToken()
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	username, ok := t.tokenToUsername[token]
+	if ok {
+		t.mu.Lock()
+		t.tokenToExpireTime[token] = time.Now().Add(t.tokenDuration)
+		t.mu.Unlock()
+	}
+	return username, ok
+}
+
+func (t *tokenStore) AddToken(token string, username string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.tokenToUsername[token] = username
+	t.tokenToExpireTime[token] = time.Now().Add(t.tokenDuration)
+}
+
+// could also use goroutines but this should be fine
+// bc of the low number of expected users for management auth
+func (t *tokenStore) RefreshToken() {
+	currentTime := time.Now()
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for token, expiredTime := range t.tokenToExpireTime {
+		if currentTime.After(expiredTime) {
+			delete(t.tokenToUsername, token)
+			delete(t.tokenToExpireTime, token)
+		}
+	}
+}
+
 type ManageHandler struct {
 	DbPool     *pgxpool.Pool
 	TestDbPool *pgxpool.Pool
@@ -37,9 +83,8 @@ type ManageHandler struct {
 
 // keeps track of all sessions that are on this orchestrator
 // when an orchestrator gets a request it should notify all websocket connections
-// this is a wrapper around ManagementOrchestrator because data is fields the templates need
-//
-//	and the rest is needed to for the websockets
+// this is a wrapper around ManagementOrchestrator because data contains fields the templates need
+// and the rest is needed to for the websockets
 //
 // moving ManagementOrchestrator here would result in circular imports
 type sessionOrchestrator struct {
@@ -118,6 +163,38 @@ func Notify(
 	}
 }
 
+func (h *ManageHandler) LoginView(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	err := components.Login().Render(r.Context(), w)
+
+	if err != nil {
+		log.Error("Could not render login view: ", err)
+		http.Error(w, http.StatusText(500), 500)
+		return
+	}
+}
+
+func (h *ManageHandler) Login(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	err := components.Login().Render(r.Context(), w)
+
+	token := uuid.New().String()
+	cookie := &http.Cookie{
+		Name:     UserCookieName,
+		Value:    token,
+		Path:     "/manage",
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	}
+	http.SetCookie(w, cookie)
+	if err != nil {
+		log.Error("Could not render login view: ", err)
+		http.Error(w, http.StatusText(500), 500)
+		return
+	}
+}
+
 func (h *ManageHandler) DashboardHome(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
@@ -130,12 +207,11 @@ func (h *ManageHandler) DashboardHome(w http.ResponseWriter, r *http.Request) {
 		i++
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	err := components.Dashboard(managementOrchs).Render(r.Context(), w)
 
 	if err != nil {
-		log.Error("Could not render template: ", err)
-		Notify(w, r, components.NotifyError, "Dashboard could not be rendered")
+		log.Error("Could not render dashboard home: ", err)
+		http.Error(w, http.StatusText(500), 500)
 		return
 	}
 
@@ -222,26 +298,13 @@ func (h *ManageHandler) ValidateOrchestrator(next http.Handler) http.Handler {
 	})
 }
 
-// this will be changed to actual auth to allow allow users
-//
-//	with a given key to manage
 func EnsureCookie(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		var cookie *http.Cookie
 		var err error
-		cookie, err = r.Cookie("user_id")
+		cookie, err = r.Cookie(UserCookieName)
 		if err != nil {
-			id := uuid.New().String()
-			cookie = &http.Cookie{
-				Name:     "user_id",
-				Value:    id,
-				Path:     "/manage",
-				Secure:   true,
-				HttpOnly: true,
-				SameSite: http.SameSiteStrictMode,
-			}
-			http.SetCookie(w, cookie)
 		}
 
 		ctx = context.WithValue(ctx, UserCookie, cookie.String())
@@ -263,7 +326,7 @@ func (h *ManageHandler) OrchestratorHome(w http.ResponseWriter, r *http.Request)
 
 	if err != nil {
 		log.Error("Orchestrator dashboard error: ", err)
-		Notify(w, r, components.NotifyError, "Orchestrator rendering failed")
+		http.Error(w, http.StatusText(500), 500)
 		return
 	}
 }
