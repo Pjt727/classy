@@ -3,14 +3,16 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
+
+	"log/slog"
+	"slices"
 
 	"github.com/Pjt727/classy/api/components"
 	"github.com/Pjt727/classy/data/db"
 	"github.com/gorilla/websocket"
 	"github.com/robert-nix/ansihtml"
-	"log/slog"
-	"slices"
 )
 
 // logging is designed such that even if the user destroys their websocket
@@ -86,10 +88,25 @@ func (w *websocketLoggingHandler) Handle(ctx context.Context, r slog.Record) err
 	}
 
 	logString := r.Message
+	// Extract attributes and convert to JSON
+	attrs := make(map[string]any)
+	r.Attrs(func(a slog.Attr) bool {
+		attrs[a.Key] = a.Value.Any()
+		return true
+	})
+
+	jsonBytes, err := json.Marshal(attrs)
+	if err != nil {
+		slog.Error("failed to marshal attributes to JSON", "err", err)
+		// Handle the error appropriately.  Maybe just log the message without the JSON.
+	} else {
+		logString += " " + string(jsonBytes)
+	}
+
 	formattedLog := ansihtml.ConvertToHTML([]byte(logString))
 	var buf bytes.Buffer
 
-	err := components.CollectionLog(w.termCollection, string(formattedLog)).Render(ctx, &buf)
+	err = components.CollectionLog(w.termCollection, string(formattedLog)).Render(ctx, &buf)
 	if err != nil {
 		slog.Error("could render log", "err", err)
 		return err
@@ -103,7 +120,7 @@ func (w *websocketLoggingHandler) Handle(ctx context.Context, r slog.Record) err
 		default:
 		}
 	}
-	return nil
+	return w.innerHandler.Handle(ctx, r)
 }
 
 func (w *websocketLoggingHandler) start(ctx context.Context) error {
