@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"log/slog"
@@ -100,7 +101,7 @@ func (w *websocketLoggingHandler) Handle(ctx context.Context, r slog.Record) err
 		slog.Error("failed to marshal attributes to JSON", "err", err)
 		// Handle the error appropriately.  Maybe just log the message without the JSON.
 	} else {
-		logString += " " + string(jsonBytes)
+		logString += fmt.Sprintf("%v", jsonBytes)
 	}
 
 	formattedLog := ansihtml.ConvertToHTML([]byte(logString))
