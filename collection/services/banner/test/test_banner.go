@@ -2,6 +2,7 @@ package test_banner
 
 import (
 	"encoding/json"
+	"log/slog"
 	"path/filepath"
 	"testing"
 
@@ -10,7 +11,6 @@ import (
 	"github.com/Pjt727/classy/collection/services/testservice"
 	"github.com/Pjt727/classy/data/class-entry"
 	dbhelpers "github.com/Pjt727/classy/data/testdb"
-	log "github.com/sirupsen/logrus"
 )
 
 var TESTING_ASSETS_BASE_DIR = filepath.Join(
@@ -21,12 +21,12 @@ var TESTING_ASSETS_BASE_DIR = filepath.Join(
 	"test-assets",
 )
 
-func jsonToClassData(logger log.Entry, data []byte) (classentry.ClassData, error) {
+func jsonToClassData(logger slog.Logger, data []byte) (classentry.ClassData, error) {
 	var classData classentry.ClassData
 	var sections banner.SectionSearch
 
 	if err := json.Unmarshal(data, &sections); err != nil {
-		logger.Error("Error decoding sections: ", err)
+		logger.Error("Error decoding sections", "error", err)
 		return classData, err
 	}
 	bannerInfo := banner.ProcessSectionSearch(sections)
@@ -39,7 +39,7 @@ func GetTestingService() (*testservice.FileTestService, error) {
 		[]testservice.TermDirectoryEntry{
 			{
 				SchoolID:       schoolID,
-				TermCollection: testservice.NewTermCollection("202440", "Fall", 2024),
+				TermCollection: testservice.NewTermCollection("202440", classentry.SeasonEnumFall, 2024),
 				FilePath:       filepath.Join(TESTING_ASSETS_BASE_DIR, "marist-fall-2024"),
 			},
 		},

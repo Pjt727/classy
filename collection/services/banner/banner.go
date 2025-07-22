@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"net/http"
 	"net/http/cookiejar"
@@ -23,7 +24,6 @@ import (
 	classentry "github.com/Pjt727/classy/data/class-entry"
 	"github.com/PuerkitoBio/goquery"
 	"github.com/jackc/pgx/v5/pgtype"
-	log "github.com/sirupsen/logrus"
 )
 
 type bannerSchool struct {
@@ -77,7 +77,7 @@ func init() {
 }
 
 func (b *banner) ListValidSchools(
-	logger log.Entry,
+	logger slog.Logger,
 	ctx context.Context,
 ) ([]classentry.School, error) {
 	schools := make([]classentry.School, len(b.schools))
@@ -97,7 +97,7 @@ type bannerTerm struct {
 func (b *banner) GetName() string { return "Banner" }
 
 func (b *banner) GetTermCollections(
-	logger log.Entry,
+	logger slog.Logger,
 	ctx context.Context,
 	school classentry.School,
 ) ([]classentry.TermCollection, error) {
@@ -105,7 +105,7 @@ func (b *banner) GetTermCollections(
 
 	bannerschool, err := b.getBannerSchool(school.ID)
 	if err != nil {
-		logger.Error("Error getting school entry: ", err)
+		logger.Error("Error getting school entry", "error", err)
 		return termCollection, err
 	}
 	termCollections, err := bannerschool.getTerms(ctx, logger)
@@ -117,7 +117,7 @@ func (b *banner) GetTermCollections(
 }
 
 func (b *banner) StageAllClasses(
-	logger log.Entry,
+	logger slog.Logger,
 	ctx context.Context,
 	q *classentry.EntryQueries,
 	schoolID string,
@@ -127,7 +127,7 @@ func (b *banner) StageAllClasses(
 	logger.Info("Starting full section")
 	bannerSchool, err := b.getBannerSchool(schoolID)
 	if err != nil {
-		logger.Error("Error getting school entry: ", err)
+		logger.Error("Error getting school entry", "error", err)
 		return err
 	}
 	err = bannerSchool.stageAllClasses(
@@ -138,7 +138,7 @@ func (b *banner) StageAllClasses(
 		fullCollection,
 	)
 	if err != nil {
-		logger.Error("Error getting all school entry: ", err)
+		logger.Error("Error getting all school entry", "error", err)
 		return err
 	}
 	return nil
@@ -281,7 +281,7 @@ func toBannerTime(dbTime pgtype.Text) pgtype.Time {
 
 func (b *bannerSchool) getTerms(
 	ctx context.Context,
-	logger log.Entry,
+	logger slog.Logger,
 ) ([]classentry.TermCollection, error) {
 
 	var termCollection []classentry.TermCollection
@@ -293,7 +293,7 @@ func (b *bannerSchool) getTerms(
 		nil,
 	)
 	if err != nil {
-		logger.Error("Error creating term request: ", err)
+		logger.Error("Error creating term request", "error", err)
 		return termCollection, errors.Join(services.ErrTemporaryNetworkFailure, err)
 	}
 
@@ -302,13 +302,13 @@ func (b *bannerSchool) getTerms(
 	resp, err := client.Do(req)
 	err = services.RespOrStatusErr(resp, err)
 	if err != nil {
-		logger.Error("Error getting term response: ", err)
+		logger.Error("Error getting term response", "error", err)
 		return termCollection, err
 	}
 	defer resp.Body.Close()
 	var terms []bannerTerm
 	if err := json.NewDecoder(resp.Body).Decode(&terms); err != nil {
-		logger.Error("Error decoding terms: ", err)
+		logger.Error("Error decoding terms", "error", err)
 		return termCollection, errors.Join(services.ErrIncorrectAssumption, err)
 	}
 
@@ -324,7 +324,7 @@ func (b *bannerSchool) getTerms(
 		// },
 		t, err := termConversion(term)
 		if err != nil {
-			logger.Error("Error decoding term code: ", err)
+			logger.Error("Error decoding term code", "error", err)
 			return termCollection, err
 		}
 		// the View Only appears on all marist terms which probably wont update
@@ -349,7 +349,7 @@ func (b *bannerSchool) getTerms(
 }
 
 func (b *bannerSchool) refreshTermAssociatedCookies(
-	logger log.Entry,
+	logger slog.Logger,
 	ctx context.Context,
 	client *http.Client,
 	bannerTerm string,
@@ -365,14 +365,14 @@ func (b *bannerSchool) refreshTermAssociatedCookies(
 		nil,
 	)
 	if err != nil {
-		logger.Error("Error creating cookie request: ", err)
+		logger.Error("Error creating cookie request", "error", err)
 		return errors.Join(services.ErrIncorrectAssumption, err)
 	}
 
 	cookieResp, err := client.Do(req)
 	err = services.RespOrStatusErr(cookieResp, err)
 	if err != nil {
-		logger.Error("Error getting cookie response: ", err)
+		logger.Error("Error getting cookie response", "error", err)
 		return err
 	}
 	defer cookieResp.Body.Close()
@@ -387,7 +387,7 @@ func (b *bannerSchool) refreshTermAssociatedCookies(
 		bytes.NewBufferString(formData.Encode()),
 	)
 	if err != nil {
-		logger.Error("Error creating request to set term: ", err)
+		logger.Error("Error creating request to set term", "error", err)
 		return err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -395,7 +395,7 @@ func (b *bannerSchool) refreshTermAssociatedCookies(
 	termAssociationResp, err := client.Do(req)
 	err = services.RespOrStatusErr(termAssociationResp, err)
 	if err != nil {
-		logger.Error("Error setting term: ", err)
+		logger.Error("Error setting term", "error", err)
 		return err
 	}
 	defer termAssociationResp.Body.Close()
@@ -404,7 +404,7 @@ func (b *bannerSchool) refreshTermAssociatedCookies(
 }
 
 func (b *bannerSchool) stageAllClasses(
-	logger log.Entry,
+	logger slog.Logger,
 	ctx context.Context,
 	q *classentry.EntryQueries,
 	termCollection classentry.TermCollection,
@@ -426,7 +426,7 @@ func (b *bannerSchool) stageAllClasses(
 		nil,
 	)
 	if err != nil {
-		log.Error("Error creating request:", err)
+		logger.Error("Error creating request", "error", err)
 		return err
 	}
 	queryParams := url.Values{
@@ -438,7 +438,7 @@ func (b *bannerSchool) stageAllClasses(
 	resp, err := client.Do(req)
 	err = services.RespOrStatusErr(resp, err)
 	if err != nil {
-		log.Error("Error requesting first sections: ", err)
+		logger.Error("Error requesting first sections", "error", err)
 		return err
 	}
 	defer resp.Body.Close()
@@ -447,11 +447,11 @@ func (b *bannerSchool) stageAllClasses(
 	}
 	var sectionCount Sectioncount
 	if err := json.NewDecoder(resp.Body).Decode(&sectionCount); err != nil {
-		logger.Error("Error decoding first sections: ", err)
+		logger.Error("Error decoding first sections", "error", err)
 		return err
 	}
 	count := sectionCount.Count
-	logger.Infof("starting collection on %d sections", count)
+	logger.Info("starting collection", "sections", count)
 
 	var actualTotalSectionCount int32
 	var semaphore chan struct{}
@@ -478,10 +478,10 @@ func (b *bannerSchool) stageAllClasses(
 			}
 
 			workersReq := req.Clone(req.Context())
-			workerLog := logger.WithFields(log.Fields{
-				"pageOffSet":  strconv.Itoa(i * b.MaxSectionPageCount),
-				"pageMaxSize": strconv.Itoa(b.MaxSectionPageCount),
-			})
+			workerLog := logger.With(
+				slog.String("pageOffSet", strconv.Itoa(i*b.MaxSectionPageCount)),
+				slog.Int("pageMaxSize", b.MaxSectionPageCount),
+			)
 			queryParams := url.Values{
 				"txt_term":    {termStr},
 				"pageOffset":  {strconv.Itoa(i * b.MaxSectionPageCount)},
@@ -520,7 +520,7 @@ func (b *bannerSchool) stageAllClasses(
 				//    should refresh client tokens
 				// technically there could be other error in the code that aren't http related
 				//    some better error types would be helpful
-				logger.Infof("Retrying section get after %d failures", i+1)
+				logger.Info("Retrying section some failures", "failures", i+1)
 				err = b.refreshTermAssociatedCookies(logger, ctx, sectionClient, termStr)
 				if err != nil {
 					return err
@@ -540,17 +540,16 @@ func (b *bannerSchool) stageAllClasses(
 	}
 
 	if actualTotalSectionCount == count {
-		logger.Infof("sections finished getting %d sections", actualTotalSectionCount)
+		logger.Info("sections finished getting", "sections", actualTotalSectionCount)
 	} else {
 		// A record could have been added / delete while the collection was happening
 		// but if the difference is large there is likely something more sinister going on
 		// this also should maybe be a full error to so that the move doesn't delete
 		// sections that just weren't found
-		logger.Warnf(
-			"finished section collection but expected section count (%d) does not match actual count (%d) difference of %d sections",
-			count,
-			actualTotalSectionCount,
-			int(math.Abs(float64(count-actualTotalSectionCount))),
+		logger.Warn("finished section collection but expected section count does not match actual count",
+			"expected", count,
+			"actual", actualTotalSectionCount,
+			"difference", int(math.Abs(float64(count-actualTotalSectionCount))),
 		)
 	}
 
@@ -558,7 +557,7 @@ func (b *bannerSchool) stageAllClasses(
 }
 
 func (b *bannerSchool) insertGroupOfSections(
-	logger *log.Entry,
+	logger *slog.Logger,
 	sectionReq *http.Request,
 	ctx context.Context,
 	q *classentry.EntryQueries,
@@ -569,14 +568,14 @@ func (b *bannerSchool) insertGroupOfSections(
 	resp, err := client.Do(sectionReq)
 	err = services.RespOrStatusErr(resp, err)
 	if err != nil {
-		logger.Error("Error getting sections", err)
+		logger.Error("Error getting sections", "error", err)
 		return 0, err
 	}
 	defer resp.Body.Close()
 
 	var sections SectionSearch
 	if err := json.NewDecoder(resp.Body).Decode(&sections); err != nil {
-		logger.Error("Error decoding sections: ", err)
+		logger.Error("Error decoding sections", "error", err)
 		return 0, errors.Join(services.ErrIncorrectAssumption, err)
 	}
 
@@ -596,7 +595,7 @@ func (b *bannerSchool) insertGroupOfSections(
 				break
 			}
 
-			logger.Infof("Retrying course get after %d failures", i+1)
+			logger.Info("Retrying course get after failures", "failures", i+1)
 			err = b.refreshTermAssociatedCookies(*logger, ctx, client, termCollection.ID)
 			if err != nil {
 				return 0, err
@@ -611,13 +610,13 @@ func (b *bannerSchool) insertGroupOfSections(
 	)
 
 	if err != nil {
-		logger.Error("Error inserting class data", err)
+		logger.Error("Error inserting class data", "error", err)
 		return 0, err
 	}
 
-	logger.Infof(
-		"Successfully added %d sections and their related information",
-		len(classData.Sections),
+	logger.Info(
+		"Successfully added sections and their related information",
+		"sections", len(classData.Sections),
 	)
 
 	return len(classData.Sections), nil
@@ -625,7 +624,7 @@ func (b *bannerSchool) insertGroupOfSections(
 
 func (b *bannerSchool) processFullCollection(
 	ctx context.Context,
-	logger *log.Entry,
+	logger *slog.Logger,
 	client *http.Client,
 	termCollection classentry.TermCollection,
 	classData *ClassData,
@@ -819,7 +818,7 @@ func ProcessSectionSearch(sectionData SectionSearch) ClassData {
 
 func (b *bannerSchool) getCourseDetails(
 	ctx context.Context,
-	logger *log.Entry,
+	logger *slog.Logger,
 	client *http.Client,
 	termCollection classentry.TermCollection,
 	referenceNumber string,
@@ -837,21 +836,21 @@ func (b *bannerSchool) getCourseDetails(
 	courseDescReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	if err != nil {
-		logger.Trace("Error making course desc request: ", err)
+		logger.Debug("Error making course desc request", "error", err)
 		return nil, errors.Join(services.ErrIncorrectAssumption, err)
 	}
 
 	resp, err := client.Do(courseDescReq)
 	err = services.RespOrStatusErr(resp, err)
 	if err != nil {
-		logger.Trace("Error doing course desc request: ", err)
+		logger.Debug("Error doing course desc request", "error", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
-		logger.Trace("Error parsing body: ", err)
+		logger.Debug("Error parsing body", "error", err)
 		return nil, errors.Join(services.ErrIncorrectAssumption, err)
 	}
 

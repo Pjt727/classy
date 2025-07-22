@@ -5,10 +5,12 @@ package cmd
 
 import (
 	"context"
+	"os"
+
+	"log/slog"
 
 	"github.com/Pjt727/classy/collection"
 	"github.com/Pjt727/classy/data"
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -19,19 +21,21 @@ var termsCmd = &cobra.Command{
 	Long: `Collects and upserts in the db all schools for each of their terms 
 as defined in orchestration`,
 	Run: func(cmd *cobra.Command, args []string) {
-		log.SetLevel(log.TraceLevel)
-		logger := log.WithFields(log.Fields{
-			"job": "getSchoolTerms",
-		})
+		slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		}))
+		logger := slog.With(
+			slog.String("job", "getSchoolTerms"),
+		)
 		ctx := context.Background()
 		dbPool, err := data.NewPool(ctx, false)
 		if err != nil {
-			logger.Error("Could not get database ", err)
+			logger.Error("Could not get database", "err", err)
 			return
 		}
 		orchestrator, err := collection.GetDefaultOrchestrator(dbPool)
 		if err != nil {
-			logger.Error("Could not get orchestrator ", err)
+			logger.Error("Could not get orchestrator", "err", err)
 			return
 		}
 		logger.Info("Starting update on schools")

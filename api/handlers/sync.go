@@ -9,7 +9,7 @@ import (
 
 	"github.com/Pjt727/classy/data/db"
 	"github.com/jackc/pgx/v5/pgxpool"
-	log "github.com/sirupsen/logrus"
+	"log/slog"
 )
 
 var DEFAULT_MAX_RECORDS uint32 = 500
@@ -72,7 +72,7 @@ func (h *SyncHandler) SyncAll(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		errCh <- err
-		log.Error("Could not get lastest sync rows: ", err)
+		slog.Error("Could not get lastest sync rows", "err", err)
 		return
 	}
 	syncChanges := make([]SyncChange, len(syncChangeRows))
@@ -88,7 +88,7 @@ func (h *SyncHandler) SyncAll(w http.ResponseWriter, r *http.Request) {
 
 	if len(errCh) > 0 {
 		for err := range errCh {
-			log.Error("Failed getting all sync row changes ", err)
+			slog.Error("Failed getting all sync row changes ", "err", err)
 		}
 		http.Error(w, http.StatusText(500), 500)
 	}
@@ -104,7 +104,7 @@ func (h *SyncHandler) SyncAll(w http.ResponseWriter, r *http.Request) {
 	}
 	resultJson, err := json.Marshal(result)
 	if err != nil {
-		log.Error("Could not marshal school rows", err)
+		slog.Error("Could not marshal school rows", "err", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
@@ -132,7 +132,7 @@ func (h *SyncHandler) SyncSchoolTerms(w http.ResponseWriter, r *http.Request) {
 	var syncData selectSchoolEntry
 	err := json.NewDecoder(r.Body).Decode(&syncData)
 	if err != nil {
-		log.Error("Could not parse sequence", err)
+		slog.Error("Could not parse sequence", "err", err)
 		http.Error(w, "Could not parse body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -171,7 +171,6 @@ func (h *SyncHandler) SyncSchoolTerms(w http.ResponseWriter, r *http.Request) {
 				termMap[term] = uint32(seqFloat)
 			}
 
-			log.Printf("Case map[string]uint32: %v\n", termMap)
 			newSyncChanges, err = getTerms(q, ctx, schoolID, termMap, maxRequestsPerRequest)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -191,7 +190,7 @@ func (h *SyncHandler) SyncSchoolTerms(w http.ResponseWriter, r *http.Request) {
 	}
 	resultJson, err := json.Marshal(result)
 	if err != nil {
-		log.Error("Could not marshal school rows", err)
+		slog.Error("Could not marshal school rows", "err", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}

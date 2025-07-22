@@ -21,7 +21,7 @@ is a tool to sync to a database (currently only SQLite).
 # Technical Notes
 - Database: Postgres
 - Main Language: Go
-    - Logging: [logrus](https://github.com/sirupsen/logrus)
+    - Logging: slog
     - Database interaction: [sqlc](https://docs.sqlc.dev/en/latest/) with [pgx](https://github.com/jackc/pgx)
     - cmd: [cobra](https://github.com/spf13/cobra)
 - Any .http files follow the syntax of [kuala.nvim](https://github.com/mistweaverco/kulala.nvim), an HTTP client for Neovim.

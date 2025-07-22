@@ -17,7 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
-	log "github.com/sirupsen/logrus"
+	"log/slog"
 )
 
 type Sanatized int
@@ -117,7 +117,7 @@ func GetManageHandler(pool *pgxpool.Pool, testPool *pgxpool.Pool) *ManageHandler
 		testPool,
 	)
 	if err != nil {
-		log.Warn("Testing orchestrator could not be made: ", err)
+		slog.Warn("Testing orchestrator could not be made", "err", err)
 	}
 	managementOrchestrator := &components.ManagementOrchestrator{
 		O:     &defaultOrchestrator,
@@ -168,7 +168,7 @@ func (h *ManageHandler) LoginView(w http.ResponseWriter, r *http.Request) {
 	err := components.Login().Render(r.Context(), w)
 
 	if err != nil {
-		log.Error("Could not render login view: ", err)
+		slog.ErrorContext(r.Context(), "Could not render login view", "error", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
@@ -189,7 +189,7 @@ func (h *ManageHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, cookie)
 	if err != nil {
-		log.Error("Could not render login view: ", err)
+		slog.ErrorContext(r.Context(), "Could not render login view", "error", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
@@ -210,7 +210,7 @@ func (h *ManageHandler) DashboardHome(w http.ResponseWriter, r *http.Request) {
 	err := components.Dashboard(managementOrchs).Render(r.Context(), w)
 
 	if err != nil {
-		log.Error("Could not render dashboard home: ", err)
+		slog.ErrorContext(r.Context(), "Could not render dashboard home", "error", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
@@ -247,7 +247,7 @@ func (h *ManageHandler) NewOrchestrator(w http.ResponseWriter, r *http.Request) 
 	h.lastOrchestratorLabel++
 
 	if err != nil {
-		log.Error("Error decoding post: ", err)
+		slog.ErrorContext(r.Context(), "Error decoding post", "error", err)
 		Notify(w, r, components.NotifyError, "Invlaid parameters")
 		return
 	}
@@ -262,7 +262,7 @@ func (h *ManageHandler) NewOrchestrator(w http.ResponseWriter, r *http.Request) 
 	err = components.ManageOrchestrators(managementOrchs).Render(r.Context(), w)
 
 	if err != nil {
-		log.Error("Could not render template: ", err)
+		slog.ErrorContext(r.Context(), "Could not render template", "error", err)
 		Notify(w, r, components.NotifyError, "Could not render orchestrator")
 		return
 	}
@@ -271,7 +271,7 @@ func (h *ManageHandler) NewOrchestrator(w http.ResponseWriter, r *http.Request) 
 
 	err = components.NewOrchestrator().Render(r.Context(), w)
 	if err != nil {
-		log.Error("Could not render template: ", err)
+		slog.ErrorContext(r.Context(), "Could not render template", "error", err)
 		Notify(w, r, components.NotifyError, "Could not render new form orchestrator")
 		return
 	}
@@ -285,9 +285,9 @@ func (h *ManageHandler) ValidateOrchestrator(next http.Handler) http.Handler {
 		_, orchExists := h.orchestrators[label]
 		if err != nil || !orchExists {
 			if !orchExists {
-				log.Error("Orchestrator does not exists:", label)
+				slog.ErrorContext(r.Context(), "Orchestrator does not exists", "label", label)
 			} else {
-				log.Error("Invalid Orchestrator value", label)
+				slog.ErrorContext(r.Context(), "Invalid Orchestrator value", "label", label)
 			}
 			http.Redirect(w, r, "/manage", http.StatusSeeOther)
 			return
@@ -325,7 +325,7 @@ func (h *ManageHandler) OrchestratorHome(w http.ResponseWriter, r *http.Request)
 		Render(r.Context(), w)
 
 	if err != nil {
-		log.Error("Orchestrator dashboard error: ", err)
+		slog.ErrorContext(r.Context(), "Orchestrator dashboard error", "error", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
@@ -342,7 +342,7 @@ func (h *ManageHandler) OrchestratorGetTerms(w http.ResponseWriter, r *http.Requ
 	terms, err := orchestrator.data.O.GetTerms(ctx, serviceName, schoolID)
 	if err != nil {
 		badValues := fmt.Sprintf("service name: `%s`, school ID: `%s`", serviceName, schoolID)
-		log.Error(fmt.Sprintf("Could not get terms for %s: ", badValues), err)
+		slog.ErrorContext(ctx, "Could not get terms", "serviceName", serviceName, "schoolID", schoolID, "error", err)
 		Notify(w, r, components.NotifyError, fmt.Sprintf("Failed to get terms for %s", badValues))
 		return
 	}
@@ -350,7 +350,7 @@ func (h *ManageHandler) OrchestratorGetTerms(w http.ResponseWriter, r *http.Requ
 	err = components.TermCollections(orchestrator.data, terms, serviceName).Render(ctx, w)
 
 	if err != nil {
-		log.Error("Term collections failed to render: ", err)
+		slog.ErrorContext(ctx, "Term collections failed to render", "error", err)
 		Notify(w, r, components.NotifyError, "Orchestrator rendering failed")
 		return
 	}
@@ -364,12 +364,12 @@ func (h *ManageHandler) CollectTerm(w http.ResponseWriter, r *http.Request) {
 	schoolID := r.FormValue("schoolID")
 	termID := r.FormValue("termID")
 	isFullCollection := r.FormValue("isFullCollection") == "on"
-	log.Info("Is full collection: ", isFullCollection)
+	slog.InfoContext(ctx, "Is full collection: ", "isFullCollection", isFullCollection)
 	orchestrator := h.orchestrators[label]
 
 	school, ok := orchestrator.data.O.GetSchoolById(schoolID)
 	if !ok {
-		log.Error(fmt.Sprintf("Could not find school `%s`: ", schoolID))
+		slog.ErrorContext(ctx, "Could not find school", "schoolID", schoolID)
 		Notify(
 			w,
 			r,
@@ -379,46 +379,36 @@ func (h *ManageHandler) CollectTerm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//  creating the logger and kicking off the process
+	//  creating the slog.er and kicking off the process
 	go func() {
 		ctx := context.Background()
-		customLogger := log.New()
-		if orchestrator.isTest {
-			customLogger.SetReportCaller(true)
+		termCollection := db.TermCollection{
+			ID:              termID,
+			SchoolID:        schoolID,
+			Year:            0,
+			Season:          "",
+			Name:            pgtype.Text{String: "", Valid: false},
+			StillCollecting: false,
 		}
 
-		oneOffLogger := customLogger.WithFields(log.Fields{
-			"job":    "User driven",
-			"termID": termID,
-			"school": school,
-		})
-		oneOffLogger = customLogger.WithContext(ctx)
-		hook := WebsocketLoggingHook{
-			orchestratorLabel: label,
-			termCollection: db.TermCollection{
-				ID:              termID,
-				SchoolID:        schoolID,
-				Year:            0,
-				Season:          "",
-				Name:            pgtype.Text{String: "", Valid: false},
-				StillCollecting: false,
-			},
-			serviceName: serviceName,
-			h:           h,
-		}
-		oneOffLogger.Logger.AddHook(&hook)
+		handler := NewWebSocketHandler(label, termCollection, serviceName, h, slog.Default().Handler())
+		oneOffLogger := slog.New(handler).With(
+			slog.String("job", "User driven"),
+			slog.String("termID", termID),
+			slog.String("school", schoolID),
+		)
 
-		hook.start(ctx)
+		handler.start(ctx)
 		// flush all terms
 		err := orchestrator.data.O.UpsertSchoolTermsWithService(
 			ctx,
-			oneOffLogger,
+			*oneOffLogger,
 			school,
 			serviceName,
 		)
 		if err != nil {
-			oneOffLogger.Error("upsert schools terms failed", err)
-			hook.finish(ctx, components.JobError)
+			slog.ErrorContext(ctx, "upsert schools terms failed", "error", err)
+			handler.finish(ctx, components.JobError)
 			return
 		}
 
@@ -430,29 +420,29 @@ func (h *ManageHandler) CollectTerm(w http.ResponseWriter, r *http.Request) {
 		} else {
 			q = db.New(h.DbPool)
 		}
-		termCollection, err := q.GetTermCollection(ctx, db.GetTermCollectionParams{
+		termCollection, err = q.GetTermCollection(ctx, db.GetTermCollectionParams{
 			ID:       termID,
 			SchoolID: schoolID,
 		})
 
 		if err != nil {
-			oneOffLogger.Error("Could not get term collection: ", err)
-			hook.finish(ctx, components.JobError)
+			slog.ErrorContext(ctx, "Could not get term collection", "error", err)
+			handler.finish(ctx, components.JobError)
 			return
 		}
 
 		err = orchestrator.data.O.UpdateAllSectionsOfSchoolWithService(
 			ctx,
 			termCollection,
-			oneOffLogger,
+			*oneOffLogger,
 			serviceName,
 			isFullCollection,
 		)
 		if err != nil {
-			hook.finish(ctx, components.JobError)
+			handler.finish(ctx, components.JobError)
 			return
 		}
-		hook.finish(ctx, components.JobSuccess)
+		handler.finish(ctx, components.JobSuccess)
 	}()
 	Notify(
 		w,

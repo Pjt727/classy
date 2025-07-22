@@ -9,7 +9,7 @@ import (
 
 	"github.com/Pjt727/classy/collection/projectpath"
 	"github.com/joho/godotenv"
-	log "github.com/sirupsen/logrus"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -65,7 +65,7 @@ func NewPool(ctx context.Context, isTestDb bool) (*pgxpool.Pool, error) {
 
 		if err != nil {
 			poolErr = fmt.Errorf("unable to create connection pool: %s", err)
-			log.Error(poolErr)
+			slog.Error("unable to create pool", "err", poolErr)
 			return
 		}
 

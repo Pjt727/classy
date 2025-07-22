@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -12,7 +13,6 @@ import (
 	"github.com/Pjt727/classy/data/class-entry"
 	"github.com/Pjt727/classy/data/db"
 	"github.com/jackc/pgx/v5/pgtype"
-	log "github.com/sirupsen/logrus"
 )
 
 type termDirectory struct {
@@ -71,7 +71,7 @@ type fileTestsSchool struct {
 
 type FileTestService struct {
 	schoolIDToSchooolForTest map[string]fileTestsSchool
-	fileBytesToClassData     func(log.Entry, []byte) (classentry.ClassData, error)
+	fileBytesToClassData     func(logger slog.Logger, data []byte) (classentry.ClassData, error)
 }
 
 type TermDirectoryEntry struct {
@@ -112,7 +112,7 @@ func NewTermCollection(
 // and must provide the respective class data
 func NewService(
 	entries []TermDirectoryEntry,
-	fileMapper func(log.Entry, []byte) (classentry.ClassData, error),
+	fileMapper func(logger slog.Logger, data []byte) (classentry.ClassData, error),
 ) (FileTestService, error) {
 	var service FileTestService
 	schoolIDToSchooolForTest := make(map[string]fileTestsSchool)
@@ -152,7 +152,7 @@ func (t *FileTestService) GetName() string {
 }
 
 func (t *FileTestService) ListValidSchools(
-	logger log.Entry,
+	logger slog.Logger,
 	ctx context.Context,
 ) ([]classentry.School, error) {
 	var schools []classentry.School
@@ -163,7 +163,7 @@ func (t *FileTestService) ListValidSchools(
 }
 
 func (t *FileTestService) StageAllClasses(
-	logger log.Entry,
+	logger slog.Logger,
 	ctx context.Context,
 	q *classentry.EntryQueries,
 	schoolID string,
@@ -192,7 +192,7 @@ func (t *FileTestService) StageAllClasses(
 	if err != nil {
 		return err
 	}
-	logger.Infof("Adding %d sections from %s", len(classData.Sections), path)
+	logger.Info("Adding sections", slog.Int("sections", len(classData.Sections)), slog.String("path", path))
 
 	err = q.InsertClassData(
 		&logger,
@@ -207,7 +207,7 @@ func (t *FileTestService) StageAllClasses(
 }
 
 func (t *FileTestService) GetTermCollections(
-	logger log.Entry,
+	logger slog.Logger,
 	ctx context.Context,
 	school classentry.School,
 ) ([]classentry.TermCollection, error) {

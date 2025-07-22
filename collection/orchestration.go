@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -13,7 +14,6 @@ import (
 	classentry "github.com/Pjt727/classy/data/class-entry"
 	"github.com/Pjt727/classy/data/db"
 	"github.com/jackc/pgx/v5/pgxpool"
-	log "github.com/sirupsen/logrus"
 )
 
 // note logging is generally made with the api server in mind so the semantics
@@ -26,7 +26,7 @@ type Service interface {
 
 	// get the schools for this service (only called once at the start of the program)
 	ListValidSchools(
-		logger log.Entry,
+		logger slog.Logger,
 		ctx context.Context,
 	) ([]classentry.School, error)
 
@@ -35,7 +35,7 @@ type Service interface {
 	// ALL sections and meeting times must be put because they are diffed with the
 	//     current state of the database to make deletions
 	StageAllClasses(
-		logger log.Entry,
+		logger slog.Logger,
 		ctx context.Context,
 		q *classentry.EntryQueries,
 		schoolID string,
@@ -45,7 +45,7 @@ type Service interface {
 
 	// get the terms that school (does NOT upsert them to the db)
 	GetTermCollections(
-		logger log.Entry,
+		logger slog.Logger,
 		ctx context.Context,
 		school classentry.School,
 	) ([]classentry.TermCollection, error)
@@ -86,7 +86,7 @@ type Orchestrator struct {
 	termCollectionStagingLocks map[db.TermCollection]bool
 	schoolIdToServiceManager   map[string]*ServiceManager
 	schoolIdToSchool           map[string]db.School
-	orchestrationLogger        *log.Entry
+	orchestrationLogger        slog.Logger
 	dbPool                     *pgxpool.Pool
 }
 
@@ -105,12 +105,13 @@ func GetDefaultOrchestrator(pool *pgxpool.Pool) (Orchestrator, error) {
 		serviceEntries[service.GetName()] = &service
 	}
 
+	logger := slog.Default().With(slog.String("job", "orchestration"))
 	orchestrator := Orchestrator{
 		serviceEntries:             serviceEntries,
 		termCollectionStagingLocks: map[db.TermCollection]bool{},
 		schoolIdToServiceManager:   make(map[string]*ServiceManager),
 		schoolIdToSchool:           make(map[string]db.School),
-		orchestrationLogger:        log.WithFields(log.Fields{"job": "orchestration"}),
+		orchestrationLogger:        *logger,
 		dbPool:                     pool,
 	}
 
@@ -121,11 +122,12 @@ func GetDefaultOrchestrator(pool *pgxpool.Pool) (Orchestrator, error) {
 
 func CreateOrchestrator(
 	services []Service,
-	logger *log.Entry,
+	logger *slog.Logger,
 	pool *pgxpool.Pool,
 ) (Orchestrator, error) {
 	if logger == nil {
-		logger = log.WithFields(log.Fields{"job": "orchestration"})
+		defLogger := slog.Default().With(slog.String("job", "orchestration"))
+		logger = defLogger
 	}
 	ctx := context.Background()
 
@@ -139,7 +141,7 @@ func CreateOrchestrator(
 		termCollectionStagingLocks: map[db.TermCollection]bool{},
 		schoolIdToServiceManager:   make(map[string]*ServiceManager),
 		schoolIdToSchool:           make(map[string]db.School),
-		orchestrationLogger:        logger,
+		orchestrationLogger:        *logger,
 		dbPool:                     pool,
 	}
 
@@ -150,7 +152,7 @@ func CreateOrchestrator(
 
 func (o Orchestrator) initMappings(ctx context.Context) {
 	for _, service := range o.serviceEntries {
-		serviceLogger := o.orchestrationLogger.WithField("service", (*service).GetName())
+		serviceLogger := o.orchestrationLogger.With(slog.String("service", (*service).GetName()))
 		schools, err := (*service).ListValidSchools(*serviceLogger, ctx)
 		if err != nil {
 			serviceLogger.Warn(
@@ -170,7 +172,7 @@ func (o Orchestrator) initMappings(ctx context.Context) {
 			} else {
 				serviceManager, err := NewServiceManager([]*Service{service})
 				if err != nil {
-					serviceLogger.Warn("Skipping school to service mapping because error: ", err)
+					serviceLogger.Warn("Skipping school to service mapping because error: ", "error", err)
 					continue
 				}
 				o.schoolIdToServiceManager[school.ID] = serviceManager
@@ -206,7 +208,7 @@ func (o Orchestrator) GetSchoolById(schoolId string) (db.School, bool) {
 func (o Orchestrator) UpsertAllSchools(ctx context.Context) error {
 	tx, err := o.dbPool.Begin(ctx)
 	if err != nil {
-		o.orchestrationLogger.Error("Couldn't begin transaction", err)
+		o.orchestrationLogger.Error("Couldn't begin transaction", "error", err)
 		return err
 	}
 	q := db.New(o.dbPool).WithTx(tx)
@@ -218,7 +220,7 @@ func (o Orchestrator) UpsertAllSchools(ctx context.Context) error {
 				Name: school.Name,
 			})
 		if err != nil {
-			o.orchestrationLogger.Error("Couldn't add school", err)
+			o.orchestrationLogger.Error("Couldn't add school", "error", err)
 			tx.Rollback(ctx)
 			return err
 		}
@@ -230,7 +232,7 @@ func (o Orchestrator) UpsertAllSchools(ctx context.Context) error {
 // uses the "best" service for the job
 func (o Orchestrator) UpsertSchoolTerms(
 	ctx context.Context,
-	logger *log.Entry,
+	logger slog.Logger,
 	school db.School,
 ) error {
 	serviceManager, ok := o.schoolIdToServiceManager[school.ID]
@@ -248,7 +250,7 @@ func (o Orchestrator) UpsertSchoolTerms(
 // uses the specified service for the job
 func (o Orchestrator) UpsertSchoolTermsWithService(
 	ctx context.Context,
-	logger *log.Entry,
+	logger slog.Logger,
 	school db.School,
 	serviceName string,
 ) error {
@@ -263,12 +265,12 @@ func (o Orchestrator) UpsertSchoolTermsWithService(
 	}
 	defer tx.Rollback(ctx)
 	q := db.New(tx)
-	termCollections, err := (*service).GetTermCollections(*logger, ctx, school)
+	termCollections, err := (*service).GetTermCollections(logger, ctx, school)
 	if err != nil {
 		return err
 	}
 
-	logger.Tracef(`starting adding collection terms to db`)
+	logger.Debug("starting adding collection terms to db")
 	terms := make([]db.UpsertTermParams, len(termCollections))
 	for i, termCollection := range termCollections {
 		terms[i] = db.UpsertTermParams{
@@ -320,25 +322,25 @@ func (o Orchestrator) UpsertSchoolTermsWithService(
 	}
 
 	tx.Commit(ctx)
-	logger.Infof(`finished adding %d collection terms to db`, len(termCollections))
+	logger.Info("finished adding collection terms to db", slog.Int("terms", len(termCollections)))
 	return nil
 }
 
 func (o Orchestrator) UpsertAllTerms(ctx context.Context) error {
 	var eg errgroup.Group
 	numberOfWorkers := len(o.schoolIdToServiceManager)
-	o.orchestrationLogger.Infof(`Starting to add %d school's terms`, numberOfWorkers)
+	o.orchestrationLogger.Info("Starting to add school's terms", slog.Int("schools", numberOfWorkers))
 
 	for schoolID, serviceManager := range o.schoolIdToServiceManager {
 		eg.Go(func() error {
 			s := serviceManager.GetService()
 			school := o.schoolIdToSchool[schoolID]
-			termLogger := o.orchestrationLogger.WithFields(log.Fields{
-				"school_id": schoolID,
-				"service":   (*s).GetName(),
-			})
-			if err := o.UpsertSchoolTerms(ctx, termLogger, school); err != nil {
-				termLogger.Error("There was an error collecting terms: ", err)
+			termLogger := o.orchestrationLogger.With(
+				slog.String("school_id", schoolID),
+				slog.String("service", (*s).GetName()),
+			)
+			if err := o.UpsertSchoolTerms(ctx, *termLogger, school); err != nil {
+				termLogger.Error("There was an error collecting terms", "error", err)
 				return fmt.Errorf("error upserting terms for school %s: %s", schoolID, err)
 			}
 			termLogger.Info("Successfully upserted terms")
@@ -347,11 +349,11 @@ func (o Orchestrator) UpsertAllTerms(ctx context.Context) error {
 	}
 
 	if err := eg.Wait(); err != nil {
-		o.orchestrationLogger.Errorf("One or more schools failed to upsert terms: %v", err)
+		o.orchestrationLogger.Error("One or more schools failed to upsert terms", "error", err)
 		return fmt.Errorf("one or more schools failed to upsert terms: %s", err)
 	}
 
-	o.orchestrationLogger.Infof(`Added %d school's terms successfully`, numberOfWorkers)
+	o.orchestrationLogger.Info("Added school's terms successfully", slog.Int("schools", numberOfWorkers))
 	return nil
 }
 
@@ -360,11 +362,11 @@ func (o Orchestrator) UpdateAllSectionsOfSchool(
 	termCollection db.TermCollection,
 ) error {
 	serviceManager, ok := o.schoolIdToServiceManager[termCollection.SchoolID]
-	updateLogger := o.orchestrationLogger.WithFields(log.Fields{
-		"school_id": termCollection.SchoolID,
-		"season":    termCollection.Season,
-		"year":      termCollection.Year,
-	})
+	updateLogger := o.orchestrationLogger.With(
+		slog.String("school_id", termCollection.SchoolID),
+		slog.String("season", string(termCollection.Season)),
+		slog.Int64("year", int64(termCollection.Year)),
+	)
 	if !ok {
 		errorTxt := fmt.Sprintf(
 			"Could not find service manager for shool id %s",
@@ -377,7 +379,7 @@ func (o Orchestrator) UpdateAllSectionsOfSchool(
 	return o.UpdateAllSectionsOfSchoolWithService(
 		ctx,
 		termCollection,
-		updateLogger,
+		*updateLogger,
 		(*service).GetName(),
 		false, // TODO: generate this from somewhere maybe if its first collection of the term?
 	)
@@ -386,7 +388,7 @@ func (o Orchestrator) UpdateAllSectionsOfSchool(
 func (o *Orchestrator) UpdateAllSectionsOfSchoolWithService(
 	ctx context.Context,
 	termCollection db.TermCollection,
-	logger *log.Entry,
+	logger slog.Logger,
 	serviceName string,
 	isFullCollection bool,
 ) error {
@@ -406,11 +408,11 @@ func (o *Orchestrator) UpdateAllSectionsOfSchoolWithService(
 
 	// setting up logging
 	school := o.schoolIdToSchool[termCollection.SchoolID]
-	updateLogger := logger.WithFields(log.Fields{
-		"service":        (*service).GetName(),
-		"school":         school,
-		"termCollection": termCollection,
-	})
+	updateLogger := logger.With(
+		slog.String("service", (*service).GetName()),
+		slog.Any("school", school),
+		slog.Any("termCollection", termCollection),
+	)
 
 	// inserting the new term collection attempt in the history
 	priviledgedQueryObject := db.New(o.dbPool)
@@ -431,18 +433,23 @@ func (o *Orchestrator) UpdateAllSectionsOfSchoolWithService(
 		//    of collections and it is also nice to have for logging
 		changeInformation, err := priviledgedQueryObject.GetChangesFromMoveTermCollection(ctx, termCollectionHistoryID)
 		if err != nil {
-			updateLogger.Errorf("Could not query changed data %s", err)
+			updateLogger.Error("Could not query changed data", "error", err)
 			return
 		}
 		duration := time.Duration(changeInformation.ElapsedTime.Microseconds) * time.Microsecond
-		updateLogger.Infof("Inserted %d, updated %d, deleted %d records in %s",
-			changeInformation.InsertRecords, changeInformation.UpdatedRecords, changeInformation.DeletedRecords, duration)
+		updateLogger.Info(
+			"Inserted, updated, deleted records in ",
+			slog.Int64("inserted", changeInformation.InsertRecords),
+			slog.Int64("updated", changeInformation.UpdatedRecords),
+			slog.Int64("deleted", changeInformation.DeletedRecords),
+			slog.Duration("duration", duration),
+		)
 		err = cleanupStagingTables(ctx, priviledgedQueryObject, termCollectionHistoryID)
 		if err != nil {
-			updateLogger.Errorf(
-				"!!! Could not clean up tables for collection `%d` !!! %s",
-				termCollectionHistoryID,
-				err,
+			updateLogger.Error(
+				"!!! Could not clean up tables for collection !!!",
+				slog.Int64("termCollectionHistoryID", int64(termCollectionHistoryID)),
+				"error", err,
 			)
 			return
 		}
@@ -461,25 +468,25 @@ func (o *Orchestrator) UpdateAllSectionsOfSchoolWithService(
 	// prepare the staging area and use the service to get the class information
 	q := db.New(o.dbPool)
 	if err := cleanupStagingTables(ctx, q, termCollectionHistoryID); err != nil {
-		updateLogger.Error("Could not ready staging tables: ", err)
+		updateLogger.Error("Could not ready staging tables", "error", err)
 		return err
 	}
 	entryQ := classentry.NewEntryQuery(o.dbPool, termCollection.SchoolID, &termCollection.ID, &termCollectionHistoryID)
 	if err := (*service).StageAllClasses(*updateLogger, ctx, entryQ, school.ID, classEntryTermCollection, isFullCollection); err != nil {
-		updateLogger.Error("Update sections failed aborting any staged sections/ meetings", err)
+		updateLogger.Error("Update sections failed aborting any staged sections/ meetings", "error", err)
 		return err
 	}
 
 	tx, err := o.dbPool.Begin(ctx)
 	if err != nil {
-		updateLogger.Error("couldn't begin transaction: ", err)
+		updateLogger.Error("couldn't begin transaction", "error", err)
 		return err
 	}
 	defer tx.Rollback(ctx)
 	// setting this variable so triggers are aware of the collection class information is coming from
 	// this did not work using sqlc for some reason
 	if _, err = tx.Exec(ctx, fmt.Sprintf("SET LOCAL app.term_collection_history_id = '%d';", termCollectionHistoryID)); err != nil {
-		updateLogger.Error("Could set app term_collection_history_id variable: ", err)
+		updateLogger.Error("Could set app term_collection_history_id variable", "error", err)
 		return err
 	}
 
@@ -487,13 +494,13 @@ func (o *Orchestrator) UpdateAllSectionsOfSchoolWithService(
 	defer tx.Rollback(ctx)
 	err = moveStagedTables(ctx, q, termCollection, termCollectionHistoryID)
 	if err != nil {
-		updateLogger.Error("Failed moving courses: ", err)
+		updateLogger.Error("Failed moving courses", "error", err)
 		return err
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		updateLogger.Error("Failed commiting move class data transacation: ", err)
+		updateLogger.Error("Failed commiting move class data transacation", "error", err)
 		return err
 	}
 
@@ -528,10 +535,10 @@ func (o *Orchestrator) GetTerms(
 	if !ok {
 		return []db.TermCollection{}, errors.New("School ID not found")
 	}
-	entryTermCollections, err := (*service).GetTermCollections(*o.orchestrationLogger, ctx, school)
+	entryTermCollections, err := (*service).GetTermCollections(o.orchestrationLogger, ctx, school)
 
 	if err != nil {
-		o.orchestrationLogger.Error("There")
+		o.orchestrationLogger.Error("There", "error", err)
 		return []db.TermCollection{}, err
 	}
 

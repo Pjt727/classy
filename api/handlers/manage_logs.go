@@ -9,7 +9,7 @@ import (
 	"github.com/Pjt727/classy/data/db"
 	"github.com/gorilla/websocket"
 	"github.com/robert-nix/ansihtml"
-	log "github.com/sirupsen/logrus"
+	"log/slog"
 	"slices"
 )
 
@@ -28,35 +28,70 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-type WebsocketLoggingHook struct {
+type websocketLoggingHandler struct {
 	orchestratorLabel int
 	termCollection    db.TermCollection
 	serviceName       string
 	h                 *ManageHandler
+	innerHandler      slog.Handler
 }
 
-func (w *WebsocketLoggingHook) Levels() []log.Level {
-	return log.AllLevels
+func NewWebSocketHandler(
+	orchestratorLabel int,
+	termCollection db.TermCollection,
+	serviceName string,
+	h *ManageHandler,
+	innerHandler slog.Handler,
+) *websocketLoggingHandler {
+	return &websocketLoggingHandler{
+		orchestratorLabel: orchestratorLabel,
+		termCollection:    termCollection,
+		serviceName:       serviceName,
+		h:                 h,
+		innerHandler:      innerHandler,
+	}
 }
 
-func (w *WebsocketLoggingHook) Fire(e *log.Entry) error {
+func (w *websocketLoggingHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	// Custom logic before calling the wrapped handler's Enabled method
+	return w.innerHandler.Enabled(ctx, level)
+}
+
+func (w *websocketLoggingHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &websocketLoggingHandler{
+		orchestratorLabel: w.orchestratorLabel,
+		termCollection:    w.termCollection,
+		serviceName:       w.serviceName,
+		h:                 w.h,
+		innerHandler:      w.innerHandler.WithAttrs(attrs),
+	}
+}
+
+func (w *websocketLoggingHandler) WithGroup(name string) slog.Handler {
+	return &websocketLoggingHandler{
+		orchestratorLabel: w.orchestratorLabel,
+		termCollection:    w.termCollection,
+		serviceName:       w.serviceName,
+		h:                 w.h,
+		innerHandler:      w.innerHandler.WithGroup(name),
+	}
+}
+
+func (w *websocketLoggingHandler) Handle(ctx context.Context, r slog.Record) error {
 	wsConn, ok := w.h.orchestrators[w.orchestratorLabel]
 	// it is completely fine if the log does not get sent
 	if !ok {
-		log.Warn("ws failed to be established")
+		slog.Warn("ws failed to be established")
 		return nil
 	}
 
-	logString, err := e.String()
-	if err != nil {
-		log.Error(err)
-		return err
-	}
+	logString := r.Message
 	formattedLog := ansihtml.ConvertToHTML([]byte(logString))
 	var buf bytes.Buffer
-	err = components.CollectionLog(w.termCollection, string(formattedLog)).Render(e.Context, &buf)
+
+	err := components.CollectionLog(w.termCollection, string(formattedLog)).Render(ctx, &buf)
 	if err != nil {
-		log.Error(err)
+		slog.Error("could render log", "err", err)
 		return err
 	}
 	for _, c := range wsConn.connections {
@@ -71,20 +106,20 @@ func (w *WebsocketLoggingHook) Fire(e *log.Entry) error {
 	return nil
 }
 
-func (w *WebsocketLoggingHook) start(ctx context.Context) error {
-	log.Info("Starting term collection")
+func (w *websocketLoggingHandler) start(ctx context.Context) error {
+	slog.Info("Starting term collection")
 	wsConn, ok := w.h.orchestrators[w.orchestratorLabel]
 
-	// it is completely fine if the log does not get sent
+	// it is completely fine if the slog.does not get sent
 	if !ok {
-		log.Warn("Could not find the orch")
+		slog.Warn("Could not find the orch")
 		return nil
 	}
 
 	var buf bytes.Buffer
 	err := components.ActiveTermCollectionOob(w.termCollection).Render(ctx, &buf)
 	if err != nil {
-		log.Error("Could not render the starting oob", err)
+		slog.Error("Could not render the starting oob", "err", err)
 		return err
 	}
 
@@ -97,16 +132,16 @@ func (w *WebsocketLoggingHook) start(ctx context.Context) error {
 		default:
 		}
 	}
-	log.Info("Finished term collection")
+	slog.Info("Finished term collection")
 	return nil
 }
 
-func (w *WebsocketLoggingHook) finish(ctx context.Context, status components.JobStatus) error {
+func (w *websocketLoggingHandler) finish(ctx context.Context, status components.JobStatus) error {
 	wsConn, ok := w.h.orchestrators[w.orchestratorLabel]
 
-	// it is completely fine if the log does not get sent
+	// it is completely fine if the slog.does not get sent
 	if !ok {
-		log.Warn("Could not find the orch")
+		slog.Warn("Could not find the orch")
 		return nil
 	}
 
@@ -114,7 +149,7 @@ func (w *WebsocketLoggingHook) finish(ctx context.Context, status components.Job
 	err := components.JobFinished(w.orchestratorLabel, w.serviceName, w.termCollection, status).
 		Render(ctx, &buf)
 	if err != nil {
-		log.Error("Could not render the finsihed oob", err)
+		slog.Error("Could not render the finsihed oob", "err", err)
 		return err
 	}
 
@@ -141,18 +176,11 @@ func (h *ManageHandler) LoggingWebSocket(w http.ResponseWriter, r *http.Request)
 	conn, err := upgrader.Upgrade(w, r, nil)
 	ctx := r.Context()
 	if err != nil {
-		log.Println("Could not upgrade: ", err)
+		slog.Info("Could not upgrade", "err", err)
 		return
 	}
 
 	label := ctx.Value(OrchestratorLabel).(int)
-	userCookie := ctx.Value(UserCookie).(string)
-
-	if userCookie == "" {
-		log.Error("User cookie not found")
-		conn.Close()
-		return
-	}
 
 	wsConn := &WebSocketConnection{
 		conn:              conn,
@@ -187,7 +215,7 @@ func (wsConn *WebSocketConnection) readPump() {
 				websocket.CloseGoingAway,
 				websocket.CloseAbnormalClosure,
 			) {
-				log.Printf("error: %v", err)
+				slog.Info("error: %v", "err", err)
 			}
 			break
 		}
@@ -208,7 +236,7 @@ func (wsConn *WebSocketConnection) writePump() {
 
 			err := wsConn.conn.WriteMessage(websocket.TextMessage, message)
 			if err != nil {
-				log.Error("Channel error: ", err)
+				slog.Error("Channel error: ", "err", err)
 				return
 			}
 		}

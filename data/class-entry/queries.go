@@ -2,9 +2,9 @@ package classentry
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5"
-	log "github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/Pjt727/classy/data/db"
@@ -62,7 +62,7 @@ type ClassData struct {
 
 // / helper to add class information concurrently
 func (q *EntryQueries) InsertClassData(
-	logger *log.Entry,
+	logger *slog.Logger,
 	ctx context.Context,
 	classData ClassData,
 ) error {
@@ -80,7 +80,7 @@ func (q *EntryQueries) InsertClassData(
 	return nil
 }
 
-func (q *EntryQueries) StageMeetingTimes(ctx context.Context, meetingTimes []MeetingTime, logger *log.Entry) error {
+func (q *EntryQueries) StageMeetingTimes(ctx context.Context, meetingTimes []MeetingTime, logger *slog.Logger) error {
 	if len(meetingTimes) == 0 {
 		return nil
 	}
@@ -112,13 +112,13 @@ func (q *EntryQueries) StageMeetingTimes(ctx context.Context, meetingTimes []Mee
 	}
 	_, err := q.q.StageMeetingTimes(ctx, dbMeetingTimes)
 	if err != nil {
-		logger.Error("Staging meetings error ", err)
+		logger.Error("Staging meetings error ", "error", err)
 		return err
 	}
 	return nil
 }
 
-func (q *EntryQueries) StageSections(ctx context.Context, sections []Section, logger *log.Entry) error {
+func (q *EntryQueries) StageSections(ctx context.Context, sections []Section, logger *slog.Logger) error {
 	if len(sections) == 0 {
 		return nil
 	}
@@ -142,13 +142,13 @@ func (q *EntryQueries) StageSections(ctx context.Context, sections []Section, lo
 	}
 	_, err := q.q.StageSections(ctx, dbSections)
 	if err != nil {
-		logger.Error("Staging sections error ", err)
+		logger.Error("Staging sections error ", "error", err)
 		return err
 	}
 	return nil
 }
 
-func (q *EntryQueries) StageProfessors(ctx context.Context, professors []Professor, logger *log.Entry) error {
+func (q *EntryQueries) StageProfessors(ctx context.Context, professors []Professor, logger *slog.Logger) error {
 	if len(professors) == 0 {
 		return nil
 	}
@@ -168,13 +168,13 @@ func (q *EntryQueries) StageProfessors(ctx context.Context, professors []Profess
 	}
 	_, err := q.q.StageProfessors(ctx, dbProfessors)
 	if err != nil {
-		logger.Error("Error upserting fac ", err)
+		logger.Error("Error upserting fac ", "error", err)
 		return err
 	}
 	return nil
 }
 
-func (q *EntryQueries) StageCourses(ctx context.Context, courses []Course, logger *log.Entry) error {
+func (q *EntryQueries) StageCourses(ctx context.Context, courses []Course, logger *slog.Logger) error {
 	if len(courses) == 0 {
 		return nil
 	}
@@ -195,7 +195,7 @@ func (q *EntryQueries) StageCourses(ctx context.Context, courses []Course, logge
 	}
 	_, err := q.q.StageCourses(ctx, dbCourses)
 	if err != nil {
-		logger.Error("Error upserting course", err)
+		logger.Error("Error upserting course", "error", err)
 		return err
 	}
 	return nil

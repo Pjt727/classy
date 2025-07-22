@@ -6,12 +6,14 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
+
+	"log/slog"
 
 	"github.com/Pjt727/classy/collection"
 	"github.com/Pjt727/classy/data"
 	"github.com/Pjt727/classy/data/db"
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -23,44 +25,46 @@ var schoolCmd = &cobra.Command{
 and term (defaulting the current term) Updating the following data: sections, meeting times, courses, 
 facualty members, and internal collection tables`,
 	Run: func(cmd *cobra.Command, args []string) {
-		log.SetLevel(log.TraceLevel)
-		logger := log.WithFields(log.Fields{
-			"job": "getSchool",
-		})
+		slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		}))
+		logger := slog.With(
+			slog.String("job", "getSchool"),
+		)
 		schoolId, err := cmd.Flags().GetString("schoolid")
 		if err != nil {
-			logger.Error("invalid schoolid", err)
+			logger.Error("invalid schoolid", "err", err)
 			return
 		}
 		termYear, err := cmd.Flags().GetInt("termyear")
 		if err != nil {
-			logger.Error("invalid termyear", err)
+			logger.Error("invalid termyear", "err", err)
 			return
 		}
 		termSeasonInput, err := cmd.Flags().GetString("termseason")
 		if err != nil {
-			logger.Error("invalid termseason", err)
+			logger.Error("invalid termseason", "err", err)
 			return
 		}
 		schoolName, err := cmd.Flags().GetString("schoolname")
 		if err != nil {
-			logger.Error("invalid school name", err)
+			logger.Error("invalid school name", "err", err)
 			return
 		}
 		var termSeason db.SeasonEnum
 		if err := termSeason.Scan(termSeasonInput); err != nil {
-			logger.Error("Term season is invalid: ", err)
+			logger.Error("Term season is invalid: ", "err", err)
 			return
 		}
 		ctx := context.Background()
 		dbPool, err := data.NewPool(ctx, false)
 		if err != nil {
-			logger.Error("Could not connect to db: ", err)
+			logger.Error("Could not connect to db: ", "err", err)
 			return
 		}
 		orchestrator, err := collection.GetDefaultOrchestrator(dbPool)
 		if err != nil {
-			logger.Error("Could create o: orchestrator", err)
+			logger.Error("Could create o: orchestrator", "err", err)
 			return
 		}
 
@@ -72,13 +76,13 @@ facualty members, and internal collection tables`,
 		}
 
 		// update the terms for the school
-		err = orchestrator.UpsertSchoolTerms(ctx, logger, db.School{
+		err = orchestrator.UpsertSchoolTerms(ctx, *logger, db.School{
 			ID:   schoolId,
 			Name: schoolName,
 		})
 
 		if err != nil {
-			logger.Error("There was an error upserting school's terms: ", err)
+			logger.Error("There was an error upserting school's terms", "err", err)
 			return
 		}
 
@@ -92,13 +96,13 @@ facualty members, and internal collection tables`,
 			},
 		)
 		if err != nil {
-			logger.Error("There was an error getting terms: ", err)
+			logger.Error("There was an error getting terms: ", "err", err)
 			return
 		}
 
 		var termCollection db.TermCollection
 		if len(termCollections) == 0 {
-			logger.Errorf("There are no terms for %s %d", termSeason, termYear)
+			logger.Error("There are no terms", "season", termSeason, "year", termYear)
 			return
 		} else if len(termCollections) == 1 {
 			termCollection = termCollections[0].TermCollection
@@ -113,16 +117,16 @@ facualty members, and internal collection tables`,
 				_, err = fmt.Scanln(&choice)
 				choice-- // 1 based numbering
 				if choice < 0 || len(termCollections) <= int(choice) {
-					logger.Errorf("Invalid choice try again\n\n\n")
+					logger.Error("Invalid choice try again\n\n\n")
 				} else {
 					termCollection = termCollections[choice].TermCollection
 				}
 			}
 		}
 
-		logger.Infof("Starting update for school %s", schoolId)
+		logger.Info("Starting update for school", "schoolid", schoolId)
 		orchestrator.UpdateAllSectionsOfSchool(ctx, termCollection)
-		logger.Infof("Finished update for school %s", schoolId)
+		logger.Info("Finished update for school", "schoolid", schoolId)
 	},
 }
 

@@ -12,7 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	log "github.com/sirupsen/logrus"
+	"log/slog"
 )
 
 func Serve() {
@@ -30,7 +30,7 @@ func Serve() {
 
 	dbPool, err := data.NewPool(context.Background(), false)
 	if err != nil {
-		log.Error("Fatal cannot connect to main db: ", err)
+		slog.Error("Fatal cannot connect to main db", "err", err)
 		return
 	}
 
@@ -45,14 +45,14 @@ func Serve() {
 
 	dbTestPool, err := data.NewPool(context.Background(), true)
 	if err != nil {
-		log.Warn("Cannot connect to test db: ", err)
+		slog.Warn("Cannot connect to test db", "err", err)
 		return
 	}
 	r.Route("/manage", func(r chi.Router) {
 		populateManagementRoutes(&r, dbPool, dbTestPool)
 	})
 	port := 3000
-	log.Infof("Running server on :%d", port)
+	slog.Info("Running server on", "port", port)
 	http.ListenAndServe(fmt.Sprintf(":%d", port), r)
 }
 
