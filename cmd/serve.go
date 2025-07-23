@@ -4,11 +4,11 @@ Copyright © 2025 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
-	"github.com/Pjt727/classy/api"
+	"github.com/Pjt727/classy/server"
 	"github.com/spf13/cobra"
 )
 
-// serveCmd represents the serve command
+// serveapiCmd represents the serve command
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Runs the api service",

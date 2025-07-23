@@ -1,4 +1,4 @@
-package handlers
+package servermanage
 
 import (
 	"bytes"
@@ -11,8 +11,8 @@ import (
 	"log/slog"
 	"slices"
 
-	"github.com/Pjt727/classy/api/components"
 	"github.com/Pjt727/classy/data/db"
+	"github.com/Pjt727/classy/server/components"
 	"github.com/gorilla/websocket"
 	"github.com/robert-nix/ansihtml"
 )
@@ -36,15 +36,15 @@ type websocketLoggingHandler struct {
 	orchestratorLabel int
 	termCollection    db.TermCollection
 	serviceName       string
-	h                 *ManageHandler
+	h                 *manageHandler
 	innerHandler      slog.Handler
 }
 
-func NewWebSocketHandler(
+func newWebSocketHandler(
 	orchestratorLabel int,
 	termCollection db.TermCollection,
 	serviceName string,
-	h *ManageHandler,
+	h *manageHandler,
 	innerHandler slog.Handler,
 ) *websocketLoggingHandler {
 	return &websocketLoggingHandler{
@@ -228,10 +228,10 @@ type WebSocketConnection struct {
 	conn              *websocket.Conn
 	orchestratorLabel int
 	send              chan []byte
-	h                 *ManageHandler
+	h                 *manageHandler
 }
 
-func (h *ManageHandler) LoggingWebSocket(w http.ResponseWriter, r *http.Request) {
+func (h *manageHandler) loggingWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	ctx := r.Context()
 	if err != nil {

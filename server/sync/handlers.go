@@ -1,4 +1,4 @@
-package handlers
+package serversync
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 var DEFAULT_MAX_RECORDS uint32 = 500
 var LIMIT_MAX_RECORDS uint32 = 10_000
 
-type SyncChange struct {
+type syncChange struct {
 	Sequence       uint32         `json:"sequence"`
 	TableName      string         `json:"table_name"`
 	PkFields       map[string]any `json:"pk_fields"`
@@ -23,17 +23,17 @@ type SyncChange struct {
 	RelevantFields map[string]any `json:"relevant_fields"`
 }
 
-type SyncHandler struct {
+type syncHandler struct {
 	DbPool *pgxpool.Pool
 }
 
 // all syncs
 type syncResult struct {
-	SyncData     []SyncChange `json:"data"`
+	SyncData     []syncChange `json:"data"`
 	LastSequence uint32       `json:"new_latest_sync"`
 }
 
-func (h *SyncHandler) SyncAll(w http.ResponseWriter, r *http.Request) {
+func (h *syncHandler) syncAll(w http.ResponseWriter, r *http.Request) {
 
 	inputSequence := r.URL.Query().Get("lastSyncSequence")
 	var sequence int
@@ -75,9 +75,9 @@ func (h *SyncHandler) SyncAll(w http.ResponseWriter, r *http.Request) {
 		slog.Error("Could not get lastest sync rows", "err", err)
 		return
 	}
-	syncChanges := make([]SyncChange, len(syncChangeRows))
+	syncChanges := make([]syncChange, len(syncChangeRows))
 	for i, syncChangeRow := range syncChangeRows {
-		syncChanges[i] = SyncChange{
+		syncChanges[i] = syncChange{
 			Sequence:       uint32(syncChangeRow.Sequence),
 			TableName:      syncChangeRow.TableName,
 			PkFields:       syncChangeRow.PkFields,
@@ -123,10 +123,10 @@ type selectSchoolEntry struct {
 
 type syncTermsResult struct {
 	NewSyncSequences map[string]any `json:"new_sync_term_sequences"`
-	SyncData         []SyncChange   `json:"sync_data"`
+	SyncData         []syncChange   `json:"sync_data"`
 }
 
-func (h *SyncHandler) SyncSchoolTerms(w http.ResponseWriter, r *http.Request) {
+func (h *syncHandler) syncSchoolTerms(w http.ResponseWriter, r *http.Request) {
 
 	// reuse this input at return updating values in return without a separate qwuery
 	var syncData selectSchoolEntry
@@ -148,9 +148,9 @@ func (h *SyncHandler) SyncSchoolTerms(w http.ResponseWriter, r *http.Request) {
 		maxRequestsPerRequest = DEFAULT_MAX_RECORDS
 	}
 
-	syncChanges := make([]SyncChange, 0)
+	syncChanges := make([]syncChange, 0)
 	for schoolID, sequenceOrTermMap := range syncData.Schools {
-		var newSyncChanges []SyncChange
+		var newSyncChanges []syncChange
 		switch schoolChoice := sequenceOrTermMap.(type) {
 		case float64: // this school last sequence
 			if schoolChoice < 0 {
@@ -200,8 +200,8 @@ func (h *SyncHandler) SyncSchoolTerms(w http.ResponseWriter, r *http.Request) {
 }
 
 // / updates the running term last sequence to the latest sync number
-func getTerms(q *db.Queries, ctx context.Context, schoolID string, runningtermToLastSequence map[string]uint32, maxRecords uint32) ([]SyncChange, error) {
-	syncChanges := make([]SyncChange, 0)
+func getTerms(q *db.Queries, ctx context.Context, schoolID string, runningtermToLastSequence map[string]uint32, maxRecords uint32) ([]syncChange, error) {
+	syncChanges := make([]syncChange, 0)
 
 	for termCollectionID, lastSequence := range runningtermToLastSequence {
 		syncTermResultRows, err := q.SyncTerm(ctx, db.SyncTermParams{
@@ -216,7 +216,7 @@ func getTerms(q *db.Queries, ctx context.Context, schoolID string, runningtermTo
 		}
 
 		for _, r := range syncTermResultRows {
-			syncChanges = append(syncChanges, SyncChange{
+			syncChanges = append(syncChanges, syncChange{
 				Sequence:       uint32(r.Sequence),
 				TableName:      r.TableName,
 				PkFields:       r.PkFields,
@@ -233,8 +233,8 @@ func getTerms(q *db.Queries, ctx context.Context, schoolID string, runningtermTo
 }
 
 // / does not update the last sequence
-func getSchool(q *db.Queries, ctx context.Context, schoolID string, lastSequence uint32, maxRecords uint32) ([]SyncChange, error) {
-	syncChanges := make([]SyncChange, 0)
+func getSchool(q *db.Queries, ctx context.Context, schoolID string, lastSequence uint32, maxRecords uint32) ([]syncChange, error) {
+	syncChanges := make([]syncChange, 0)
 
 	syncSchoolResultRow, err := q.SyncSchool(ctx, db.SyncSchoolParams{
 		LastSequence: int32(lastSequence),
@@ -247,7 +247,7 @@ func getSchool(q *db.Queries, ctx context.Context, schoolID string, lastSequence
 	}
 
 	for _, r := range syncSchoolResultRow {
-		syncChanges = append(syncChanges, SyncChange{
+		syncChanges = append(syncChanges, syncChange{
 			Sequence:       uint32(r.Sequence),
 			TableName:      r.TableName,
 			PkFields:       r.PkFields,

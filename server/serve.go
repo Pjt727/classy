@@ -7,12 +7,16 @@ import (
 	"path/filepath"
 	"strings"
 
+	"log/slog"
+
 	"github.com/Pjt727/classy/collection/projectpath"
 	"github.com/Pjt727/classy/data"
+	serverget "github.com/Pjt727/classy/server/get"
+	servermanage "github.com/Pjt727/classy/server/manage"
+	serversync "github.com/Pjt727/classy/server/sync"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	"log/slog"
 )
 
 func Serve() {
@@ -35,10 +39,11 @@ func Serve() {
 	}
 
 	r.Route("/get", func(r chi.Router) {
-		populateGetRoutes(&r, dbPool)
+
+		serverget.PopulateGetRoutes(&r, dbPool)
 	})
 	r.Route("/sync", func(r chi.Router) {
-		populateSyncRoutes(&r, dbPool)
+		serversync.PopulateSyncRoutes(&r, dbPool)
 	})
 
 	fileServer(r, "/static", http.Dir(filepath.Join(projectpath.Root, "api", "static")))
@@ -49,7 +54,7 @@ func Serve() {
 		return
 	}
 	r.Route("/manage", func(r chi.Router) {
-		populateManagementRoutes(&r, dbPool, dbTestPool)
+		servermanage.PopulateManagementRoutes(&r, dbPool, dbTestPool)
 	})
 	port := 3000
 	slog.Info("Running server on", "port", port)

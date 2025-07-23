@@ -1,18 +1,16 @@
-package api
+package serverget
 
 import (
 	"context"
+	"github.com/go-chi/chi/v5"
 	"net/http"
 	"strconv"
-
-	"github.com/Pjt727/classy/api/handlers"
-	"github.com/go-chi/chi/v5"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func populateGetRoutes(r *chi.Router, pool *pgxpool.Pool) {
-	getHandler := handlers.GetHandler{
+func PopulateGetRoutes(r *chi.Router, pool *pgxpool.Pool) {
+	getHandler := GetHandler{
 		DbPool: pool,
 	}
 
@@ -64,8 +62,8 @@ func populatePagnation(next http.Handler) http.Handler {
 			}
 			limit = setLimit
 		}
-		ctx = context.WithValue(ctx, handlers.OffsetKey, int32(offset))
-		ctx = context.WithValue(ctx, handlers.LimitKey, int32(limit))
+		ctx = context.WithValue(ctx, OffsetKey, int32(offset))
+		ctx = context.WithValue(ctx, LimitKey, int32(limit))
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

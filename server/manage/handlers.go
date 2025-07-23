@@ -1,4 +1,4 @@
-package handlers
+package servermanage
 
 import (
 	"context"
@@ -8,16 +8,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Pjt727/classy/api/components"
+	"log/slog"
+
 	"github.com/Pjt727/classy/collection"
 	test_banner "github.com/Pjt727/classy/collection/services/banner/test"
 	"github.com/Pjt727/classy/data/db"
 	dbhelpers "github.com/Pjt727/classy/data/testdb"
+	"github.com/Pjt727/classy/server/components"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"log/slog"
 )
 
 type Sanatized int
@@ -38,8 +39,8 @@ type tokenStore struct {
 	mu                sync.RWMutex
 }
 
-func (t *tokenStore) GetToken(token string) (string, bool) {
-	t.RefreshToken()
+func (t *tokenStore) getToken(token string) (string, bool) {
+	t.refreshToken()
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	username, ok := t.tokenToUsername[token]
@@ -51,7 +52,7 @@ func (t *tokenStore) GetToken(token string) (string, bool) {
 	return username, ok
 }
 
-func (t *tokenStore) AddToken(token string, username string) {
+func (t *tokenStore) addToken(token string, username string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.tokenToUsername[token] = username
@@ -60,7 +61,7 @@ func (t *tokenStore) AddToken(token string, username string) {
 
 // could also use goroutines but this should be fine
 // bc of the low number of expected users for management auth
-func (t *tokenStore) RefreshToken() {
+func (t *tokenStore) refreshToken() {
 	currentTime := time.Now()
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -72,7 +73,7 @@ func (t *tokenStore) RefreshToken() {
 	}
 }
 
-type ManageHandler struct {
+type manageHandler struct {
 	DbPool     *pgxpool.Pool
 	TestDbPool *pgxpool.Pool
 
@@ -94,14 +95,14 @@ type sessionOrchestrator struct {
 	mu          sync.Mutex
 }
 
-func GetManageHandler(pool *pgxpool.Pool, testPool *pgxpool.Pool) *ManageHandler {
+func getManageHandler(pool *pgxpool.Pool, testPool *pgxpool.Pool) *manageHandler {
 
 	testingSerivce, err := test_banner.GetTestingService()
 	if err != nil {
 		panic(err)
 	}
 
-	h := &ManageHandler{
+	h := &manageHandler{
 		DbPool:                pool,
 		TestDbPool:            testPool,
 		orchestrators:         map[int]*sessionOrchestrator{},
@@ -150,7 +151,7 @@ func GetManageHandler(pool *pgxpool.Pool, testPool *pgxpool.Pool) *ManageHandler
 	return h
 }
 
-func Notify(
+func notify(
 	w http.ResponseWriter,
 	r *http.Request,
 	notificationType components.NotificationType,
@@ -163,7 +164,7 @@ func Notify(
 	}
 }
 
-func (h *ManageHandler) LoginView(w http.ResponseWriter, r *http.Request) {
+func (h *manageHandler) loginView(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	err := components.Login().Render(r.Context(), w)
 
@@ -174,7 +175,7 @@ func (h *ManageHandler) LoginView(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *ManageHandler) Login(w http.ResponseWriter, r *http.Request) {
+func (h *manageHandler) login(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	err := components.Login().Render(r.Context(), w)
 
@@ -195,7 +196,7 @@ func (h *ManageHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *ManageHandler) DashboardHome(w http.ResponseWriter, r *http.Request) {
+func (h *manageHandler) dashboardHome(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 	// servicesForSchools := h.Orchestrator.GetSchoolsWithService()
@@ -217,7 +218,7 @@ func (h *ManageHandler) DashboardHome(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (h *ManageHandler) NewOrchestrator(w http.ResponseWriter, r *http.Request) {
+func (h *manageHandler) newOrchestrator(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	name := r.FormValue("name")
 	isTest := r.FormValue("isTest") == "true"
@@ -248,7 +249,7 @@ func (h *ManageHandler) NewOrchestrator(w http.ResponseWriter, r *http.Request) 
 
 	if err != nil {
 		slog.ErrorContext(r.Context(), "Error decoding post", "error", err)
-		Notify(w, r, components.NotifyError, "Invlaid parameters")
+		notify(w, r, components.NotifyError, "Invlaid parameters")
 		return
 	}
 
@@ -263,21 +264,21 @@ func (h *ManageHandler) NewOrchestrator(w http.ResponseWriter, r *http.Request) 
 
 	if err != nil {
 		slog.ErrorContext(r.Context(), "Could not render template", "error", err)
-		Notify(w, r, components.NotifyError, "Could not render orchestrator")
+		notify(w, r, components.NotifyError, "Could not render orchestrator")
 		return
 	}
 
-	Notify(w, r, components.NotifySuccess, fmt.Sprintf("Succesfully added `%s`", name))
+	notify(w, r, components.NotifySuccess, fmt.Sprintf("Succesfully added `%s`", name))
 
 	err = components.NewOrchestrator().Render(r.Context(), w)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "Could not render template", "error", err)
-		Notify(w, r, components.NotifyError, "Could not render new form orchestrator")
+		notify(w, r, components.NotifyError, "Could not render new form orchestrator")
 		return
 	}
 }
 
-func (h *ManageHandler) ValidateOrchestrator(next http.Handler) http.Handler {
+func (h *manageHandler) validateOrchestrator(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		label, err := strconv.Atoi(chi.URLParam(r, "orchestratorLabel"))
@@ -298,7 +299,7 @@ func (h *ManageHandler) ValidateOrchestrator(next http.Handler) http.Handler {
 	})
 }
 
-func EnsureCookie(next http.Handler) http.Handler {
+func ensureCookie(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		var cookie *http.Cookie
@@ -313,7 +314,7 @@ func EnsureCookie(next http.Handler) http.Handler {
 	})
 }
 
-func (h *ManageHandler) OrchestratorHome(w http.ResponseWriter, r *http.Request) {
+func (h *manageHandler) orchestratorHome(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	ctx := r.Context()
 	index := ctx.Value(OrchestratorLabel).(int)
@@ -331,7 +332,7 @@ func (h *ManageHandler) OrchestratorHome(w http.ResponseWriter, r *http.Request)
 	}
 }
 
-func (h *ManageHandler) OrchestratorGetTerms(w http.ResponseWriter, r *http.Request) {
+func (h *manageHandler) orchestratorGetTerms(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	ctx := r.Context()
 	index := ctx.Value(OrchestratorLabel).(int)
@@ -343,7 +344,7 @@ func (h *ManageHandler) OrchestratorGetTerms(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		badValues := fmt.Sprintf("service name: `%s`, school ID: `%s`", serviceName, schoolID)
 		slog.ErrorContext(ctx, "Could not get terms", "serviceName", serviceName, "schoolID", schoolID, "error", err)
-		Notify(w, r, components.NotifyError, fmt.Sprintf("Failed to get terms for %s", badValues))
+		notify(w, r, components.NotifyError, fmt.Sprintf("Failed to get terms for %s", badValues))
 		return
 	}
 
@@ -351,12 +352,12 @@ func (h *ManageHandler) OrchestratorGetTerms(w http.ResponseWriter, r *http.Requ
 
 	if err != nil {
 		slog.ErrorContext(ctx, "Term collections failed to render", "error", err)
-		Notify(w, r, components.NotifyError, "Orchestrator rendering failed")
+		notify(w, r, components.NotifyError, "Orchestrator rendering failed")
 		return
 	}
 }
 
-func (h *ManageHandler) CollectTerm(w http.ResponseWriter, r *http.Request) {
+func (h *manageHandler) collectTerm(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	ctx := r.Context()
 	label := ctx.Value(OrchestratorLabel).(int)
@@ -370,7 +371,7 @@ func (h *ManageHandler) CollectTerm(w http.ResponseWriter, r *http.Request) {
 	school, ok := orchestrator.data.O.GetSchoolById(schoolID)
 	if !ok {
 		slog.ErrorContext(ctx, "Could not find school", "schoolID", schoolID)
-		Notify(
+		notify(
 			w,
 			r,
 			components.NotifyError,
@@ -391,7 +392,7 @@ func (h *ManageHandler) CollectTerm(w http.ResponseWriter, r *http.Request) {
 			StillCollecting: false,
 		}
 
-		handler := NewWebSocketHandler(label, termCollection, serviceName, h, slog.Default().Handler())
+		handler := newWebSocketHandler(label, termCollection, serviceName, h, slog.Default().Handler())
 		oneOffLogger := slog.New(handler).With(
 			slog.String("job", "User driven"),
 			slog.String("termID", termID),
@@ -444,7 +445,7 @@ func (h *ManageHandler) CollectTerm(w http.ResponseWriter, r *http.Request) {
 		}
 		handler.finish(ctx, components.JobSuccess)
 	}()
-	Notify(
+	notify(
 		w,
 		r,
 		components.NotifyProgress,
@@ -455,7 +456,7 @@ func (h *ManageHandler) CollectTerm(w http.ResponseWriter, r *http.Request) {
 // runs all up and down migrations of the database...
 //
 //	ALL data is lost when doing this
-func (h *ManageHandler) ResetDatabase(w http.ResponseWriter, r *http.Request) {
+func (h *manageHandler) resetDatabase(w http.ResponseWriter, r *http.Request) {
 	isMainDb := r.FormValue("db") == "main"
 	var message string
 	var status components.NotificationType
@@ -478,7 +479,7 @@ func (h *ManageHandler) ResetDatabase(w http.ResponseWriter, r *http.Request) {
 			status = components.NotifySuccess
 		}
 	}
-	Notify(
+	notify(
 		w,
 		r,
 		status,

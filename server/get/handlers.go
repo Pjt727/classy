@@ -1,4 +1,4 @@
-package handlers
+package serverget
 
 import (
 	"encoding/json"
