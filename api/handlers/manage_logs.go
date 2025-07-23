@@ -3,9 +3,10 @@ package handlers
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
+	"time"
 
 	"log/slog"
 	"slices"
@@ -80,6 +81,49 @@ func (w *websocketLoggingHandler) WithGroup(name string) slog.Handler {
 	}
 }
 
+type formatter struct {
+	buf []byte
+}
+
+func (f *formatter) appendString(s string) {
+	f.buf = append(f.buf, s...)
+}
+
+func (f *formatter) appendValue(v slog.Value) {
+	switch v.Kind() {
+	case slog.KindString:
+		f.buf = append(f.buf, v.String()...)
+	case slog.KindInt64:
+		f.buf = strconv.AppendInt(f.buf, v.Int64(), 10)
+	case slog.KindUint64:
+		f.buf = strconv.AppendUint(f.buf, v.Uint64(), 10)
+	case slog.KindFloat64:
+		f.buf = strconv.AppendFloat(f.buf, v.Float64(), 'g', -1, 64)
+	case slog.KindBool:
+		f.buf = strconv.AppendBool(f.buf, v.Bool())
+	case slog.KindDuration:
+		f.appendString(v.Duration().String())
+	case slog.KindTime:
+		t := v.Time()
+		f.buf = t.AppendFormat(f.buf, time.RFC3339Nano)
+	case slog.KindAny:
+		a := v.Any()
+		if err, ok := a.(error); ok {
+			f.appendString(err.Error())
+		} else if s, ok := a.(fmt.Stringer); ok {
+			f.appendString(s.String())
+		} else {
+			f.appendString(fmt.Sprint(a))
+		}
+	default:
+		panic(fmt.Sprintf("bad kind: %s", v.Kind()))
+	}
+}
+
+func lightCyan(s string) string {
+	return "\033[96m" + s + "\033[0m"
+}
+
 func (w *websocketLoggingHandler) Handle(ctx context.Context, r slog.Record) error {
 	wsConn, ok := w.h.orchestrators[w.orchestratorLabel]
 	// it is completely fine if the log does not get sent
@@ -88,26 +132,23 @@ func (w *websocketLoggingHandler) Handle(ctx context.Context, r slog.Record) err
 		return nil
 	}
 
-	logString := r.Message
-	// Extract attributes and convert to JSON
-	attrs := make(map[string]any)
+	runningLog := &formatter{
+		buf: []byte{},
+	}
+	runningLog.appendString(r.Message)
+	runningLog.appendString(" ")
 	r.Attrs(func(a slog.Attr) bool {
-		attrs[a.Key] = a.Value.Any()
+		runningLog.appendString(lightCyan(a.Key))
+		runningLog.appendString("=")
+		runningLog.appendValue(a.Value)
+		runningLog.appendString(" ")
 		return true
 	})
 
-	jsonBytes, err := json.Marshal(attrs)
-	if err != nil {
-		slog.Error("failed to marshal attributes to JSON", "err", err)
-		// Handle the error appropriately.  Maybe just log the message without the JSON.
-	} else {
-		logString += fmt.Sprintf("%v", jsonBytes)
-	}
+	formattedLog := ansihtml.ConvertToHTML(runningLog.buf)
 
-	formattedLog := ansihtml.ConvertToHTML([]byte(logString))
-	var buf bytes.Buffer
-
-	err = components.CollectionLog(w.termCollection, string(formattedLog)).Render(ctx, &buf)
+	var logNotification bytes.Buffer
+	err := components.CollectionLog(w.termCollection, string(formattedLog)).Render(ctx, &logNotification)
 	if err != nil {
 		slog.Error("could render log", "err", err)
 		return err
@@ -117,7 +158,7 @@ func (w *websocketLoggingHandler) Handle(ctx context.Context, r slog.Record) err
 			continue
 		}
 		select {
-		case c.send <- buf.Bytes():
+		case c.send <- logNotification.Bytes():
 		default:
 		}
 	}
