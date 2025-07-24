@@ -22,9 +22,10 @@ import (
 func Serve() {
 	r := chi.NewRouter()
 	cors := cors.New(cors.Options{
-		AllowedOrigins:   []string{"*"}, // Allow all origins
+		// Allow the github page to make to make requests for when running locally
+		AllowedOrigins:   []string{"https://pjt727.github.io"},
 		AllowedMethods:   []string{"GET"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: true,
 		MaxAge:           300, // Maximum age for preflight requests
