@@ -120,7 +120,6 @@ type searchResults struct {
 
 // this route returns all the class data
 func (m *mockServerState) handleSearchResults(w http.ResponseWriter, r *http.Request) {
-
 	query := r.URL.Query()
 	term := query.Get("txt_term")
 	pageOffsetStr := query.Get("pageOffset")
@@ -194,21 +193,6 @@ func (m *mockServerState) handleGetTerms(w http.ResponseWriter, r *http.Request)
 
 	// might eventually add the different data or only read this once
 	termsPath := filepath.Join(TESTING_ASSETS_BASE_DIR, "marist", "mock-server", "terms.json")
-	// jsonData, err := os.ReadFile(termsPath)
-	// if err != nil {
-	// 	http.Error(w, fmt.Sprintf("Could not find terms path %s", termsPath), http.StatusInternalServerError)
-	// 	return
-	// }
-	//
-	// var response []map[string]any
-	// err = json.Unmarshal(jsonData, &response)
-	// if err != nil {
-	// 	http.Error(w, fmt.Sprintf("Could parse terms %v", err), http.StatusInternalServerError)
-	// 	return
-	// }
-	//
-	// w.Header().Set("Content-Type", "application/json")
-	// json.NewEncoder(w).Encode(response)
 	http.ServeFile(w, r, termsPath)
 }
 
