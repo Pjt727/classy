@@ -3,7 +3,7 @@ package banner_test
 import (
 	"testing"
 
-	test_banner "github.com/Pjt727/classy/collection/services/banner/test"
+	test_banner "github.com/Pjt727/classy/collection/services/banner/testbanner"
 	dbhelpers "github.com/Pjt727/classy/data/testdb"
 )
 
@@ -14,7 +14,7 @@ func TestBannerFileInput(t *testing.T) {
 		return
 	}
 
-	fileTestsBanner, err := test_banner.GetTestingService()
+	fileTestsBanner, err := test_banner.GetFileTestingService()
 
 	if err != nil {
 		t.Error(err)

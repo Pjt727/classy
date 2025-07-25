@@ -27,8 +27,8 @@ import (
 )
 
 type bannerSchool struct {
-	school   classentry.School
-	hostname string
+	school  classentry.School
+	baseURL string
 
 	// to limit the max amount of requests out that go without having an answer
 	RegularCollectionSectionSemaphore int
@@ -41,19 +41,16 @@ type bannerSchool struct {
 }
 
 type banner struct {
-	schools map[string]bannerSchool
+	schools map[string]*bannerSchool
 }
 
-var Service *banner
-var once sync.Once
-
-func init() {
+func GetDefaultService() *banner {
 	marist := classentry.School{ID: "marist", Name: "Marist University"}
 	temple := classentry.School{ID: "temple", Name: "Temple University"}
-	schools := map[string]bannerSchool{
+	schools := map[string]*bannerSchool{
 		marist.ID: {
 			school:                            marist,
-			hostname:                          "ssb1-reg.banner.marist.edu",
+			baseURL:                           "https://ssb1-reg.banner.marist.edu",
 			FullCollectionSectionSemaphore:    3,
 			FullCollectionCourseSemaphore:     35,
 			RegularCollectionSectionSemaphore: 5,
@@ -64,7 +61,7 @@ func init() {
 		},
 		temple.ID: {
 			school:                            temple,
-			hostname:                          "prd-xereg.temple.edu",
+			baseURL:                           "https://prd-xereg.temple.edu",
 			FullCollectionSectionSemaphore:    2,
 			FullCollectionCourseSemaphore:     20,
 			RegularCollectionSectionSemaphore: 5,
@@ -73,7 +70,19 @@ func init() {
 			rateLimiter:                       services.NewAdaptiveRateLimiter(rate.Every(25*time.Millisecond), 5, rate.Every(50*time.Millisecond)),
 		},
 	}
-	Service = &banner{schools: schools}
+	return &banner{schools: schools}
+}
+
+// sets a the respective hostname of the school
+// mainly just used for testing purposes
+// returns true if the hostname was set else false
+func (b *banner) SetHostname(schoolID string, newHostName string) bool {
+	bannerSchool, ok := b.schools[schoolID]
+	if !ok {
+		return false
+	}
+	bannerSchool.baseURL = newHostName
+	return true
 }
 
 func (b *banner) ListValidSchools(
@@ -154,7 +163,7 @@ func (b *banner) getBannerSchool(schoolID string) (*bannerSchool, error) {
 		)
 		return nil, err
 	}
-	return &schoolEntry, nil
+	return schoolEntry, nil
 }
 
 func termConversion(termEntry bannerTerm) (classentry.Term, error) {
@@ -285,11 +294,11 @@ func (b *bannerSchool) getTerms(
 ) ([]classentry.TermCollection, error) {
 
 	var termCollection []classentry.TermCollection
-	hostname := b.hostname
+	hostname := b.baseURL
 	req, err := http.NewRequestWithContext(
 		ctx,
 		"GET",
-		"https://"+hostname+"/StudentRegistrationSsb/ssb/classSearch/getTerms?searchTerm=&offset=1&max="+strconv.Itoa(b.MaxTermCount),
+		hostname+"/StudentRegistrationSsb/ssb/classSearch/getTerms?searchTerm=&offset=1&max="+strconv.Itoa(b.MaxTermCount),
 		nil,
 	)
 	if err != nil {
@@ -361,7 +370,7 @@ func (b *bannerSchool) refreshTermAssociatedCookies(
 	req, err := http.NewRequestWithContext(
 		ctx,
 		"GET",
-		"https://"+b.hostname+"/StudentRegistrationSsb/ssb/term/termSelection?mode=search",
+		b.baseURL+"/StudentRegistrationSsb/ssb/term/termSelection?mode=search",
 		nil,
 	)
 	if err != nil {
@@ -383,7 +392,7 @@ func (b *bannerSchool) refreshTermAssociatedCookies(
 	req, err = http.NewRequestWithContext(
 		ctx,
 		"POST",
-		"https://"+b.hostname+"/StudentRegistrationSsb/ssb/term/search?mode=search",
+		b.baseURL+"/StudentRegistrationSsb/ssb/term/search?mode=search",
 		bytes.NewBufferString(formData.Encode()),
 	)
 	if err != nil {
@@ -422,7 +431,7 @@ func (b *bannerSchool) stageAllClasses(
 	req, err := http.NewRequestWithContext(
 		ctx,
 		"GET",
-		"https://"+b.hostname+"/StudentRegistrationSsb/ssb/searchResults/searchResults",
+		b.baseURL+"/StudentRegistrationSsb/ssb/searchResults/searchResults",
 		nil,
 	)
 	if err != nil {
@@ -627,7 +636,7 @@ func (b *bannerSchool) processFullCollection(
 	logger *slog.Logger,
 	client *http.Client,
 	termCollection classentry.TermCollection,
-	classData *ClassData,
+	classData *classData,
 ) error {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -667,7 +676,7 @@ func (b *bannerSchool) processFullCollection(
 	return nil
 }
 
-type ClassData struct {
+type classData struct {
 	Sections               []classentry.Section
 	MeetingTimes           []classentry.MeetingTime
 	Professors             map[string]classentry.Professor
@@ -675,7 +684,7 @@ type ClassData struct {
 	CourseReferenceNumbers map[string]string
 }
 
-func (c *ClassData) ToEntry() classentry.ClassData {
+func (c *classData) ToEntry() classentry.ClassData {
 	professors := make([]classentry.Professor, len(c.Professors))
 	i := 0
 	for _, professor := range c.Professors {
@@ -697,7 +706,7 @@ func (c *ClassData) ToEntry() classentry.ClassData {
 	}
 }
 
-func ProcessSectionSearch(sectionData SectionSearch) ClassData {
+func ProcessSectionSearch(sectionData SectionSearch) classData {
 	var sections []classentry.Section
 	var meetingTimes []classentry.MeetingTime
 	professors := make(map[string]classentry.Professor)
@@ -807,7 +816,7 @@ func ProcessSectionSearch(sectionData SectionSearch) ClassData {
 		courseReferenceNumbers[courseId] = s.CourseReferenceNumber
 		sections = append(sections, dbSection)
 	}
-	return ClassData{
+	return classData{
 		Sections:               sections,
 		MeetingTimes:           meetingTimes,
 		Professors:             professors,
@@ -830,7 +839,7 @@ func (b *bannerSchool) getCourseDetails(
 	courseDescReq, err := http.NewRequestWithContext(
 		ctx,
 		"POST",
-		"https://"+b.hostname+"/StudentRegistrationSsb/ssb/searchResults/getCourseDescription",
+		b.baseURL+"/StudentRegistrationSsb/ssb/searchResults/getCourseDescription",
 		bytes.NewBufferString(formData.Encode()),
 	)
 	courseDescReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")

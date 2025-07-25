@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -11,8 +12,9 @@ import (
 	"log/slog"
 
 	"github.com/Pjt727/classy/collection"
-	test_banner "github.com/Pjt727/classy/collection/services/banner/test"
+	test_banner "github.com/Pjt727/classy/collection/services/banner/testbanner"
 	"github.com/Pjt727/classy/data/db"
+	logginghelpers "github.com/Pjt727/classy/data/logging-helpers"
 	dbhelpers "github.com/Pjt727/classy/data/testdb"
 	"github.com/Pjt727/classy/server/components"
 	"github.com/go-chi/chi/v5"
@@ -97,7 +99,16 @@ type sessionOrchestrator struct {
 
 func getManageHandler(pool *pgxpool.Pool, testPool *pgxpool.Pool) *manageHandler {
 
-	testingSerivce, err := test_banner.GetTestingService()
+	testingFileService, err := test_banner.GetFileTestingService()
+	if err != nil {
+		panic(err)
+	}
+	frameLogger := logginghelpers.NewHandler(os.Stdout, &logginghelpers.Options{
+		AddSource: true,
+		Level:     slog.LevelInfo,
+		NoColor:   false,
+	})
+	testingMockService, err := test_banner.GetMockTestingService(*slog.New(frameLogger), context.Background())
 	if err != nil {
 		panic(err)
 	}
@@ -113,8 +124,8 @@ func getManageHandler(pool *pgxpool.Pool, testPool *pgxpool.Pool) *manageHandler
 		panic(err)
 	}
 	testOrchestrator, err := collection.CreateOrchestrator(
-		[]collection.Service{testingSerivce},
-		nil,
+		[]collection.Service{testingFileService, testingMockService},
+		slog.New(frameLogger),
 		testPool,
 	)
 	if err != nil {
@@ -282,7 +293,6 @@ func (h *manageHandler) validateOrchestrator(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		label, err := strconv.Atoi(chi.URLParam(r, "orchestratorLabel"))
-		fmt.Println(label)
 		_, orchExists := h.orchestrators[label]
 		if err != nil || !orchExists {
 			if !orchExists {
@@ -318,7 +328,6 @@ func (h *manageHandler) orchestratorHome(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	ctx := r.Context()
 	index := ctx.Value(OrchestratorLabel).(int)
-	fmt.Println(index)
 
 	orchestrator := h.orchestrators[index]
 	orchestrator.data.O.GetSchoolsWithService()
@@ -380,7 +389,7 @@ func (h *manageHandler) collectTerm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//  creating the slog.er and kicking off the process
+	//  creating the slogger and kicking off the process
 	go func() {
 		ctx := context.Background()
 		termCollection := db.TermCollection{
@@ -391,15 +400,33 @@ func (h *manageHandler) collectTerm(w http.ResponseWriter, r *http.Request) {
 			Name:            pgtype.Text{String: "", Valid: false},
 			StillCollecting: false,
 		}
+		var options logginghelpers.Options
+		if orchestrator.isTest {
+			options = logginghelpers.Options{
+				AddSource: true,
+				Level:     slog.LevelInfo,
+				NoColor:   false,
+			}
+		} else {
+			options = logginghelpers.Options{
+				AddSource: false,
+				Level:     slog.LevelInfo,
+				NoColor:   false,
+			}
+		}
+		webWriter := newWebSocketWriter(ctx, label, termCollection, serviceName, h)
+		stdHandler := logginghelpers.NewHandler(os.Stdout, &options)
+		webHandler := logginghelpers.NewHandler(webWriter, &options)
 
-		handler := newWebSocketHandler(label, termCollection, serviceName, h, slog.Default().Handler())
+		handler := logginghelpers.NewMultiHandler(stdHandler, webHandler)
+
 		oneOffLogger := slog.New(handler).With(
 			slog.String("job", "User driven"),
 			slog.String("termID", termID),
 			slog.String("school", schoolID),
 		)
 
-		handler.start(ctx)
+		webWriter.start(ctx)
 		// flush all terms
 		err := orchestrator.data.O.UpsertSchoolTermsWithService(
 			ctx,
@@ -409,7 +436,7 @@ func (h *manageHandler) collectTerm(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			slog.ErrorContext(ctx, "upsert schools terms failed", "error", err)
-			handler.finish(ctx, components.JobError)
+			webWriter.finish(ctx, components.JobError)
 			return
 		}
 
@@ -428,7 +455,7 @@ func (h *manageHandler) collectTerm(w http.ResponseWriter, r *http.Request) {
 
 		if err != nil {
 			slog.ErrorContext(ctx, "Could not get term collection", "error", err)
-			handler.finish(ctx, components.JobError)
+			webWriter.finish(ctx, components.JobError)
 			return
 		}
 
@@ -440,10 +467,10 @@ func (h *manageHandler) collectTerm(w http.ResponseWriter, r *http.Request) {
 			isFullCollection,
 		)
 		if err != nil {
-			handler.finish(ctx, components.JobError)
+			webWriter.finish(ctx, components.JobError)
 			return
 		}
-		handler.finish(ctx, components.JobSuccess)
+		webWriter.finish(ctx, components.JobSuccess)
 	}()
 	notify(
 		w,

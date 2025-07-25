@@ -25,7 +25,7 @@ func Serve() {
 		// Allow the github page to make to make requests for when running locally
 		AllowedOrigins:   []string{"https://pjt727.github.io"},
 		AllowedMethods:   []string{"GET"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: true,
 		MaxAge:           300, // Maximum age for preflight requests
@@ -47,7 +47,7 @@ func Serve() {
 		serversync.PopulateSyncRoutes(&r, dbPool)
 	})
 
-	fileServer(r, "/static", http.Dir(filepath.Join(projectpath.Root, "api", "static")))
+	fileServer(r, "/static", http.Dir(filepath.Join(projectpath.Root, "server", "static")))
 
 	dbTestPool, err := data.NewPool(context.Background(), true)
 	if err != nil {

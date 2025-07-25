@@ -15,6 +15,14 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+///
+// The current interface for this testing helper makes it easy to cycle through files which have
+// the sum total of information needed to produce class information data.
+// This makes it easy to test the changes across a single term of a school.
+// However, for better test coverage services should reverse engineer their data source
+// making, for instance, a mock http server the service would then use
+///
+
 type termDirectory struct {
 	term          classentry.TermCollection
 	directoryPath string
@@ -46,9 +54,7 @@ func newTermDirectoryLocation(
 		)
 	}
 	if len(termDirectory.filesPaths) == 0 {
-		return termDirectory, errors.New(
-			fmt.Sprintf("Directory %s must at least one json file in them", directoryPath),
-		)
+		return termDirectory, fmt.Errorf("Directory %s must at least one json file in them", directoryPath)
 	}
 
 	return termDirectory, nil
@@ -122,7 +128,7 @@ func NewService(
 		if exists {
 			_, termExists := school.termsCollectionIDToTermForAdd[e.TermCollection.ID]
 			if termExists {
-				return service, errors.New(fmt.Sprintf("Ducplate term id: %s", e.TermCollection.ID))
+				return service, fmt.Errorf("Ducplate term id: %s", e.TermCollection.ID)
 			}
 		} else {
 			school = fileTestsSchool{
@@ -176,11 +182,9 @@ func (t *FileTestService) StageAllClasses(
 	}
 	termDir, ok := testSchool.termsCollectionIDToTermForAdd[termCollection.ID]
 	if !ok {
-		return errors.New(fmt.Sprintf(
-			"Could not find term test term for term collection id %s with school id %s",
+		return fmt.Errorf("Could not find term test term for term collection id %s with school id %s",
 			termCollection.ID,
-			schoolID,
-		))
+			schoolID)
 	}
 	path := termDir.nextJsonPath()
 	data, err := os.ReadFile(path)

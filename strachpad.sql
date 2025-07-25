@@ -625,5 +625,6 @@ inner join staging_courses s ON c.school_id = s.school_id AND c.subject_code = s
 
 select * from term_collection_history;
 
-select * from historic_class_information where historic_class_information.term_collection_history_id = 16 
-            and relevant_fields is null;
+select * from historic_class_information where historic_class_information.term_collection_history_id = 32 ;
+
+select * from sections where term_collection_id = '202540';

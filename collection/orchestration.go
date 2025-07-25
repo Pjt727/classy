@@ -94,7 +94,7 @@ var DefaultEnabledServices []Service
 
 func init() {
 	// might change to be determined by env variables or accesible resources
-	DefaultEnabledServices = []Service{banner.Service}
+	DefaultEnabledServices = []Service{banner.GetDefaultService()}
 }
 
 func GetDefaultOrchestrator(pool *pgxpool.Pool) (Orchestrator, error) {
@@ -410,8 +410,8 @@ func (o *Orchestrator) UpdateAllSectionsOfSchoolWithService(
 	school := o.schoolIdToSchool[termCollection.SchoolID]
 	updateLogger := logger.With(
 		slog.String("service", (*service).GetName()),
-		slog.Any("school", school),
-		slog.Any("termCollection", termCollection),
+		slog.Any("termCollectionID", termCollection.ID),
+		slog.Any("stillCollecting", termCollection.StillCollecting),
 	)
 
 	// inserting the new term collection attempt in the history
@@ -538,7 +538,7 @@ func (o *Orchestrator) GetTerms(
 	entryTermCollections, err := (*service).GetTermCollections(o.orchestrationLogger, ctx, school)
 
 	if err != nil {
-		o.orchestrationLogger.Error("There", "error", err)
+		o.orchestrationLogger.Error("Could not fetch from service", "error", err, "service", serviceName)
 		return []db.TermCollection{}, err
 	}
 

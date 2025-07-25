@@ -4,6 +4,10 @@ Copyright © 2025 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
+	"log/slog"
+	"os"
+
+	logginghelpers "github.com/Pjt727/classy/data/logging-helpers"
 	"github.com/Pjt727/classy/server"
 	"github.com/spf13/cobra"
 )
@@ -14,6 +18,8 @@ var serveCmd = &cobra.Command{
 	Short: "Runs the api service",
 	Long:  `Runs the api service`,
 	Run: func(cmd *cobra.Command, args []string) {
+		defaultLogger := slog.New(logginghelpers.NewHandler(os.Stdout, nil))
+		slog.SetDefault(defaultLogger)
 		api.Serve()
 	},
 }

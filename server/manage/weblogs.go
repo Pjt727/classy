@@ -3,10 +3,7 @@ package servermanage
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"net/http"
-	"strconv"
-	"time"
 
 	"log/slog"
 	"slices"
@@ -32,126 +29,46 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-type websocketLoggingHandler struct {
+type websocketLoggingWriter struct {
 	orchestratorLabel int
 	termCollection    db.TermCollection
 	serviceName       string
 	h                 *manageHandler
-	innerHandler      slog.Handler
+	ctx               context.Context
 }
 
-func newWebSocketHandler(
+func newWebSocketWriter(
+	ctx context.Context,
 	orchestratorLabel int,
 	termCollection db.TermCollection,
 	serviceName string,
 	h *manageHandler,
-	innerHandler slog.Handler,
-) *websocketLoggingHandler {
-	return &websocketLoggingHandler{
+) *websocketLoggingWriter {
+	return &websocketLoggingWriter{
 		orchestratorLabel: orchestratorLabel,
 		termCollection:    termCollection,
 		serviceName:       serviceName,
 		h:                 h,
-		innerHandler:      innerHandler,
+		ctx:               ctx,
 	}
 }
 
-func (w *websocketLoggingHandler) Enabled(ctx context.Context, level slog.Level) bool {
-	// Custom logic before calling the wrapped handler's Enabled method
-	return w.innerHandler.Enabled(ctx, level)
-}
-
-func (w *websocketLoggingHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return &websocketLoggingHandler{
-		orchestratorLabel: w.orchestratorLabel,
-		termCollection:    w.termCollection,
-		serviceName:       w.serviceName,
-		h:                 w.h,
-		innerHandler:      w.innerHandler.WithAttrs(attrs),
-	}
-}
-
-func (w *websocketLoggingHandler) WithGroup(name string) slog.Handler {
-	return &websocketLoggingHandler{
-		orchestratorLabel: w.orchestratorLabel,
-		termCollection:    w.termCollection,
-		serviceName:       w.serviceName,
-		h:                 w.h,
-		innerHandler:      w.innerHandler.WithGroup(name),
-	}
-}
-
-type formatter struct {
-	buf []byte
-}
-
-func (f *formatter) appendString(s string) {
-	f.buf = append(f.buf, s...)
-}
-
-func (f *formatter) appendValue(v slog.Value) {
-	switch v.Kind() {
-	case slog.KindString:
-		f.buf = append(f.buf, v.String()...)
-	case slog.KindInt64:
-		f.buf = strconv.AppendInt(f.buf, v.Int64(), 10)
-	case slog.KindUint64:
-		f.buf = strconv.AppendUint(f.buf, v.Uint64(), 10)
-	case slog.KindFloat64:
-		f.buf = strconv.AppendFloat(f.buf, v.Float64(), 'g', -1, 64)
-	case slog.KindBool:
-		f.buf = strconv.AppendBool(f.buf, v.Bool())
-	case slog.KindDuration:
-		f.appendString(v.Duration().String())
-	case slog.KindTime:
-		t := v.Time()
-		f.buf = t.AppendFormat(f.buf, time.RFC3339Nano)
-	case slog.KindAny:
-		a := v.Any()
-		if err, ok := a.(error); ok {
-			f.appendString(err.Error())
-		} else if s, ok := a.(fmt.Stringer); ok {
-			f.appendString(s.String())
-		} else {
-			f.appendString(fmt.Sprint(a))
-		}
-	default:
-		panic(fmt.Sprintf("bad kind: %s", v.Kind()))
-	}
-}
-
-func lightCyan(s string) string {
-	return "\033[96m" + s + "\033[0m"
-}
-
-func (w *websocketLoggingHandler) Handle(ctx context.Context, r slog.Record) error {
+func (w *websocketLoggingWriter) Write(b []byte) (int, error) {
+	// it is completely fine if the log siliently does not get sent
 	wsConn, ok := w.h.orchestrators[w.orchestratorLabel]
-	// it is completely fine if the log does not get sent
 	if !ok {
 		slog.Warn("ws failed to be established")
-		return nil
+		return 0, nil
 	}
 
-	runningLog := &formatter{
-		buf: []byte{},
-	}
-	runningLog.appendString(r.Message)
-	runningLog.appendString(" ")
-	r.Attrs(func(a slog.Attr) bool {
-		runningLog.appendString(lightCyan(a.Key))
-		runningLog.appendString("=")
-		runningLog.appendValue(a.Value)
-		runningLog.appendString(" ")
-		return true
-	})
-
-	formattedLog := ansihtml.ConvertToHTML(runningLog.buf)
+	bytesLen := len(b)
+	formattedLog := ansihtml.ConvertToHTML(b)
 
 	var logNotification bytes.Buffer
-	err := components.CollectionLog(w.termCollection, string(formattedLog)).Render(ctx, &logNotification)
+	err := components.CollectionLog(w.termCollection, string(formattedLog)).Render(w.ctx, &logNotification)
 	if err != nil {
 		slog.Error("could render log", "err", err)
-		return err
+		return bytesLen, err
 	}
 	for _, c := range wsConn.connections {
 		if c == nil || c.send == nil {
@@ -162,10 +79,11 @@ func (w *websocketLoggingHandler) Handle(ctx context.Context, r slog.Record) err
 		default:
 		}
 	}
-	return w.innerHandler.Handle(ctx, r)
+
+	return bytesLen, nil
 }
 
-func (w *websocketLoggingHandler) start(ctx context.Context) error {
+func (w *websocketLoggingWriter) start(ctx context.Context) error {
 	slog.Info("Starting term collection")
 	wsConn, ok := w.h.orchestrators[w.orchestratorLabel]
 
@@ -195,7 +113,7 @@ func (w *websocketLoggingHandler) start(ctx context.Context) error {
 	return nil
 }
 
-func (w *websocketLoggingHandler) finish(ctx context.Context, status components.JobStatus) error {
+func (w *websocketLoggingWriter) finish(ctx context.Context, status components.JobStatus) error {
 	wsConn, ok := w.h.orchestrators[w.orchestratorLabel]
 
 	// it is completely fine if the slog.does not get sent
