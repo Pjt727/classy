@@ -232,7 +232,7 @@ func (o Orchestrator) UpsertAllSchools(ctx context.Context) error {
 // uses the "best" service for the job
 func (o Orchestrator) UpsertSchoolTerms(
 	ctx context.Context,
-	logger slog.Logger,
+	logger *slog.Logger,
 	school db.School,
 ) error {
 	serviceManager, ok := o.schoolIdToServiceManager[school.ID]
@@ -250,7 +250,7 @@ func (o Orchestrator) UpsertSchoolTerms(
 // uses the specified service for the job
 func (o Orchestrator) UpsertSchoolTermsWithService(
 	ctx context.Context,
-	logger slog.Logger,
+	logger *slog.Logger,
 	school db.School,
 	serviceName string,
 ) error {
@@ -265,7 +265,7 @@ func (o Orchestrator) UpsertSchoolTermsWithService(
 	}
 	defer tx.Rollback(ctx)
 	q := db.New(tx)
-	termCollections, err := (*service).GetTermCollections(logger, ctx, school)
+	termCollections, err := (*service).GetTermCollections(*logger, ctx, school)
 	if err != nil {
 		return err
 	}
@@ -339,7 +339,7 @@ func (o Orchestrator) UpsertAllTerms(ctx context.Context) error {
 				slog.String("school_id", schoolID),
 				slog.String("service", (*s).GetName()),
 			)
-			if err := o.UpsertSchoolTerms(ctx, *termLogger, school); err != nil {
+			if err := o.UpsertSchoolTerms(ctx, termLogger, school); err != nil {
 				termLogger.Error("There was an error collecting terms", "error", err)
 				return fmt.Errorf("error upserting terms for school %s: %s", schoolID, err)
 			}
@@ -524,6 +524,7 @@ func (o *Orchestrator) ListRunningCollections() []db.TermCollection {
 
 func (o *Orchestrator) GetTerms(
 	ctx context.Context,
+	logger slog.Logger,
 	serviceName string,
 	schoolID string,
 ) ([]db.TermCollection, error) {
@@ -535,10 +536,9 @@ func (o *Orchestrator) GetTerms(
 	if !ok {
 		return []db.TermCollection{}, errors.New("School ID not found")
 	}
-	entryTermCollections, err := (*service).GetTermCollections(o.orchestrationLogger, ctx, school)
+	entryTermCollections, err := (*service).GetTermCollections(logger, ctx, school)
 
 	if err != nil {
-		o.orchestrationLogger.Error("Could not fetch from service", "error", err, "service", serviceName)
 		return []db.TermCollection{}, err
 	}
 

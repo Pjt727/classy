@@ -98,11 +98,9 @@ func (m *mockServerState) handleTermSearch(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	m.logger.Info("start mutex")
 	m.sessionsMutex.Lock()
 	m.sessions[cookie.Value] = term
 	m.sessionsMutex.Unlock()
-	m.logger.Info("end mutex")
 
 	response := map[string]any{
 		"term_associated": term,
@@ -110,7 +108,6 @@ func (m *mockServerState) handleTermSearch(w http.ResponseWriter, r *http.Reques
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
-	m.logger.Info("end term")
 }
 
 type searchResults struct {
@@ -188,8 +185,6 @@ func (m *mockServerState) handleSearchResults(w http.ResponseWriter, r *http.Req
 
 // this route is to get the terms
 func (m *mockServerState) handleGetTerms(w http.ResponseWriter, r *http.Request) {
-	m.logger.Info("starting get terms")
-	defer m.logger.Info("ending get terms")
 
 	// might eventually add the different data or only read this once
 	termsPath := filepath.Join(TESTING_ASSETS_BASE_DIR, "marist", "mock-server", "terms.json")
@@ -234,6 +229,7 @@ func NewMockServer(logger slog.Logger, ctx context.Context) *httptest.Server {
 	return httptest.NewServer(mux)
 }
 
+// this context is tied to the server and once the context closes the server will too
 func GetMockTestingService(logger slog.Logger, ctx context.Context) (collection.Service, error) {
 	mockServer := NewMockServer(logger, ctx)
 

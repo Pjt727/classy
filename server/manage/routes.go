@@ -1,13 +1,15 @@
 package servermanage
 
 import (
+	"log/slog"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func PopulateManagementRoutes(r *chi.Router, pool *pgxpool.Pool, testPool *pgxpool.Pool) error {
-	h := getManageHandler(pool, testPool)
+func PopulateManagementRoutes(r *chi.Router, pool *pgxpool.Pool, testPool *pgxpool.Pool, logger slog.Logger) error {
+	h := getManageHandler(pool, testPool, &logger)
 	(*r).Use(
 		middleware.AllowContentType("application/x-www-form-urlencoded", "multipart/form-data"),
 	)

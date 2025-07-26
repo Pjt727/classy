@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sync"
+	"sync/atomic"
 
 	"golang.org/x/time/rate"
 )
@@ -104,6 +106,46 @@ func (rt *rateLimitedRoundTripper) RoundTrip(req *http.Request) (*http.Response,
 func AddRateLimiter(client *http.Client, limiter *RateLimiter) {
 	rt := &rateLimitedRoundTripper{
 		limiter: *limiter,
+	}
+	if client.Transport == nil {
+		rt.transport = http.DefaultTransport
+	} else {
+		rt.transport = client.Transport
+	}
+	client.Transport = rt
+}
+
+type loggerRoundTripper struct {
+	logger    slog.Logger
+	transport http.RoundTripper
+	requestID int32
+}
+
+func (rt *loggerRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if !rt.logger.Enabled(req.Context(), LevelHttpReport.Level()) {
+		return rt.transport.RoundTrip(req)
+	}
+
+	// it might be hard to distinguish requests from the same term collection from each other
+	// when they are happening in parralel
+	currentID := atomic.AddInt32(&rt.requestID, 1)
+
+	rt.logger.Log(req.Context(), LevelHttpReport, "outgoing request", "method", req.Method, "url", req.URL.String(), "id", currentID)
+
+	resp, err := rt.transport.RoundTrip(req)
+	if err != nil {
+		return nil, err
+	}
+
+	rt.logger.Log(req.Context(), LevelHttpReport, "response received", "status", resp.Status, "url", req.URL.String(), "id", currentID)
+
+	return resp, nil
+}
+
+func AddHttpReporting(client *http.Client, logger slog.Logger) {
+	rt := &loggerRoundTripper{
+		logger:    logger,
+		requestID: 0,
 	}
 	if client.Transport == nil {
 		rt.transport = http.DefaultTransport

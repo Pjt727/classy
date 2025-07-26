@@ -114,7 +114,6 @@ func (b *banner) GetTermCollections(
 
 	bannerschool, err := b.getBannerSchool(school.ID)
 	if err != nil {
-		logger.Error("Error getting school entry", "error", err)
 		return termCollection, err
 	}
 	termCollections, err := bannerschool.getTerms(ctx, logger)
@@ -133,12 +132,12 @@ func (b *banner) StageAllClasses(
 	termCollection classentry.TermCollection,
 	fullCollection bool,
 ) error {
-	logger.Info("Starting full section")
+	logger.Info("Starting class collection")
 	bannerSchool, err := b.getBannerSchool(schoolID)
 	if err != nil {
-		logger.Error("Error getting school entry", "error", err)
 		return err
 	}
+
 	err = bannerSchool.stageAllClasses(
 		logger,
 		ctx,
@@ -147,7 +146,6 @@ func (b *banner) StageAllClasses(
 		fullCollection,
 	)
 	if err != nil {
-		logger.Error("Error getting all school entry", "error", err)
 		return err
 	}
 	return nil
@@ -302,23 +300,21 @@ func (b *bannerSchool) getTerms(
 		nil,
 	)
 	if err != nil {
-		logger.Error("Error creating term request", "error", err)
-		return termCollection, errors.Join(services.ErrTemporaryNetworkFailure, err)
+		return termCollection, fmt.Errorf("%w failed making term request %v", services.ErrIncorrectAssumption, err)
 	}
 
 	client := &http.Client{}
 	services.AddRateLimiter(client, &b.rateLimiter)
+	services.AddHttpReporting(client, logger)
 	resp, err := client.Do(req)
 	err = services.RespOrStatusErr(resp, err)
 	if err != nil {
-		logger.Error("Error getting term response", "error", err)
-		return termCollection, err
+		return termCollection, fmt.Errorf("%w failed doing term request ", err)
 	}
 	defer resp.Body.Close()
 	var terms []bannerTerm
 	if err := json.NewDecoder(resp.Body).Decode(&terms); err != nil {
-		logger.Error("Error decoding terms", "error", err)
-		return termCollection, errors.Join(services.ErrIncorrectAssumption, err)
+		return termCollection, fmt.Errorf("%w failed parsing term request %v", services.ErrIncorrectAssumption, err)
 	}
 
 	for _, term := range terms {
@@ -333,7 +329,6 @@ func (b *bannerSchool) getTerms(
 		// },
 		t, err := termConversion(term)
 		if err != nil {
-			logger.Error("Error decoding term code", "error", err)
 			return termCollection, err
 		}
 		// the View Only appears on all marist terms which probably wont update
@@ -358,7 +353,6 @@ func (b *bannerSchool) getTerms(
 }
 
 func (b *bannerSchool) refreshTermAssociatedCookies(
-	logger slog.Logger,
 	ctx context.Context,
 	client *http.Client,
 	bannerTerm string,
@@ -374,15 +368,13 @@ func (b *bannerSchool) refreshTermAssociatedCookies(
 		nil,
 	)
 	if err != nil {
-		logger.Error("Error creating cookie request", "error", err)
-		return errors.Join(services.ErrIncorrectAssumption, err)
+		return fmt.Errorf("%w failed making cookie request %v", services.ErrIncorrectAssumption, err)
 	}
 
 	cookieResp, err := client.Do(req)
 	err = services.RespOrStatusErr(cookieResp, err)
 	if err != nil {
-		logger.Error("Error getting cookie response", "error", err)
-		return err
+		return fmt.Errorf("%w failed doing cookie request", err)
 	}
 	defer cookieResp.Body.Close()
 	// Associate the cookie with a term
@@ -396,16 +388,14 @@ func (b *bannerSchool) refreshTermAssociatedCookies(
 		bytes.NewBufferString(formData.Encode()),
 	)
 	if err != nil {
-		logger.Error("Error creating request to set term", "error", err)
-		return err
+		return fmt.Errorf("%w failed making set term request %v", services.ErrIncorrectAssumption, err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 	termAssociationResp, err := client.Do(req)
 	err = services.RespOrStatusErr(termAssociationResp, err)
 	if err != nil {
-		logger.Error("Error setting term", "error", err)
-		return err
+		return fmt.Errorf("%w failed doing set term request", err)
 	}
 	defer termAssociationResp.Body.Close()
 
@@ -422,9 +412,10 @@ func (b *bannerSchool) stageAllClasses(
 	termStr := termCollection.ID
 	// Get banner cookie(s)
 	client := &http.Client{}
-	err := b.refreshTermAssociatedCookies(logger, ctx, client, termStr)
+	services.AddHttpReporting(client, logger)
+	err := b.refreshTermAssociatedCookies(ctx, client, termStr)
 	if err != nil {
-		return fmt.Errorf("Error getting cookies %s", err)
+		return err
 	}
 
 	// Make a request to get sections
@@ -435,8 +426,7 @@ func (b *bannerSchool) stageAllClasses(
 		nil,
 	)
 	if err != nil {
-		logger.Error("Error creating request", "error", err)
-		return err
+		return fmt.Errorf("%w failed making class search probe, %v", services.ErrIncorrectAssumption, err)
 	}
 	queryParams := url.Values{
 		"txt_term":    {termStr},
@@ -447,8 +437,7 @@ func (b *bannerSchool) stageAllClasses(
 	resp, err := client.Do(req)
 	err = services.RespOrStatusErr(resp, err)
 	if err != nil {
-		logger.Error("Error requesting first sections", "error", err)
-		return err
+		return fmt.Errorf("%w failed doing class search probe", err)
 	}
 	defer resp.Body.Close()
 	type Sectioncount struct {
@@ -456,8 +445,7 @@ func (b *bannerSchool) stageAllClasses(
 	}
 	var sectionCount Sectioncount
 	if err := json.NewDecoder(resp.Body).Decode(&sectionCount); err != nil {
-		logger.Error("Error decoding first sections", "error", err)
-		return err
+		return fmt.Errorf("%w failed parsing class search probe %v", services.ErrIncorrectAssumption, err)
 	}
 	count := sectionCount.Count
 	logger.Info("starting collection", "sections", count)
@@ -502,7 +490,8 @@ func (b *bannerSchool) stageAllClasses(
 			if fullCollection {
 				sectionClient = &http.Client{}
 				services.AddRateLimiter(sectionClient, &b.rateLimiter)
-				err := b.refreshTermAssociatedCookies(logger, ctx, sectionClient, termStr)
+				services.AddHttpReporting(client, logger)
+				err := b.refreshTermAssociatedCookies(ctx, sectionClient, termStr)
 				if err != nil {
 					return err
 				}
@@ -530,11 +519,12 @@ func (b *bannerSchool) stageAllClasses(
 				// technically there could be other error in the code that aren't http related
 				//    some better error types would be helpful
 				logger.Info("Retrying section some failures", "failures", i+1)
-				err = b.refreshTermAssociatedCookies(logger, ctx, sectionClient, termStr)
+				err = b.refreshTermAssociatedCookies(ctx, sectionClient, termStr)
 				if err != nil {
 					return err
 				}
 			}
+			// returning last first err
 			if err != nil {
 				return err
 			}
@@ -545,7 +535,7 @@ func (b *bannerSchool) stageAllClasses(
 	}
 
 	if err := eg.Wait(); err != nil {
-		return fmt.Errorf("one or more errors occurred: %w", err)
+		return err
 	}
 
 	if actualTotalSectionCount == count {
@@ -577,14 +567,12 @@ func (b *bannerSchool) insertGroupOfSections(
 	resp, err := client.Do(sectionReq)
 	err = services.RespOrStatusErr(resp, err)
 	if err != nil {
-		logger.Error("Error getting sections", "error", err)
 		return 0, err
 	}
 	defer resp.Body.Close()
 
 	var sections SectionSearch
 	if err := json.NewDecoder(resp.Body).Decode(&sections); err != nil {
-		logger.Error("Error decoding sections", "error", err)
 		return 0, errors.Join(services.ErrIncorrectAssumption, err)
 	}
 
@@ -595,7 +583,6 @@ func (b *bannerSchool) insertGroupOfSections(
 		for i := range b.RequestRetryCount {
 			err := b.processFullCollection(
 				ctx,
-				logger,
 				client,
 				termCollection,
 				&classData,
@@ -604,8 +591,8 @@ func (b *bannerSchool) insertGroupOfSections(
 				break
 			}
 
-			logger.Info("Retrying course get after failures", "failures", i+1)
-			err = b.refreshTermAssociatedCookies(*logger, ctx, client, termCollection.ID)
+			logger.Info("Retrying class get after failures", "failures", i+1)
+			err = b.refreshTermAssociatedCookies(ctx, client, termCollection.ID)
 			if err != nil {
 				return 0, err
 			}
@@ -619,7 +606,6 @@ func (b *bannerSchool) insertGroupOfSections(
 	)
 
 	if err != nil {
-		logger.Error("Error inserting class data", "error", err)
 		return 0, err
 	}
 
@@ -633,7 +619,6 @@ func (b *bannerSchool) insertGroupOfSections(
 
 func (b *bannerSchool) processFullCollection(
 	ctx context.Context,
-	logger *slog.Logger,
 	client *http.Client,
 	termCollection classentry.TermCollection,
 	classData *classData,
@@ -651,7 +636,6 @@ func (b *bannerSchool) processFullCollection(
 			}()
 			courseDesc, err := b.getCourseDetails(
 				ctx,
-				logger,
 				client,
 				termCollection,
 				referenceNumber,
@@ -827,7 +811,6 @@ func ProcessSectionSearch(sectionData SectionSearch) classData {
 
 func (b *bannerSchool) getCourseDetails(
 	ctx context.Context,
-	logger *slog.Logger,
 	client *http.Client,
 	termCollection classentry.TermCollection,
 	referenceNumber string,
@@ -845,22 +828,19 @@ func (b *bannerSchool) getCourseDetails(
 	courseDescReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	if err != nil {
-		logger.Debug("Error making course desc request", "error", err)
-		return nil, errors.Join(services.ErrIncorrectAssumption, err)
+		return nil, fmt.Errorf("%w failed making course request: %v", services.ErrIncorrectAssumption, err)
 	}
 
 	resp, err := client.Do(courseDescReq)
 	err = services.RespOrStatusErr(resp, err)
 	if err != nil {
-		logger.Debug("Error doing course desc request", "error", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
-		logger.Debug("Error parsing body", "error", err)
-		return nil, errors.Join(services.ErrIncorrectAssumption, err)
+		return nil, fmt.Errorf("%w failed parsing course request: %v", services.ErrIncorrectAssumption, err)
 	}
 
 	courseDesc := doc.Find("section[aria-labelledby='courseDescription']").Text()

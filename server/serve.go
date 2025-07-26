@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -11,6 +12,7 @@ import (
 
 	"github.com/Pjt727/classy/collection/projectpath"
 	"github.com/Pjt727/classy/data"
+	logginghelpers "github.com/Pjt727/classy/data/logging-helpers"
 	serverget "github.com/Pjt727/classy/server/get"
 	servermanage "github.com/Pjt727/classy/server/manage"
 	serversync "github.com/Pjt727/classy/server/sync"
@@ -39,23 +41,27 @@ func Serve() {
 		return
 	}
 
-	r.Route("/get", func(r chi.Router) {
+	baseLogger := slog.New(logginghelpers.NewHandler(os.Stdout, &logginghelpers.Options{
+		AddSource: false,
+		Level:     slog.LevelInfo,
+		NoColor:   false,
+	}))
 
-		serverget.PopulateGetRoutes(&r, dbPool)
+	r.Route("/get", func(r chi.Router) {
+		serverget.PopulateGetRoutes(&r, dbPool, *baseLogger)
 	})
 	r.Route("/sync", func(r chi.Router) {
-		serversync.PopulateSyncRoutes(&r, dbPool)
+		serversync.PopulateSyncRoutes(&r, dbPool, *baseLogger)
 	})
 
 	fileServer(r, "/static", http.Dir(filepath.Join(projectpath.Root, "server", "static")))
 
 	dbTestPool, err := data.NewPool(context.Background(), true)
 	if err != nil {
-		slog.Warn("Cannot connect to test db", "err", err)
-		return
+		panic(fmt.Sprintf("Cannot connect to test db %v", err))
 	}
 	r.Route("/manage", func(r chi.Router) {
-		servermanage.PopulateManagementRoutes(&r, dbPool, dbTestPool)
+		servermanage.PopulateManagementRoutes(&r, dbPool, dbTestPool, *baseLogger)
 	})
 	port := 3000
 	slog.Info("Running server on", "port", port)

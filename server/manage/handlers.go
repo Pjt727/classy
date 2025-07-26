@@ -78,10 +78,12 @@ func (t *tokenStore) refreshToken() {
 type manageHandler struct {
 	DbPool     *pgxpool.Pool
 	TestDbPool *pgxpool.Pool
-
 	// not safe mutliple changes at the same time
 	orchestrators         map[int]*sessionOrchestrator
 	lastOrchestratorLabel int
+
+	baseLogger     *slog.Logger
+	testBaseLogger *slog.Logger
 }
 
 // keeps track of all sessions that are on this orchestrator
@@ -97,7 +99,19 @@ type sessionOrchestrator struct {
 	mu          sync.Mutex
 }
 
-func getManageHandler(pool *pgxpool.Pool, testPool *pgxpool.Pool) *manageHandler {
+// TODO: change this config somewhere
+var testingLoggingOptions = &logginghelpers.Options{
+	AddSource: true,
+	Level:     logginghelpers.LevelReportIO,
+	NoColor:   false,
+}
+var loggingOptions = &logginghelpers.Options{
+	AddSource: false,
+	Level:     slog.LevelInfo,
+	NoColor:   false,
+}
+
+func getManageHandler(pool *pgxpool.Pool, testPool *pgxpool.Pool, logger *slog.Logger) *manageHandler {
 
 	testingFileService, err := test_banner.GetFileTestingService()
 	if err != nil {
@@ -113,11 +127,24 @@ func getManageHandler(pool *pgxpool.Pool, testPool *pgxpool.Pool) *manageHandler
 		panic(err)
 	}
 
+	baseLogger := slog.New(logginghelpers.NewMultiHandler(logginghelpers.NewHandler(os.Stdout, &logginghelpers.Options{
+		AddSource: false,
+		Level:     logginghelpers.LevelReportIO,
+		NoColor:   false,
+	})))
+	testBaseLogger := slog.New(logginghelpers.NewMultiHandler(logginghelpers.NewHandler(os.Stdout, &logginghelpers.Options{
+		AddSource: true,
+		Level:     logginghelpers.LevelReportIO,
+		NoColor:   false,
+	})))
+
 	h := &manageHandler{
 		DbPool:                pool,
 		TestDbPool:            testPool,
 		orchestrators:         map[int]*sessionOrchestrator{},
 		lastOrchestratorLabel: 0,
+		baseLogger:            baseLogger,
+		testBaseLogger:        testBaseLogger,
 	}
 	defaultOrchestrator, err := collection.GetDefaultOrchestrator(pool)
 	if err != nil {
@@ -180,7 +207,7 @@ func (h *manageHandler) loginView(w http.ResponseWriter, r *http.Request) {
 	err := components.Login().Render(r.Context(), w)
 
 	if err != nil {
-		slog.ErrorContext(r.Context(), "Could not render login view", "error", err)
+		h.baseLogger.ErrorContext(r.Context(), "Could not render login view", "error", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
@@ -201,7 +228,7 @@ func (h *manageHandler) login(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, cookie)
 	if err != nil {
-		slog.ErrorContext(r.Context(), "Could not render login view", "error", err)
+		h.baseLogger.ErrorContext(r.Context(), "Could not render login view", "error", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
@@ -222,7 +249,7 @@ func (h *manageHandler) dashboardHome(w http.ResponseWriter, r *http.Request) {
 	err := components.Dashboard(managementOrchs).Render(r.Context(), w)
 
 	if err != nil {
-		slog.ErrorContext(r.Context(), "Could not render dashboard home", "error", err)
+		h.baseLogger.ErrorContext(r.Context(), "Could not render dashboard home", "error", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
@@ -259,7 +286,7 @@ func (h *manageHandler) newOrchestrator(w http.ResponseWriter, r *http.Request) 
 	h.lastOrchestratorLabel++
 
 	if err != nil {
-		slog.ErrorContext(r.Context(), "Error decoding post", "error", err)
+		h.baseLogger.ErrorContext(r.Context(), "Error decoding post", "error", err)
 		notify(w, r, components.NotifyError, "Invlaid parameters")
 		return
 	}
@@ -274,7 +301,7 @@ func (h *manageHandler) newOrchestrator(w http.ResponseWriter, r *http.Request) 
 	err = components.ManageOrchestrators(managementOrchs).Render(r.Context(), w)
 
 	if err != nil {
-		slog.ErrorContext(r.Context(), "Could not render template", "error", err)
+		h.baseLogger.ErrorContext(r.Context(), "Could not render template", "error", err)
 		notify(w, r, components.NotifyError, "Could not render orchestrator")
 		return
 	}
@@ -283,7 +310,7 @@ func (h *manageHandler) newOrchestrator(w http.ResponseWriter, r *http.Request) 
 
 	err = components.NewOrchestrator().Render(r.Context(), w)
 	if err != nil {
-		slog.ErrorContext(r.Context(), "Could not render template", "error", err)
+		h.baseLogger.ErrorContext(r.Context(), "Could not render template", "error", err)
 		notify(w, r, components.NotifyError, "Could not render new form orchestrator")
 		return
 	}
@@ -296,9 +323,9 @@ func (h *manageHandler) validateOrchestrator(next http.Handler) http.Handler {
 		_, orchExists := h.orchestrators[label]
 		if err != nil || !orchExists {
 			if !orchExists {
-				slog.ErrorContext(r.Context(), "Orchestrator does not exists", "label", label)
+				h.baseLogger.ErrorContext(r.Context(), "Orchestrator does not exists", "label", label)
 			} else {
-				slog.ErrorContext(r.Context(), "Invalid Orchestrator value", "label", label)
+				h.baseLogger.ErrorContext(r.Context(), "Invalid Orchestrator value", "label", label)
 			}
 			http.Redirect(w, r, "/manage", http.StatusSeeOther)
 			return
@@ -335,7 +362,7 @@ func (h *manageHandler) orchestratorHome(w http.ResponseWriter, r *http.Request)
 		Render(r.Context(), w)
 
 	if err != nil {
-		slog.ErrorContext(r.Context(), "Orchestrator dashboard error", "error", err)
+		h.baseLogger.ErrorContext(r.Context(), "Orchestrator dashboard error", "error", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
@@ -349,10 +376,11 @@ func (h *manageHandler) orchestratorGetTerms(w http.ResponseWriter, r *http.Requ
 	schoolID := r.FormValue("schoolID")
 
 	orchestrator := h.orchestrators[index]
-	terms, err := orchestrator.data.O.GetTerms(ctx, serviceName, schoolID)
+
+	terms, err := orchestrator.data.O.GetTerms(ctx, *h.baseLogger, serviceName, schoolID)
 	if err != nil {
 		badValues := fmt.Sprintf("service name: `%s`, school ID: `%s`", serviceName, schoolID)
-		slog.ErrorContext(ctx, "Could not get terms", "serviceName", serviceName, "schoolID", schoolID, "error", err)
+		h.baseLogger.ErrorContext(ctx, "Could not get terms", "serviceName", serviceName, "schoolID", schoolID, "error", err)
 		notify(w, r, components.NotifyError, fmt.Sprintf("Failed to get terms for %s", badValues))
 		return
 	}
@@ -360,7 +388,7 @@ func (h *manageHandler) orchestratorGetTerms(w http.ResponseWriter, r *http.Requ
 	err = components.TermCollections(orchestrator.data, terms, serviceName).Render(ctx, w)
 
 	if err != nil {
-		slog.ErrorContext(ctx, "Term collections failed to render", "error", err)
+		h.baseLogger.ErrorContext(ctx, "Term collections failed to render", "error", err)
 		notify(w, r, components.NotifyError, "Orchestrator rendering failed")
 		return
 	}
@@ -374,12 +402,12 @@ func (h *manageHandler) collectTerm(w http.ResponseWriter, r *http.Request) {
 	schoolID := r.FormValue("schoolID")
 	termID := r.FormValue("termID")
 	isFullCollection := r.FormValue("isFullCollection") == "on"
-	slog.InfoContext(ctx, "Is full collection: ", "isFullCollection", isFullCollection)
+	h.baseLogger.InfoContext(ctx, "Is full collection: ", "isFullCollection", isFullCollection)
 	orchestrator := h.orchestrators[label]
 
 	school, ok := orchestrator.data.O.GetSchoolById(schoolID)
 	if !ok {
-		slog.ErrorContext(ctx, "Could not find school", "schoolID", schoolID)
+		h.baseLogger.ErrorContext(ctx, "Could not find school", "schoolID", schoolID)
 		notify(
 			w,
 			r,
@@ -400,27 +428,26 @@ func (h *manageHandler) collectTerm(w http.ResponseWriter, r *http.Request) {
 			Name:            pgtype.Text{String: "", Valid: false},
 			StillCollecting: false,
 		}
-		var options logginghelpers.Options
+		webWriter := newWebSocketWriter(ctx, label, termCollection, serviceName, h)
+		var oneOffLogger *slog.Logger
 		if orchestrator.isTest {
-			options = logginghelpers.Options{
+			// TODO: Change where some of these options get decided
+			webHandler := logginghelpers.NewHandler(webWriter, &logginghelpers.Options{
 				AddSource: true,
-				Level:     slog.LevelInfo,
+				Level:     logginghelpers.LevelReportIO,
 				NoColor:   false,
-			}
+			})
+			oneOffLogger = logginghelpers.WithHandler(h.testBaseLogger, webHandler)
 		} else {
-			options = logginghelpers.Options{
+			webHandler := logginghelpers.NewHandler(webWriter, &logginghelpers.Options{
 				AddSource: false,
 				Level:     slog.LevelInfo,
 				NoColor:   false,
-			}
+			})
+			oneOffLogger = logginghelpers.WithHandler(h.baseLogger, webHandler)
 		}
-		webWriter := newWebSocketWriter(ctx, label, termCollection, serviceName, h)
-		stdHandler := logginghelpers.NewHandler(os.Stdout, &options)
-		webHandler := logginghelpers.NewHandler(webWriter, &options)
 
-		handler := logginghelpers.NewMultiHandler(stdHandler, webHandler)
-
-		oneOffLogger := slog.New(handler).With(
+		oneOffLogger = oneOffLogger.With(
 			slog.String("job", "User driven"),
 			slog.String("termID", termID),
 			slog.String("school", schoolID),
@@ -430,12 +457,12 @@ func (h *manageHandler) collectTerm(w http.ResponseWriter, r *http.Request) {
 		// flush all terms
 		err := orchestrator.data.O.UpsertSchoolTermsWithService(
 			ctx,
-			*oneOffLogger,
+			oneOffLogger,
 			school,
 			serviceName,
 		)
 		if err != nil {
-			slog.ErrorContext(ctx, "upsert schools terms failed", "error", err)
+			h.baseLogger.ErrorContext(ctx, "upsert schools terms failed", "error", err)
 			webWriter.finish(ctx, components.JobError)
 			return
 		}
@@ -454,7 +481,7 @@ func (h *manageHandler) collectTerm(w http.ResponseWriter, r *http.Request) {
 		})
 
 		if err != nil {
-			slog.ErrorContext(ctx, "Could not get term collection", "error", err)
+			h.baseLogger.ErrorContext(ctx, "Could not get term collection", "error", err)
 			webWriter.finish(ctx, components.JobError)
 			return
 		}

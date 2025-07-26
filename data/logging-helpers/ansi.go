@@ -231,14 +231,18 @@ func (h *handler) appendTintLevel(buf *buffer, level slog.Level, color int16) {
 	}
 
 	switch {
-	case level < slog.LevelInfo:
+	case level < LevelReportIO:
 		buf.Write(str("DBG", level-slog.LevelDebug))
+	case level < slog.LevelInfo:
+		buf.Write(str(" IO", level-LevelReportIO))
 	case level < slog.LevelWarn:
 		buf.Write(str("INF", level-slog.LevelInfo))
 	case level < slog.LevelError:
 		buf.Write(str("WRN", level-slog.LevelWarn))
-	default:
+	case level < LevelBrokenProcess:
 		buf.Write(str("ERR", level-slog.LevelError))
+	default:
+		buf.Write(str("BKN", level-LevelBrokenProcess))
 	}
 
 	if !h.opts.NoColor && level >= slog.LevelInfo {

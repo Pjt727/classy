@@ -24,7 +24,8 @@ type syncChange struct {
 }
 
 type syncHandler struct {
-	DbPool *pgxpool.Pool
+	dbPool *pgxpool.Pool
+	logger *slog.Logger
 }
 
 // all syncs
@@ -64,7 +65,7 @@ func (h *syncHandler) syncAll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	q := db.New(h.DbPool)
+	q := db.New(h.dbPool)
 	errCh := make(chan error, 2)
 	syncChangeRows, err := q.SyncAll(ctx, db.SyncAllParams{
 		LastSequence: int32(sequence),
@@ -72,7 +73,7 @@ func (h *syncHandler) syncAll(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		errCh <- err
-		slog.Error("Could not get lastest sync rows", "err", err)
+		h.logger.Error("Could not get lastest sync rows", "err", err)
 		return
 	}
 	syncChanges := make([]syncChange, len(syncChangeRows))
@@ -88,7 +89,7 @@ func (h *syncHandler) syncAll(w http.ResponseWriter, r *http.Request) {
 
 	if len(errCh) > 0 {
 		for err := range errCh {
-			slog.Error("Failed getting all sync row changes ", "err", err)
+			h.logger.Error("Failed getting all sync row changes ", "err", err)
 		}
 		http.Error(w, http.StatusText(500), 500)
 	}
@@ -104,7 +105,7 @@ func (h *syncHandler) syncAll(w http.ResponseWriter, r *http.Request) {
 	}
 	resultJson, err := json.Marshal(result)
 	if err != nil {
-		slog.Error("Could not marshal school rows", "err", err)
+		h.logger.Error("Could not marshal school rows", "err", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
@@ -132,12 +133,12 @@ func (h *syncHandler) syncSchoolTerms(w http.ResponseWriter, r *http.Request) {
 	var syncData selectSchoolEntry
 	err := json.NewDecoder(r.Body).Decode(&syncData)
 	if err != nil {
-		slog.Error("Could not parse sequence", "err", err)
+		h.logger.Error("Could not parse sequence", "err", err)
 		http.Error(w, "Could not parse body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	ctx := r.Context()
-	q := db.New(h.DbPool)
+	q := db.New(h.dbPool)
 
 	// it is a little odd that this has to be per school bc there is not a single sql query for everything
 	//    overloading this endpoint with difficult requests from bad actors is far too easy
@@ -190,7 +191,7 @@ func (h *syncHandler) syncSchoolTerms(w http.ResponseWriter, r *http.Request) {
 	}
 	resultJson, err := json.Marshal(result)
 	if err != nil {
-		slog.Error("Could not marshal school rows", "err", err)
+		h.logger.Error("Could not marshal school rows", "err", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}

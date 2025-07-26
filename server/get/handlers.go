@@ -10,8 +10,9 @@ import (
 	"log/slog"
 )
 
-type GetHandler struct {
-	DbPool *pgxpool.Pool
+type getHandler struct {
+	dbPool *pgxpool.Pool
+	logger *slog.Logger
 }
 
 type GetQueriesParam int
@@ -21,24 +22,24 @@ const (
 	LimitKey
 )
 
-func (h *GetHandler) GetCourse(w http.ResponseWriter, r *http.Request) {
+func (h *getHandler) getCourse(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
-	q := db.New(h.DbPool)
+	q := db.New(h.dbPool)
 	courseRows, err := q.GetCourseWithHueristics(ctx, db.GetCourseWithHueristicsParams{
 		SchoolID:     chi.URLParam(r, "schoolID"),
 		SubjectCode:  chi.URLParam(r, "subjectCode"),
 		CourseNumber: chi.URLParam(r, "courseNumber"),
 	})
 	if err != nil {
-		slog.Error("Could not get school rows", "err", err)
+		h.logger.Error("Could not get school rows", "err", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
 
 	courses, err := json.Marshal(courseRows)
 	if err != nil {
-		slog.Error("Could not marshal school rows", "err", err)
+		h.logger.Error("Could not marshal school rows", "err", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
@@ -46,10 +47,10 @@ func (h *GetHandler) GetCourse(w http.ResponseWriter, r *http.Request) {
 	w.Write(courses)
 }
 
-func (h *GetHandler) GetCoursesForSubject(w http.ResponseWriter, r *http.Request) {
+func (h *getHandler) getCoursesForSubject(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
-	q := db.New(h.DbPool)
+	q := db.New(h.dbPool)
 	courseRows, err := q.GetCoursesForSchoolAndSubject(ctx, db.GetCoursesForSchoolAndSubjectParams{
 		SchoolID:    chi.URLParam(r, "schoolID"),
 		SubjectCode: chi.URLParam(r, "subjectCode"),
@@ -57,14 +58,14 @@ func (h *GetHandler) GetCoursesForSubject(w http.ResponseWriter, r *http.Request
 		Limitvalue:  ctx.Value(LimitKey).(int32),
 	})
 	if err != nil {
-		slog.Error("Could not get school rows", "err", err)
+		h.logger.Error("Could not get school rows", "err", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
 
 	courses, err := json.Marshal(courseRows)
 	if err != nil {
-		slog.Error("Could not marshal school rows", "err", err)
+		h.logger.Error("Could not marshal school rows", "err", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
@@ -72,24 +73,24 @@ func (h *GetHandler) GetCoursesForSubject(w http.ResponseWriter, r *http.Request
 	w.Write(courses)
 }
 
-func (h *GetHandler) GetCourses(w http.ResponseWriter, r *http.Request) {
+func (h *getHandler) getCourses(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
-	q := db.New(h.DbPool)
+	q := db.New(h.dbPool)
 	courseRows, err := q.GetCoursesForSchool(ctx, db.GetCoursesForSchoolParams{
 		SchoolID:    chi.URLParam(r, "schoolID"),
 		Offsetvalue: ctx.Value(OffsetKey).(int32),
 		Limitvalue:  ctx.Value(LimitKey).(int32),
 	})
 	if err != nil {
-		slog.Error("Could not get school rows", "err", err)
+		h.logger.Error("Could not get school rows", "err", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
 
 	courses, err := json.Marshal(courseRows)
 	if err != nil {
-		slog.Error("Could not marshal school rows", "err", err)
+		h.logger.Error("Could not marshal school rows", "err", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
@@ -97,10 +98,10 @@ func (h *GetHandler) GetCourses(w http.ResponseWriter, r *http.Request) {
 	w.Write(courses)
 }
 
-func (h *GetHandler) GetSchoolTerms(w http.ResponseWriter, r *http.Request) {
+func (h *getHandler) getSchoolTerms(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
-	q := db.New(h.DbPool)
+	q := db.New(h.dbPool)
 	termCollectionsRows, err := q.GetTermCollectionsForSchool(
 		ctx,
 		db.GetTermCollectionsForSchoolParams{
@@ -110,14 +111,14 @@ func (h *GetHandler) GetSchoolTerms(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if err != nil {
-		slog.Error("Could not get school rows", "err", err)
+		h.logger.Error("Could not get school rows", "err", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
 
 	termCollections, err := json.Marshal(termCollectionsRows)
 	if err != nil {
-		slog.Error("Could not marshal school rows", "err", err)
+		h.logger.Error("Could not marshal school rows", "err", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
@@ -125,22 +126,22 @@ func (h *GetHandler) GetSchoolTerms(w http.ResponseWriter, r *http.Request) {
 	w.Write(termCollections)
 }
 
-func (h *GetHandler) GetSchools(w http.ResponseWriter, r *http.Request) {
+func (h *getHandler) getSchools(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	q := db.New(h.DbPool)
+	q := db.New(h.dbPool)
 	schools, err := q.GetSchools(ctx, db.GetSchoolsParams{
 		Offsetvalue: ctx.Value(OffsetKey).(int32),
 		Limitvalue:  ctx.Value(LimitKey).(int32),
 	})
 	if err != nil {
-		slog.Error("Could not get school rows", "err", err)
+		h.logger.Error("Could not get school rows", "err", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
 
 	classRowsJSON, err := json.Marshal(schools)
 	if err != nil {
-		slog.Error("Could not marshal school rows", "err", err)
+		h.logger.Error("Could not marshal school rows", "err", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
@@ -148,9 +149,9 @@ func (h *GetHandler) GetSchools(w http.ResponseWriter, r *http.Request) {
 	w.Write(classRowsJSON)
 }
 
-func (h *GetHandler) GetTermHueristics(w http.ResponseWriter, r *http.Request) {
+func (h *getHandler) getTermHueristics(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	q := db.New(h.DbPool)
+	q := db.New(h.dbPool)
 	termHueristics, err := q.GetTermHueristics(ctx,
 		db.GetTermHueristicsParams{
 			SchoolID:         chi.URLParam(r, "schoolID"),
@@ -158,23 +159,23 @@ func (h *GetHandler) GetTermHueristics(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if err != nil {
-		slog.Error("Could not get term hueristics rows", "err", err)
+		h.logger.Error("Could not get term hueristics rows", "err", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
 
 	classRowsJSON, err := json.Marshal(termHueristics)
 	if err != nil {
-		slog.Error("Could not marshal term hueristics rows", "err", err)
+		h.logger.Error("Could not marshal term hueristics rows", "err", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(classRowsJSON)
 }
-func (h *GetHandler) GetClasses(w http.ResponseWriter, r *http.Request) {
+func (h *getHandler) getClasses(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	q := db.New(h.DbPool)
+	q := db.New(h.dbPool)
 	classRows, err := q.GetSchoolsClassesForTermOrderedBySection(ctx,
 		db.GetSchoolsClassesForTermOrderedBySectionParams{
 			SchoolID:         chi.URLParam(r, "schoolID"),
@@ -184,14 +185,14 @@ func (h *GetHandler) GetClasses(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if err != nil {
-		slog.Error("Could not get class rows", "err", err)
+		h.logger.Error("Could not get class rows", "err", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
 
 	classRowsJSON, err := json.Marshal(classRows)
 	if err != nil {
-		slog.Error("Could not marshal class rows", "err", err)
+		h.logger.Error("Could not marshal class rows", "err", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
@@ -199,10 +200,10 @@ func (h *GetHandler) GetClasses(w http.ResponseWriter, r *http.Request) {
 	w.Write(classRowsJSON)
 }
 
-func (h *GetHandler) VerifyCourse(next http.Handler) http.Handler {
+func (h *getHandler) verifyCourse(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		q := db.New(h.DbPool)
+		q := db.New(h.dbPool)
 		courseExists, err := q.CourseExists(ctx,
 			db.CourseExistsParams{
 				SchoolID:     chi.URLParam(r, "schoolID"),
@@ -222,10 +223,10 @@ func (h *GetHandler) VerifyCourse(next http.Handler) http.Handler {
 	})
 }
 
-func (h *GetHandler) VerifySchool(next http.Handler) http.Handler {
+func (h *getHandler) verifySchool(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		q := db.New(h.DbPool)
+		q := db.New(h.dbPool)
 		schoolExists, err := q.SchoolExists(ctx, chi.URLParam(r, "schoolID"))
 		if err != nil {
 			http.Error(w, http.StatusText(500), 500)
@@ -239,10 +240,10 @@ func (h *GetHandler) VerifySchool(next http.Handler) http.Handler {
 	})
 }
 
-func (h *GetHandler) VerifyTermCollection(next http.Handler) http.Handler {
+func (h *getHandler) verifyTermCollection(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		q := db.New(h.DbPool)
+		q := db.New(h.dbPool)
 		termCollectionExists, err := q.TermCollectionExists(ctx, db.TermCollectionExistsParams{
 			SchoolID:         chi.URLParam(r, "schoolID"),
 			TermCollectionID: chi.URLParam(r, "termCollectionID"),

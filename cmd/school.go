@@ -76,7 +76,7 @@ facualty members, and internal collection tables`,
 		}
 
 		// update the terms for the school
-		err = orchestrator.UpsertSchoolTerms(ctx, *logger, db.School{
+		err = orchestrator.UpsertSchoolTerms(ctx, logger, db.School{
 			ID:   schoolId,
 			Name: schoolName,
 		})

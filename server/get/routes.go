@@ -2,39 +2,42 @@ package serverget
 
 import (
 	"context"
-	"github.com/go-chi/chi/v5"
+	"log/slog"
 	"net/http"
 	"strconv"
+
+	"github.com/go-chi/chi/v5"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func PopulateGetRoutes(r *chi.Router, pool *pgxpool.Pool) {
-	getHandler := GetHandler{
-		DbPool: pool,
+func PopulateGetRoutes(r *chi.Router, pool *pgxpool.Pool, logger slog.Logger) {
+	getHandler := getHandler{
+		dbPool: pool,
+		logger: &logger,
 	}
 
 	(*r).Use(populatePagnation)
-	(*r).Get("/", getHandler.GetSchools)
+	(*r).Get("/", getHandler.getSchools)
 	(*r).Route("/{schoolID}", func(r chi.Router) {
-		r.Use(getHandler.VerifySchool)
-		r.Get("/", getHandler.GetSchoolTerms)
+		r.Use(getHandler.verifySchool)
+		r.Get("/", getHandler.getSchoolTerms)
 
 		r.Route("/courses", func(r chi.Router) {
-			r.Get("/", getHandler.GetCourses)
+			r.Get("/", getHandler.getCourses)
 			r.Route("/{subjectCode}", func(r chi.Router) {
-				r.Get("/", getHandler.GetCoursesForSubject)
+				r.Get("/", getHandler.getCoursesForSubject)
 				r.Route("/{courseNumber}", func(r chi.Router) {
-					r.Use(getHandler.VerifyCourse)
-					r.Get("/", getHandler.GetCourse)
+					r.Use(getHandler.verifyCourse)
+					r.Get("/", getHandler.getCourse)
 				})
 			})
 		})
 
 		r.Route("/{termCollectionID}", func(r chi.Router) {
-			r.Use(getHandler.VerifyTermCollection)
-			r.Get("/", getHandler.GetTermHueristics)
-			r.Get("/classes", getHandler.GetClasses)
+			r.Use(getHandler.verifyTermCollection)
+			r.Get("/", getHandler.getTermHueristics)
+			r.Get("/classes", getHandler.getClasses)
 		})
 	})
 }
