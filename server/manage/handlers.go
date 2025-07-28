@@ -21,6 +21,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type Sanatized int
@@ -34,43 +35,49 @@ const (
 // is tiny
 const UserCookieName = "user_token"
 
-type tokenStore struct {
-	tokenToUsername   map[string]string
-	tokenToExpireTime map[string]time.Time
-	tokenDuration     time.Duration
-	mu                sync.RWMutex
+type managementUser struct {
+	username   string
+	expireTime time.Time
 }
 
-func (t *tokenStore) getToken(token string) (string, bool) {
-	t.refreshToken()
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	username, ok := t.tokenToUsername[token]
+type tokenStore struct {
+	tokenToUser   map[string]*managementUser
+	tokenDuration time.Duration
+	mu            sync.RWMutex
+}
+
+func (t *tokenStore) getToken(token string) (managementUser, bool) {
+	t.refreshTokens()
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	user, ok := t.tokenToUser[token]
 	if ok {
-		t.mu.Lock()
-		t.tokenToExpireTime[token] = time.Now().Add(t.tokenDuration)
-		t.mu.Unlock()
+		user.expireTime = time.Now().Add(t.tokenDuration)
+		return *user, ok
+	} else {
+		return managementUser{}, ok
 	}
-	return username, ok
+
 }
 
 func (t *tokenStore) addToken(token string, username string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.tokenToUsername[token] = username
-	t.tokenToExpireTime[token] = time.Now().Add(t.tokenDuration)
+	t.tokenToUser[token] = &managementUser{
+		username:   username,
+		expireTime: time.Now().Add(t.tokenDuration),
+	}
 }
 
 // could also use goroutines but this should be fine
 // bc of the low number of expected users for management auth
-func (t *tokenStore) refreshToken() {
+func (t *tokenStore) refreshTokens() {
 	currentTime := time.Now()
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	for token, expiredTime := range t.tokenToExpireTime {
-		if currentTime.After(expiredTime) {
-			delete(t.tokenToUsername, token)
-			delete(t.tokenToExpireTime, token)
+	for token, user := range t.tokenToUser {
+		if currentTime.After(user.expireTime) {
+			delete(t.tokenToUser, token)
 		}
 	}
 }
@@ -105,6 +112,7 @@ var testingLoggingOptions = &logginghelpers.Options{
 	Level:     logginghelpers.LevelReportIO,
 	NoColor:   false,
 }
+
 var loggingOptions = &logginghelpers.Options{
 	AddSource: false,
 	Level:     slog.LevelInfo,
@@ -215,7 +223,26 @@ func (h *manageHandler) loginView(w http.ResponseWriter, r *http.Request) {
 
 func (h *manageHandler) login(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	err := components.Login().Render(r.Context(), w)
+	username := r.FormValue("username")
+	password := r.FormValue("password")
+	// users only need to exist on the main database to have access to both of them
+	q := db.New(h.DbPool)
+	user, err := q.AuthGetUser(r.Context(), username)
+
+	// need to ensure the server does not accidentally give information about
+	//    what users exist
+	errText := "Invalid log in - verify a user has been added to the database"
+	if err != nil {
+		h.baseLogger.ErrorContext(r.Context(), "could not get user", "error", err)
+		notify(w, r, components.NotifyError, errText)
+		return
+	}
+	err = bcrypt.CompareHashAndPassword([]byte(user.EncryptedPassword), []byte(password))
+	if err != nil {
+		h.baseLogger.ErrorContext(r.Context(), "password is not correct", "username", username)
+		notify(w, r, components.NotifyError, errText)
+		return
+	}
 
 	token := uuid.New().String()
 	cookie := &http.Cookie{
@@ -227,17 +254,28 @@ func (h *manageHandler) login(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteStrictMode,
 	}
 	http.SetCookie(w, cookie)
-	if err != nil {
-		h.baseLogger.ErrorContext(r.Context(), "Could not render login view", "error", err)
-		http.Error(w, http.StatusText(500), 500)
-		return
-	}
+	w.Header().Add("HX-Redirect", "/manage")
+}
+
+func ensureLoggedIn(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		var cookie *http.Cookie
+		var err error
+		cookie, err = r.Cookie(UserCookieName)
+		if err != nil {
+			http.Redirect(w, r, "/manage/login", http.StatusSeeOther)
+			return
+		}
+
+		ctx = context.WithValue(ctx, UserCookie, cookie.String())
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 func (h *manageHandler) dashboardHome(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-
-	// servicesForSchools := h.Orchestrator.GetSchoolsWithService()
 
 	managementOrchs := make([]*components.ManagementOrchestrator, len(h.orchestrators))
 	i := 0
@@ -332,21 +370,6 @@ func (h *manageHandler) validateOrchestrator(next http.Handler) http.Handler {
 		}
 
 		ctx = context.WithValue(ctx, OrchestratorLabel, label)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-func ensureCookie(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		var cookie *http.Cookie
-		var err error
-		cookie, err = r.Cookie(UserCookieName)
-		if err != nil {
-		}
-
-		ctx = context.WithValue(ctx, UserCookie, cookie.String())
-
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

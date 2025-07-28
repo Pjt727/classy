@@ -181,6 +181,11 @@ type HistoricClassInformationTermDependency struct {
 	SchoolID              string `json:"school_id"`
 }
 
+type ManagementUser struct {
+	Username          string `json:"username"`
+	EncryptedPassword string `json:"encrypted_password"`
+}
+
 type MeetingTime struct {
 	Sequence         int32            `json:"sequence"`
 	SectionSequence  string           `json:"section_sequence"`

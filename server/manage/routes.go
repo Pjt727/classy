@@ -13,21 +13,22 @@ func PopulateManagementRoutes(r *chi.Router, pool *pgxpool.Pool, testPool *pgxpo
 	(*r).Use(
 		middleware.AllowContentType("application/x-www-form-urlencoded", "multipart/form-data"),
 	)
+	(*r).Get("/login", h.loginView)
+	(*r).Post("/login", h.login)
+	(*r).Group(func(r chi.Router) {
+		r.Use(ensureLoggedIn)
 
-	(*r).Use(ensureCookie)
-	(*r).Get("/login", h.dashboardHome)
-	(*r).Post("/login", h.dashboardHome)
+		r.Get("/", h.dashboardHome)
+		r.Post("/", h.newOrchestrator)
+		r.Delete("/db", h.resetDatabase)
 
-	(*r).Get("/", h.dashboardHome)
-	(*r).Post("/", h.newOrchestrator)
-	(*r).Delete("/db", h.resetDatabase)
-
-	(*r).Route("/{orchestratorLabel}", func(r chi.Router) {
-		r.Use(h.validateOrchestrator)
-		r.Get("/", h.orchestratorHome)
-		r.Get("/watch-logs", h.loggingWebSocket)
-		r.Post("/terms", h.orchestratorGetTerms)
-		r.Patch("/terms", h.collectTerm)
+		r.Route("/{orchestratorLabel}", func(r chi.Router) {
+			r.Use(h.validateOrchestrator)
+			r.Get("/", h.orchestratorHome)
+			r.Get("/watch-logs", h.loggingWebSocket)
+			r.Post("/terms", h.orchestratorGetTerms)
+			r.Patch("/terms", h.collectTerm)
+		})
 	})
 
 	return nil

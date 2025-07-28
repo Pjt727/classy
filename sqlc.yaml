@@ -5,6 +5,7 @@ sql:
     queries: 
       - "data/entry.sql"
       - "data/get.sql"
+      - "data/auth.sql"
       - "data/sync.sql"
       - "data/manage.sql"
     gen:

@@ -1,22 +1,24 @@
 package components
 
 templ Login() {
-<div class="container">
-    <div class="row">
-        <div class="column column-50 column-offset-25">
-            <h1>Login</h1>
-            <p>Please enter your credentials.</p>
-            <form hx-post="/login" hx-target="#login-form" hx-swap="outerHTML">
-                <fieldset>
-                    <label for="username">Username</label>
-                    <input type="text" id="username" name="username" placeholder="Username" />
-                    <label for="password">Password</label>
-                    <input type="password" id="password" name="password" placeholder="Password" />
-                    <input class="button button-primary" type="submit" value="Sign In" />
-                </fieldset>
-            </form>
-            <div id="login-form"></div>
-        </div>
-    </div>
-</div>
+	@Base() {
+		<div class="container">
+			<div class="row">
+				<div class="column column-50 column-offset-25">
+					<h1>Management login</h1>
+					<p>Please enter your credentials.</p>
+					<form hx-post="/manage/login" hx-swap="none">
+						<fieldset>
+							<label for="username">Username</label>
+							<input type="text" id="username" name="username" placeholder="Username"/>
+							<label for="password">Password</label>
+							<input type="password" id="password" name="password" placeholder="Password"/>
+							<input class="button button-primary" type="submit" value="Sign In"/>
+						</fieldset>
+					</form>
+					<div id="login-form"></div>
+				</div>
+			</div>
+		</div>
+	}
 }

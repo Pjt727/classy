@@ -629,4 +629,5 @@ select * from historic_class_information where historic_class_information.term_c
 
 select * from sections where term_collection_id = '202540';
 
-
+SELECT * FROM management_users;
+$2a$10$eVO6SuPIocgZQ2YzokHHI.MlJ53yYRTf9k0VqNr5hZ.ULeMOtIZ0.
