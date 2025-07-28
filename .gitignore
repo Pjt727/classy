@@ -22,3 +22,15 @@ go.work.sum
 
 # env file
 .env
+
+# some developement tools
+.air.toml
+.nvim.lua
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+!*.code-workspace
+*.vsix

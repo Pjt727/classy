@@ -100,19 +100,19 @@ SELECT
 FROM staging_sections WHERE term_collection_history_id = @term_collection_history_id
 ON CONFLICT ("sequence", subject_code, course_number, school_id, term_collection_id) DO UPDATE
 SET 
-    campus = COALESCE(EXCLUDED.campus, sections.campus),
-    enrollment = COALESCE(EXCLUDED.enrollment, sections.enrollment),
-    max_enrollment = COALESCE(EXCLUDED.max_enrollment, sections.max_enrollment),
-    instruction_method = COALESCE(EXCLUDED.instruction_method, sections.instruction_method),
-    primary_professor_id = COALESCE(EXCLUDED.primary_professor_id, sections.primary_professor_id),
-    other = COALESCE(EXCLUDED.other, sections.other)
+    campus = EXCLUDED.campus,
+    enrollment = EXCLUDED.enrollment,
+    max_enrollment = EXCLUDED.max_enrollment,
+    instruction_method = EXCLUDED.instruction_method,
+    primary_professor_id = EXCLUDED.primary_professor_id,
+    other = EXCLUDED.other
   -- reducing write locks makes this way faster ALSO simplfies trigger logic
-  WHERE (sections.campus IS DISTINCT FROM EXCLUDED.campus AND EXCLUDED.campus IS NOT NULL)
-      OR (sections.enrollment IS DISTINCT FROM EXCLUDED.enrollment AND EXCLUDED.enrollment IS NOT NULL)
-      OR (sections.max_enrollment IS DISTINCT FROM EXCLUDED.max_enrollment AND EXCLUDED.max_enrollment IS NOT NULL)
-      OR (sections.instruction_method IS DISTINCT FROM EXCLUDED.instruction_method AND EXCLUDED.instruction_method IS NOT NULL)
-      OR (sections.primary_professor_id IS DISTINCT FROM EXCLUDED.primary_professor_id AND EXCLUDED.primary_professor_id IS NOT NULL)
-      OR (sections.other IS DISTINCT FROM EXCLUDED.other AND EXCLUDED.other IS NOT NULL)
+  WHERE sections.campus IS DISTINCT FROM EXCLUDED.campus
+      OR sections.enrollment IS DISTINCT FROM EXCLUDED.enrollment
+      OR sections.max_enrollment IS DISTINCT FROM EXCLUDED.max_enrollment
+      OR sections.instruction_method IS DISTINCT FROM EXCLUDED.instruction_method
+      OR sections.primary_professor_id IS DISTINCT FROM EXCLUDED.primary_professor_id
+      OR sections.other IS DISTINCT FROM EXCLUDED.other
 ;
 
 -- name: RemoveUnstagedMeetings :exec

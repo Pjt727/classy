@@ -60,7 +60,9 @@ type ClassData struct {
 // Both of these could be done by storing all term data in memory then sending it all at once to the
 //    database, but this is not scalable
 
-// / helper to add class information concurrently
+// helper to add class information concurrently
+// note that nullable fields in courses and professors will not be updated from a non-null value
+// to a null value because it is assumed the non-null data is more valuable
 func (q *EntryQueries) InsertClassData(
 	logger *slog.Logger,
 	ctx context.Context,
@@ -148,6 +150,7 @@ func (q *EntryQueries) StageSections(ctx context.Context, sections []Section, lo
 	return nil
 }
 
+// does not update values to null
 func (q *EntryQueries) StageProfessors(ctx context.Context, professors []Professor, logger *slog.Logger) error {
 	if len(professors) == 0 {
 		return nil
@@ -174,6 +177,7 @@ func (q *EntryQueries) StageProfessors(ctx context.Context, professors []Profess
 	return nil
 }
 
+// does not update values to null
 func (q *EntryQueries) StageCourses(ctx context.Context, courses []Course, logger *slog.Logger) error {
 	if len(courses) == 0 {
 		return nil

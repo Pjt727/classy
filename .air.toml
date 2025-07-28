@@ -3,7 +3,6 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-  # bin = "tmp/main"
   full_bin = "tmp/main app serve"
   cmd = "templ generate && sqlc generate && go build -o ./tmp/main ."
   delay = 60
