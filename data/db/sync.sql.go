@@ -10,43 +10,58 @@ import (
 )
 
 const syncAll = `-- name: SyncAll :many
-SELECT
-  sequence,
-  table_name,
-  pk_fields,
-  sync_action,
-  relevant_fields,
-  COUNT(*) OVER() AS total_rows
-FROM
-(SELECT
-    sequence, table_name, updated_input_at, composite_hash, school_id, pk_fields, sync_action, relevant_fields,
-    ROW_NUMBER() OVER (PARTITION BY school_id, table_name, composite_hash ORDER BY sequence ASC) AS rn
-    FROM
-    sync_diffs s
-    WHERE s.sequence > $1
-) as RankedData
-WHERE
-  rn = 1
+WITH sync_diffs AS (
+    SELECT 
+           MIN(sequence) AS sequence, 
+           table_name,
+           MIN(input_at) AS updated_input_at,
+           composite_hash,
+           school_id,
+           CASE
+               WHEN table_name = 'schools' THEN pk_fields::jsonb
+               ELSE jsonb_set(pk_fields::jsonb, '{school_id}', to_jsonb(school_id), true)
+           END AS updated_pk_fields,
+           combined_json(
+                    (sync_action, relevant_fields)::sync_change
+                    ORDER BY sequence
+           ) AS sync_changes
+    FROM historic_class_information
+    WHERE sequence > $2
+    GROUP BY composite_hash, table_name, composite_hash, school_id, updated_pk_fields
+    -- if combined_json is NULL it means that it was deleted
+    HAVING combined_json(
+                    (sync_action, relevant_fields)::sync_change
+                    ORDER BY sequence
+           ) IS NOT NULL
+)
+SELECT sequence, table_name, updated_input_at AS input_at, composite_hash, school_id, updated_pk_fields AS pk_fields,
+    (sync_changes).sync_action::sync_kind AS sync_action,
+    (sync_changes).relevant_fields AS relevant_fields,
+    COUNT(*) OVER() AS total_rows
+FROM sync_diffs
 ORDER BY sequence
-LIMIT $2::int
+LIMIT $1::int
 `
 
 type SyncAllParams struct {
-	LastSequence int32 `json:"last_sequence"`
 	MaxRecords   int32 `json:"max_records"`
+	LastSequence int32 `json:"last_sequence"`
 }
 
 type SyncAllRow struct {
-	Sequence       int32                  `json:"sequence"`
-	TableName      string                 `json:"table_name"`
-	PkFields       map[string]interface{} `json:"pk_fields"`
-	SyncAction     string                 `json:"sync_action"`
-	RelevantFields map[string]interface{} `json:"relevant_fields"`
-	TotalRows      int64                  `json:"total_rows"`
+	Sequence       int32       `json:"sequence"`
+	TableName      string      `json:"table_name"`
+	InputAt        interface{} `json:"input_at"`
+	CompositeHash  string      `json:"composite_hash"`
+	SchoolID       string      `json:"school_id"`
+	PkFields       interface{} `json:"pk_fields"`
+	SyncAction     SyncKind    `json:"sync_action"`
+	RelevantFields interface{} `json:"relevant_fields"`
+	TotalRows      int64       `json:"total_rows"`
 }
 
 func (q *Queries) SyncAll(ctx context.Context, arg SyncAllParams) ([]SyncAllRow, error) {
-	rows, err := q.db.Query(ctx, syncAll, arg.LastSequence, arg.MaxRecords)
+	rows, err := q.db.Query(ctx, syncAll, arg.MaxRecords, arg.LastSequence)
 	if err != nil {
 		return nil, err
 	}
@@ -57,6 +72,9 @@ func (q *Queries) SyncAll(ctx context.Context, arg SyncAllParams) ([]SyncAllRow,
 		if err := rows.Scan(
 			&i.Sequence,
 			&i.TableName,
+			&i.InputAt,
+			&i.CompositeHash,
+			&i.SchoolID,
 			&i.PkFields,
 			&i.SyncAction,
 			&i.RelevantFields,
@@ -73,45 +91,60 @@ func (q *Queries) SyncAll(ctx context.Context, arg SyncAllParams) ([]SyncAllRow,
 }
 
 const syncSchool = `-- name: SyncSchool :many
-SELECT
-  sequence,
-  table_name,
-  pk_fields,
-  sync_action,
-  relevant_fields,
-  COUNT(*) OVER() AS total_rows
-FROM
-(SELECT
-    sequence, table_name, updated_input_at, composite_hash, school_id, pk_fields, sync_action, relevant_fields,
-    ROW_NUMBER() OVER (PARTITION BY school_id, table_name, composite_hash ORDER BY sequence ASC) AS rn
-    FROM
-    sync_diffs s
-    WHERE s.sequence > $1 
-          AND s.school_id = $2
-) as RankedData
-WHERE
-  rn = 1
+WITH sync_diffs AS (
+    SELECT 
+           MIN(sequence) AS sequence, 
+           table_name,
+           MIN(input_at) AS updated_input_at,
+           composite_hash,
+           school_id,
+           CASE
+               WHEN table_name = 'schools' THEN pk_fields::jsonb
+               ELSE jsonb_set(pk_fields::jsonb, '{school_id}', to_jsonb(school_id), true)
+           END AS updated_pk_fields,
+           combined_json(
+                    (sync_action, relevant_fields)::sync_change
+                    ORDER BY sequence
+           ) AS sync_changes
+    FROM historic_class_information
+    WHERE sequence > $2
+          AND school_id = $3
+    GROUP BY composite_hash, table_name, composite_hash, school_id, updated_pk_fields
+    -- if combined_json is NULL it means that it was deleted
+    HAVING combined_json(
+                    (sync_action, relevant_fields)::sync_change
+                    ORDER BY sequence
+           ) IS NOT NULL
+)
+SELECT sequence, table_name, updated_input_at AS input_at, composite_hash, school_id, updated_pk_fields AS pk_fields,
+    (sync_changes).sync_action::sync_kind AS sync_action,
+    (sync_changes).relevant_fields AS relevant_fields,
+    COUNT(*) OVER() AS total_rows
+FROM sync_diffs
 ORDER BY sequence
-LIMIT $3::int
+LIMIT $1::int
 `
 
 type SyncSchoolParams struct {
+	MaxRecords   int32  `json:"max_records"`
 	LastSequence int32  `json:"last_sequence"`
 	SchoolID     string `json:"school_id"`
-	MaxRecords   int32  `json:"max_records"`
 }
 
 type SyncSchoolRow struct {
-	Sequence       int32                  `json:"sequence"`
-	TableName      string                 `json:"table_name"`
-	PkFields       map[string]interface{} `json:"pk_fields"`
-	SyncAction     string                 `json:"sync_action"`
-	RelevantFields map[string]interface{} `json:"relevant_fields"`
-	TotalRows      int64                  `json:"total_rows"`
+	Sequence       int32       `json:"sequence"`
+	TableName      string      `json:"table_name"`
+	InputAt        interface{} `json:"input_at"`
+	CompositeHash  string      `json:"composite_hash"`
+	SchoolID       string      `json:"school_id"`
+	PkFields       interface{} `json:"pk_fields"`
+	SyncAction     SyncKind    `json:"sync_action"`
+	RelevantFields interface{} `json:"relevant_fields"`
+	TotalRows      int64       `json:"total_rows"`
 }
 
 func (q *Queries) SyncSchool(ctx context.Context, arg SyncSchoolParams) ([]SyncSchoolRow, error) {
-	rows, err := q.db.Query(ctx, syncSchool, arg.LastSequence, arg.SchoolID, arg.MaxRecords)
+	rows, err := q.db.Query(ctx, syncSchool, arg.MaxRecords, arg.LastSequence, arg.SchoolID)
 	if err != nil {
 		return nil, err
 	}
@@ -122,6 +155,9 @@ func (q *Queries) SyncSchool(ctx context.Context, arg SyncSchoolParams) ([]SyncS
 		if err := rows.Scan(
 			&i.Sequence,
 			&i.TableName,
+			&i.InputAt,
+			&i.CompositeHash,
+			&i.SchoolID,
 			&i.PkFields,
 			&i.SyncAction,
 			&i.RelevantFields,
@@ -138,66 +174,80 @@ func (q *Queries) SyncSchool(ctx context.Context, arg SyncSchoolParams) ([]SyncS
 }
 
 const syncTerm = `-- name: SyncTerm :many
-SELECT
-  sequence,
-  table_name,
-  pk_fields,
-  sync_action,
-  relevant_fields,
-  COUNT(*) OVER() AS total_rows
-FROM
-(SELECT
-    sequence, table_name, updated_input_at, composite_hash, school_id, pk_fields, sync_action, relevant_fields,
-    ROW_NUMBER() OVER (PARTITION BY school_id, table_name, composite_hash ORDER BY sequence ASC) AS rn
-    FROM
-    sync_diffs s
-    WHERE 
-    s.school_id = $1
-    AND s.sequence > $2
-    AND (
-    -- records that are/ were invovled in the term e.i. professors teaching a section in that term
-    (s.composite_hash, s.table_name) IN (
-            SELECT h.historic_composite_hash, h.table_name
-            FROM historic_class_information_term_dependencies h
-            WHERE h.term_collection_id = $3 and h.school_id = $1
-        )
-    -- sections / meeting times that are directly in the term
-    OR (s.pk_fields ? 'term_collection_id' AND s.pk_fields ->> 'term_collection_id' = $3)
-    -- possible updated data on the school 
-    OR table_name = 'schools'
-    -- possible updated data on the term collection
-    OR (table_name = 'term_collections' AND s.pk_fields ->> 'id' = $3)
-    )
-) as RankedData
-WHERE
-  rn = 1
+WITH sync_diffs AS (
+    SELECT 
+           MIN(sequence) AS sequence, 
+           table_name,
+           MIN(input_at) AS updated_input_at,
+           composite_hash,
+           school_id,
+           CASE
+               WHEN table_name = 'schools' THEN pk_fields::jsonb
+               ELSE jsonb_set(pk_fields::jsonb, '{school_id}', to_jsonb(school_id), true)
+           END AS updated_pk_fields,
+           combined_json(
+                    (sync_action, relevant_fields)::sync_change
+                    ORDER BY sequence
+           ) AS sync_changes
+    FROM historic_class_information hc
+    WHERE sequence > $2
+          AND hc.school_id = $3
+          AND (
+              -- records that are/ were invovled in the term e.i. professors teaching a section in that term
+              (composite_hash, table_name) IN (
+                      SELECT h.historic_composite_hash, h.table_name
+                      FROM historic_class_information_term_dependencies h
+                      WHERE h.term_collection_id = $4 and h.school_id = $3
+                  )
+              -- sections / meeting times that are directly in the term
+              OR (pk_fields ? 'term_collection_id' AND pk_fields ->> 'term_collection_id' = $4)
+              -- possible updated data on the school 
+              OR table_name = 'schools'
+              -- possible updated data on the term collection
+              OR (table_name = 'term_collections' AND pk_fields ->> 'id' = $4)
+              )
+    GROUP BY composite_hash, table_name, composite_hash, school_id, updated_pk_fields
+    -- if combined_json is NULL it means that it was deleted
+    HAVING combined_json(
+                    (sync_action, relevant_fields)::sync_change
+                    ORDER BY sequence
+           ) IS NOT NULL
+)
+SELECT sequence, table_name, updated_input_at AS input_at, composite_hash, school_id, updated_pk_fields AS pk_fields,
+    (sync_changes).sync_action::sync_kind AS sync_action,
+    (sync_changes).relevant_fields AS relevant_fields,
+    COUNT(*) OVER() AS total_rows
+FROM sync_diffs
 ORDER BY sequence
-LIMIT $4::int
+LIMIT $1::int
 `
 
 type SyncTermParams struct {
-	SchoolID         string `json:"school_id"`
-	LastTermSequence int32  `json:"last_term_sequence"`
-	TermCollectionID string `json:"term_collection_id"`
 	MaxRecords       int32  `json:"max_records"`
+	LastSequence     int32  `json:"last_sequence"`
+	SchoolID         string `json:"school_id"`
+	TermCollectionID string `json:"term_collection_id"`
 }
 
 type SyncTermRow struct {
-	Sequence       int32                  `json:"sequence"`
-	TableName      string                 `json:"table_name"`
-	PkFields       map[string]interface{} `json:"pk_fields"`
-	SyncAction     string                 `json:"sync_action"`
-	RelevantFields map[string]interface{} `json:"relevant_fields"`
-	TotalRows      int64                  `json:"total_rows"`
+	Sequence       int32       `json:"sequence"`
+	TableName      string      `json:"table_name"`
+	InputAt        interface{} `json:"input_at"`
+	CompositeHash  string      `json:"composite_hash"`
+	SchoolID       string      `json:"school_id"`
+	PkFields       interface{} `json:"pk_fields"`
+	SyncAction     SyncKind    `json:"sync_action"`
+	RelevantFields interface{} `json:"relevant_fields"`
+	TotalRows      int64       `json:"total_rows"`
 }
 
 // gives only the data that is directly related with that term at any point of time
 func (q *Queries) SyncTerm(ctx context.Context, arg SyncTermParams) ([]SyncTermRow, error) {
 	rows, err := q.db.Query(ctx, syncTerm,
-		arg.SchoolID,
-		arg.LastTermSequence,
-		arg.TermCollectionID,
 		arg.MaxRecords,
+		arg.LastSequence,
+		arg.SchoolID,
+		arg.TermCollectionID,
 	)
 	if err != nil {
 		return nil, err
@@ -209,6 +259,9 @@ func (q *Queries) SyncTerm(ctx context.Context, arg SyncTermParams) ([]SyncTermR
 		if err := rows.Scan(
 			&i.Sequence,
 			&i.TableName,
+			&i.InputAt,
+			&i.CompositeHash,
+			&i.SchoolID,
 			&i.PkFields,
 			&i.SyncAction,
 			&i.RelevantFields,

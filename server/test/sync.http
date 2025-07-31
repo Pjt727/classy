@@ -1,35 +1,43 @@
-@hostname=localhost:3000
+@hostname = localhost:3000
 
-GET {{hostname}}/sync/all
+GET {{hostname}}/sync/all HTTP/1.1
 
-###
-GET {{hostname}}/sync/all?lastSyncSequence=100
 
-###
+### 
 
-POST {{hostname}}/sync/schools
+GET {{hostname}}/sync/all?lastSyncSequence=0&maxRecordsCount=10000 HTTP/1.1
+
+
+### 
+
+GET {{hostname}}/sync/all?lastSyncSequence=6303&maxRecordsCount=10000 HTTP/1.1
+
+
+### 
+
+POST {{hostname}}/sync/schools HTTP/1.1
 Content-Type: application/json
 Accept: application/json
 
 {
-    "schools": {
-        "marist": {
-            "202540": 0
-        }
-    },
-    "max_records_per_request": 10000
+  "max_records_per_request": 10000,
+  "schools": {
+    "marist": {
+      "202540": 0
+    }
+  }
 }
 
-###
 
-POST {{hostname}}/sync/schools
+### 
+
+POST {{hostname}}/sync/schools HTTP/1.1
 Content-Type: application/json
 Accept: application/json
 
 {
-    "schools": {
-        "marist": 0
-    },
-    "max_records_per_request": 10000
+  "max_records_per_request": 10000,
+  "schools": {
+    "marist": 0
+  }
 }
-

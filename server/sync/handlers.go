@@ -50,16 +50,15 @@ func (h *syncHandler) syncAll(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	inputMaxRecords := r.URL.Query().Get("lastSyncSequence")
-	var maxSequence int
+	inputMaxRecords := r.URL.Query().Get("maxRecordsCount")
+	var maxRecordsCount int
 	if inputMaxRecords == "" {
-		// default time sequence which includes everything
-		maxSequence = int(DEFAULT_MAX_RECORDS)
+		maxRecordsCount = int(DEFAULT_MAX_RECORDS)
 	} else {
 		var err error
-		maxSequence, err = strconv.Atoi(inputMaxRecords)
+		maxRecordsCount, err = strconv.Atoi(inputMaxRecords)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Could not parse sequence: %s", inputMaxRecords), http.StatusBadRequest)
+			http.Error(w, fmt.Sprintf("Could not parse records count: %s", inputMaxRecords), http.StatusBadRequest)
 			return
 		}
 	}
@@ -69,7 +68,7 @@ func (h *syncHandler) syncAll(w http.ResponseWriter, r *http.Request) {
 	errCh := make(chan error, 2)
 	syncChangeRows, err := q.SyncAll(ctx, db.SyncAllParams{
 		LastSequence: int32(sequence),
-		MaxRecords:   int32(min(maxSequence, int(LIMIT_MAX_RECORDS))),
+		MaxRecords:   int32(min(maxRecordsCount, int(LIMIT_MAX_RECORDS))),
 	})
 	if err != nil {
 		errCh <- err
@@ -81,9 +80,9 @@ func (h *syncHandler) syncAll(w http.ResponseWriter, r *http.Request) {
 		syncChanges[i] = syncChange{
 			Sequence:       uint32(syncChangeRow.Sequence),
 			TableName:      syncChangeRow.TableName,
-			PkFields:       syncChangeRow.PkFields,
-			SyncAction:     syncChangeRow.SyncAction,
-			RelevantFields: syncChangeRow.RelevantFields,
+			PkFields:       syncChangeRow.PkFields.(map[string]any),
+			SyncAction:     string(syncChangeRow.SyncAction),
+			RelevantFields: syncChangeRow.RelevantFields.(map[string]any),
 		}
 	}
 
@@ -207,7 +206,7 @@ func getTerms(q *db.Queries, ctx context.Context, schoolID string, runningtermTo
 	for termCollectionID, lastSequence := range runningtermToLastSequence {
 		syncTermResultRows, err := q.SyncTerm(ctx, db.SyncTermParams{
 			SchoolID:         schoolID,
-			LastTermSequence: int32(lastSequence),
+			LastSequence:     int32(lastSequence),
 			TermCollectionID: termCollectionID,
 			MaxRecords:       int32(maxRecords),
 		})
@@ -220,9 +219,9 @@ func getTerms(q *db.Queries, ctx context.Context, schoolID string, runningtermTo
 			syncChanges = append(syncChanges, syncChange{
 				Sequence:       uint32(r.Sequence),
 				TableName:      r.TableName,
-				PkFields:       r.PkFields,
-				SyncAction:     r.SyncAction,
-				RelevantFields: r.RelevantFields,
+				PkFields:       r.PkFields.(map[string]any),
+				SyncAction:     string(r.SyncAction),
+				RelevantFields: r.RelevantFields.(map[string]any),
 			})
 		}
 
@@ -251,9 +250,9 @@ func getSchool(q *db.Queries, ctx context.Context, schoolID string, lastSequence
 		syncChanges = append(syncChanges, syncChange{
 			Sequence:       uint32(r.Sequence),
 			TableName:      r.TableName,
-			PkFields:       r.PkFields,
-			SyncAction:     r.SyncAction,
-			RelevantFields: r.RelevantFields,
+			PkFields:       r.PkFields.(map[string]any),
+			SyncAction:     string(r.SyncAction),
+			RelevantFields: r.RelevantFields.(map[string]any),
 		})
 	}
 

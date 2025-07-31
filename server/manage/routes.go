@@ -2,6 +2,7 @@ package servermanage
 
 import (
 	"log/slog"
+	"os"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -13,10 +14,18 @@ func PopulateManagementRoutes(r *chi.Router, pool *pgxpool.Pool, testPool *pgxpo
 	(*r).Use(
 		middleware.AllowContentType("application/x-www-form-urlencoded", "multipart/form-data"),
 	)
-	(*r).Get("/login", h.loginView)
-	(*r).Post("/login", h.login)
+	isLocal := os.Getenv("LOCAL") == "true"
+
+	// disable authentication if running locally
+	if !isLocal {
+		(*r).Get("/login", h.loginView)
+		(*r).Post("/login", h.login)
+	}
+
 	(*r).Group(func(r chi.Router) {
-		r.Use(ensureLoggedIn)
+		if !isLocal {
+			r.Use(ensureLoggedIn)
+		}
 
 		r.Get("/", h.dashboardHome)
 		r.Post("/", h.newOrchestrator)
