@@ -10,7 +10,7 @@ GET {{hostname}}/sync/all?lastSyncSequence=0&maxRecordsCount=10000 HTTP/1.1
 
 ### 
 
-GET {{hostname}}/sync/all?lastSyncSequence=6303&maxRecordsCount=10000 HTTP/1.1
+GET {{hostname}}/sync/all?lastSyncSequence=8221&maxRecordsCount=10000 HTTP/1.1
 
 
 ### 

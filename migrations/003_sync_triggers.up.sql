@@ -50,7 +50,7 @@ BEGIN
         WHERE new_data.value IS DISTINCT FROM old_data.value;
     ELSIF TG_OP = 'DELETE' THEN
         _sync_action := 'delete';
-        _relevant_fields := NULL;
+        _relevant_fields := '{}'::jsonb;
     END IF;
 
     -- school's id is just "id"

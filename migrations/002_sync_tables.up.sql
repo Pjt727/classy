@@ -3,6 +3,9 @@ CREATE TYPE sync_kind AS ENUM ('update', 'delete', 'insert');
 CREATE TABLE historic_class_information (
     sequence SERIAL PRIMARY KEY,
 
+    -- these three fields keep track of a given record
+    -- e.i. a single section that is updated deleted etc will have
+    -- the same three of these fields
     school_id TEXT NOT NULL,
     table_name TEXT NOT NULL,
     composite_hash TEXT NOT NULL,
@@ -10,7 +13,7 @@ CREATE TABLE historic_class_information (
     input_at TIMESTAMP WITH TIME ZONE,
     pk_fields jsonb NOT NULL,
     sync_action sync_kind NOT NULL,
-    relevant_fields jsonb,
+    relevant_fields jsonb NOT NULL,
     term_collection_history_id INTEGER,
     FOREIGN KEY (term_collection_history_id) REFERENCES term_collection_history(id)
 );
@@ -75,15 +78,17 @@ BEGIN
         ELSIF next_sync_kind = 'update' THEN
             RETURN ROW('update', current_relevant_fields || next_relevant_fields)::sync_change;
         ELSIF next_sync_kind = 'delete' THEN
-            RETURN ROW('delete', jsonb_build_object())::sync_change;
+            RETURN ROW('delete', '{}'::jsonb)::sync_change;
         END IF;
 
-    -- delete + insert = just do the insert
+    -- delete + insert = do an update of all rows because we don't have the original row
+    --                   the only way a delete could happen is if the row currently exists
+    --                   which is why this is not an insert
     -- delete + update = impossible
     -- delete + delete = impossible
     ELSIF current_sync_kind = 'delete' THEN
         IF next_sync_kind = 'insert' THEN
-            RETURN next_element;
+            RETURN ROW('update', next_relevant_fields)::sync_change;
         ELSIF next_sync_kind = 'update' THEN
             RAISE EXCEPTION 'Cannot have an update after a delete';
         ELSIF next_sync_kind = 'delete' THEN

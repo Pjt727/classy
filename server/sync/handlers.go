@@ -77,6 +77,7 @@ func (h *syncHandler) syncAll(w http.ResponseWriter, r *http.Request) {
 	}
 	syncChanges := make([]syncChange, len(syncChangeRows))
 	for i, syncChangeRow := range syncChangeRows {
+		// relevant fields can be nil in the case of a deletion
 		syncChanges[i] = syncChange{
 			Sequence:       uint32(syncChangeRow.Sequence),
 			TableName:      syncChangeRow.TableName,
@@ -199,34 +200,83 @@ func (h *syncHandler) syncSchoolTerms(w http.ResponseWriter, r *http.Request) {
 	w.Write(resultJson)
 }
 
-// / updates the running term last sequence to the latest sync number
+type termCollectionSequencePair struct {
+	Sequence uint32 `json:"seqeunce"`
+	Id       string `json:"id"`
+}
+
+// updates the running term last sequence to the latest sync number
 func getTerms(q *db.Queries, ctx context.Context, schoolID string, runningtermToLastSequence map[string]uint32, maxRecords uint32) ([]syncChange, error) {
 	syncChanges := make([]syncChange, 0)
 
-	for termCollectionID, lastSequence := range runningtermToLastSequence {
-		syncTermResultRows, err := q.SyncTerm(ctx, db.SyncTermParams{
-			SchoolID:         schoolID,
-			LastSequence:     int32(lastSequence),
-			TermCollectionID: termCollectionID,
-			MaxRecords:       int32(maxRecords),
+	termExclusionCollectionIds := make([]string, len(runningtermToLastSequence))
+	termCollectionSequencePairs := make([]termCollectionSequencePair, len(runningtermToLastSequence))
+	termToLastSequenceIsSet := make(map[string]bool)
+	i := 0
+	for collectionId, sequence := range runningtermToLastSequence {
+		termExclusionCollectionIds[i] = collectionId
+		termCollectionSequencePairs[i] = termCollectionSequencePair{
+			Sequence: sequence,
+			Id:       collectionId,
+		}
+		termToLastSequenceIsSet[collectionId] = false
+		i++
+	}
+
+	pairBytes, err := json.Marshal(termCollectionSequencePairs)
+	if err != nil {
+		return syncChanges, err
+	}
+
+	syncTermResultRows, err := q.SyncTerms(ctx, db.SyncTermsParams{
+		SchoolID:                    schoolID,
+		MaxRecords:                  int32(maxRecords),
+		TermExclusionCollectionIds:  termExclusionCollectionIds,
+		TermCollectionSequencePairs: pairBytes,
+	})
+
+	if err != nil {
+		return syncChanges, err
+	}
+
+	for _, r := range syncTermResultRows {
+		syncChanges = append(syncChanges, syncChange{
+			Sequence:       uint32(r.Sequence),
+			TableName:      r.TableName,
+			PkFields:       r.PkFields.(map[string]any),
+			SyncAction:     string(r.SyncAction),
+			RelevantFields: r.RelevantFields.(map[string]any),
 		})
+	}
 
-		if err != nil {
-			return syncChanges, err
+	// set all of the last sequence to their updated value by iterating backwards until all terms were set or
+	// all results are exhuasted
+	// they should only be updated by term specific tables ex (term collection, section, meeting time)
+	termSequencesToSet := len(syncChanges)
+	for i := len(syncChanges) - 1; i >= 0; i-- {
+		if termSequencesToSet == 0 {
+			break
 		}
-
-		for _, r := range syncTermResultRows {
-			syncChanges = append(syncChanges, syncChange{
-				Sequence:       uint32(r.Sequence),
-				TableName:      r.TableName,
-				PkFields:       r.PkFields.(map[string]any),
-				SyncAction:     string(r.SyncAction),
-				RelevantFields: r.RelevantFields.(map[string]any),
-			})
+		syncChange := syncChanges[i]
+		var termCollectionId string
+		if syncChange.TableName == "term_collections" {
+			termCollectionId = syncChange.PkFields["id"].(string)
+		} else {
+			id, ok := syncChange.PkFields["term_collection_id"]
+			if ok {
+				termCollectionId = id.(string)
+			}
 		}
-
-		lastSyncSequence := syncTermResultRows[len(syncTermResultRows)-1].Sequence
-		runningtermToLastSequence[termCollectionID] = max(runningtermToLastSequence[termCollectionID], uint32(lastSyncSequence))
+		if termCollectionId == "" {
+			continue
+		}
+		if termToLastSequenceIsSet[termCollectionId] {
+			continue
+		}
+		termSequencesToSet--
+		termToLastSequenceIsSet[termCollectionId] = true
+		// the max should be redundant here
+		runningtermToLastSequence[termCollectionId] = max(runningtermToLastSequence[termCollectionId], syncChange.Sequence)
 	}
 
 	return syncChanges, nil
