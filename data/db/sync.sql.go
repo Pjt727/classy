@@ -198,7 +198,7 @@ WITH
             (value ->> 'sequence')::INTEGER AS term_sequence
         FROM jsonb_array_elements($4::jsonb)
     ) AS checks
-        ON h.sequence > checks.term_sequence AND (
+        ON hc.sequence > checks.term_sequence AND (
         -- sections / meeting times that are directly in the term
         (pk_fields ? 'term_collection_id' AND pk_fields ->> 'term_collection_id' = checks.term_collection_id)
         -- possible updated data on the school
@@ -206,7 +206,7 @@ WITH
         -- possible updated data on the term collection
         OR (table_name = 'term_collections' AND pk_fields ->> 'id' = checks.term_collection_id)
         -- related  
-        OR (h.composite_hash, h.table_name) IN (SELECT historic_composite_hash, table_name FROM included_commons)
+        OR (hc.composite_hash, hc.table_name) IN (SELECT historic_composite_hash, table_name FROM included_commons)
     )
     WHERE school_id = $3
     GROUP BY hc.composite_hash, hc.table_name, hc.school_id

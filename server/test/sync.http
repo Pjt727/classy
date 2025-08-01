@@ -20,7 +20,7 @@ Content-Type: application/json
 Accept: application/json
 
 {
-  "max_records_per_request": 10000,
+  "max_records_per_request": 1000,
   "schools": {
     "marist": {
       "202540": 0

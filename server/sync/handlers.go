@@ -159,6 +159,10 @@ func (h *syncHandler) syncSchoolTerms(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			newSyncChanges, err = getSchool(q, ctx, schoolID, uint32(schoolChoice), maxRequestsPerRequest)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
 			newLastestSync := newSyncChanges[len(newSyncChanges)-1].Sequence
 			syncData.Schools[schoolID] = newLastestSync
 		case map[string]any: // this is a term mapping
@@ -177,7 +181,8 @@ func (h *syncHandler) syncSchoolTerms(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			syncData.Schools[schoolID] = termMap
+			newLastestSync := newSyncChanges[len(newSyncChanges)-1].Sequence
+			syncData.Schools[schoolID] = newLastestSync
 		default: // invalid type
 			http.Error(w, "Invalid body, schools must map to a sequence or term mapping", http.StatusBadRequest)
 			return
@@ -201,17 +206,15 @@ func (h *syncHandler) syncSchoolTerms(w http.ResponseWriter, r *http.Request) {
 }
 
 type termCollectionSequencePair struct {
-	Sequence uint32 `json:"seqeunce"`
+	Sequence uint32 `json:"sequence"`
 	Id       string `json:"id"`
 }
 
-// updates the running term last sequence to the latest sync number
 func getTerms(q *db.Queries, ctx context.Context, schoolID string, runningtermToLastSequence map[string]uint32, maxRecords uint32) ([]syncChange, error) {
 	syncChanges := make([]syncChange, 0)
 
 	termExclusionCollectionIds := make([]string, len(runningtermToLastSequence))
 	termCollectionSequencePairs := make([]termCollectionSequencePair, len(runningtermToLastSequence))
-	termToLastSequenceIsSet := make(map[string]bool)
 	i := 0
 	for collectionId, sequence := range runningtermToLastSequence {
 		termExclusionCollectionIds[i] = collectionId
@@ -219,7 +222,6 @@ func getTerms(q *db.Queries, ctx context.Context, schoolID string, runningtermTo
 			Sequence: sequence,
 			Id:       collectionId,
 		}
-		termToLastSequenceIsSet[collectionId] = false
 		i++
 	}
 
@@ -234,6 +236,7 @@ func getTerms(q *db.Queries, ctx context.Context, schoolID string, runningtermTo
 		TermExclusionCollectionIds:  termExclusionCollectionIds,
 		TermCollectionSequencePairs: pairBytes,
 	})
+	slog.Info("syncterm result", "length", len(syncTermResultRows))
 
 	if err != nil {
 		return syncChanges, err
@@ -247,36 +250,6 @@ func getTerms(q *db.Queries, ctx context.Context, schoolID string, runningtermTo
 			SyncAction:     string(r.SyncAction),
 			RelevantFields: r.RelevantFields.(map[string]any),
 		})
-	}
-
-	// set all of the last sequence to their updated value by iterating backwards until all terms were set or
-	// all results are exhuasted
-	// they should only be updated by term specific tables ex (term collection, section, meeting time)
-	termSequencesToSet := len(syncChanges)
-	for i := len(syncChanges) - 1; i >= 0; i-- {
-		if termSequencesToSet == 0 {
-			break
-		}
-		syncChange := syncChanges[i]
-		var termCollectionId string
-		if syncChange.TableName == "term_collections" {
-			termCollectionId = syncChange.PkFields["id"].(string)
-		} else {
-			id, ok := syncChange.PkFields["term_collection_id"]
-			if ok {
-				termCollectionId = id.(string)
-			}
-		}
-		if termCollectionId == "" {
-			continue
-		}
-		if termToLastSequenceIsSet[termCollectionId] {
-			continue
-		}
-		termSequencesToSet--
-		termToLastSequenceIsSet[termCollectionId] = true
-		// the max should be redundant here
-		runningtermToLastSequence[termCollectionId] = max(runningtermToLastSequence[termCollectionId], syncChange.Sequence)
 	}
 
 	return syncChanges, nil
