@@ -181,8 +181,13 @@ func (h *syncHandler) syncSchoolTerms(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			newLastestSync := newSyncChanges[len(newSyncChanges)-1].Sequence
-			syncData.Schools[schoolID] = newLastestSync
+			if len(newSyncChanges) > 0 {
+				newLastestSync := newSyncChanges[len(newSyncChanges)-1].Sequence
+				for term, seq := range termMap {
+					termMap[term] = max(newLastestSync, seq)
+				}
+				syncData.Schools[schoolID] = termMap
+			}
 		default: // invalid type
 			http.Error(w, "Invalid body, schools must map to a sequence or term mapping", http.StatusBadRequest)
 			return
@@ -233,10 +238,8 @@ func getTerms(q *db.Queries, ctx context.Context, schoolID string, runningtermTo
 	syncTermResultRows, err := q.SyncTerms(ctx, db.SyncTermsParams{
 		SchoolID:                    schoolID,
 		MaxRecords:                  int32(maxRecords),
-		TermExclusionCollectionIds:  termExclusionCollectionIds,
 		TermCollectionSequencePairs: pairBytes,
 	})
-	slog.Info("syncterm result", "length", len(syncTermResultRows))
 
 	if err != nil {
 		return syncChanges, err

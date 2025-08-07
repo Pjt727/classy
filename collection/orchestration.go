@@ -267,7 +267,7 @@ func (o Orchestrator) UpsertSchoolTermsWithService(
 	q := db.New(tx)
 	termCollections, err := (*service).GetTermCollections(*logger, ctx, school)
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed getting term collections %w", err)
 	}
 
 	logger.Debug("starting adding collection terms to db")
@@ -283,7 +283,7 @@ func (o Orchestrator) UpsertSchoolTermsWithService(
 		ID:   school.ID,
 		Name: school.Name,
 	}); err != nil {
-		return err
+		return fmt.Errorf("Failed upserting schools %w", err)
 	}
 
 	dt := q.UpsertTerm(ctx, terms)
@@ -295,7 +295,7 @@ func (o Orchestrator) UpsertSchoolTermsWithService(
 		}
 	})
 	if outerErr != nil {
-		return outerErr
+		return fmt.Errorf("Failed upserting terms %w", err)
 	}
 
 	dbTermCollections := make([]db.UpsertTermCollectionParams, len(termCollections))
@@ -318,7 +318,7 @@ func (o Orchestrator) UpsertSchoolTermsWithService(
 		}
 	})
 	if outerErr != nil {
-		return outerErr
+		return fmt.Errorf("Failed upserting term collections %w", err)
 	}
 
 	tx.Commit(ctx)

@@ -25,6 +25,7 @@ CREATE TABLE historic_class_information_term_dependencies (
     historic_composite_hash TEXT,
     term_collection_id TEXT,
     school_id TEXT,
+    first_sequence INTEGER NOT NULL,
 
     PRIMARY KEY (table_name, historic_composite_hash, term_collection_id, school_id)
 );
@@ -60,7 +61,7 @@ BEGIN
     -- insert + delete = no operation (null)
     IF current_sync_kind = 'insert' THEN
         IF next_sync_kind = 'insert' THEN
-            RAISE EXCEPTION 'Cannot have two inserts in a row';
+            RAISE EXCEPTION 'Cannot have two inserts in for the same object';
         ELSIF next_sync_kind = 'update' THEN
             RETURN ROW('insert', current_relevant_fields || next_relevant_fields)::sync_change;
         ELSIF next_sync_kind = 'delete' THEN
@@ -74,7 +75,7 @@ BEGIN
     --                           update -> delete           = delete)
     ELSIF current_sync_kind = 'update' THEN
         IF next_sync_kind = 'insert' THEN
-            RAISE EXCEPTION 'Cannot have an insert after an update';
+            RAISE EXCEPTION 'Cannot have an insert after an update for the same object';
         ELSIF next_sync_kind = 'update' THEN
             RETURN ROW('update', current_relevant_fields || next_relevant_fields)::sync_change;
         ELSIF next_sync_kind = 'delete' THEN
@@ -90,9 +91,9 @@ BEGIN
         IF next_sync_kind = 'insert' THEN
             RETURN ROW('update', next_relevant_fields)::sync_change;
         ELSIF next_sync_kind = 'update' THEN
-            RAISE EXCEPTION 'Cannot have an update after a delete';
+            RAISE EXCEPTION 'Cannot have an update after a delete for the same object';
         ELSIF next_sync_kind = 'delete' THEN
-            RAISE EXCEPTION 'Cannot have two deletes in a row';
+            RAISE EXCEPTION 'Cannot have two deletes for the same object';
         END IF;
     END IF;
     RAISE EXCEPTION 'Unexpect enum';

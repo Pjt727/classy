@@ -5,12 +5,12 @@ GET {{hostname}}/sync/all HTTP/1.1
 
 ### 
 
-GET {{hostname}}/sync/all?lastSyncSequence=0&maxRecordsCount=10000 HTTP/1.1
+GET {{hostname}}/sync/all?lastSyncSequence=6309&maxRecordsCount=10000 HTTP/1.1
 
 
 ### 
 
-GET {{hostname}}/sync/all?lastSyncSequence=8221&maxRecordsCount=10000 HTTP/1.1
+GET {{hostname}}/sync/all?lastSyncSequence=1616&maxRecordsCount=2 HTTP/1.1
 
 
 ### 
@@ -20,11 +20,13 @@ Content-Type: application/json
 Accept: application/json
 
 {
-  "max_records_per_request": 1000,
+  "max_records_per_request": 10000,
   "schools": {
     "marist": {
-      "202540": 0
-    }
+      "202440": 0,
+      "202540": 12000
+    },
+    "temple": 200
   }
 }
 

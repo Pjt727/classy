@@ -179,6 +179,7 @@ type HistoricClassInformationTermDependency struct {
 	HistoricCompositeHash string `json:"historic_composite_hash"`
 	TermCollectionID      string `json:"term_collection_id"`
 	SchoolID              string `json:"school_id"`
+	FirstSequence         int32  `json:"first_sequence"`
 }
 
 type ManagementUser struct {
