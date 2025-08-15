@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
+
+	"log/slog"
 
 	"github.com/Pjt727/classy/data/db"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"log/slog"
+	"golang.org/x/sync/errgroup"
 )
 
 var DEFAULT_MAX_RECORDS uint32 = 500
@@ -30,7 +33,7 @@ type syncHandler struct {
 
 // all syncs
 type syncResult struct {
-	SyncData     []syncChange `json:"data"`
+	SyncData     []syncChange `json:"sync_data"`
 	LastSequence uint32       `json:"new_latest_sync"`
 }
 
@@ -118,8 +121,9 @@ type selectSchoolEntry struct {
 	/// either a or
 	/// map[string]int            -> school to last sequence for or
 	/// map[string]map[string]int -> school to terms to last sequence
-	Schools              map[string]any `json:"schools"`
-	MaxRecordsPerRequest *uint32        `json:"max_records_per_request"`
+	TermExclusions       map[string]map[string]uint32 `json:"exclude"`
+	Schools              map[string]any               `json:"schools"`
+	MaxRecordsPerRequest *uint32                      `json:"max_records_per_request"`
 }
 
 type syncTermsResult struct {
@@ -133,15 +137,16 @@ func (h *syncHandler) syncSchoolTerms(w http.ResponseWriter, r *http.Request) {
 	var syncData selectSchoolEntry
 	err := json.NewDecoder(r.Body).Decode(&syncData)
 	if err != nil {
-		h.logger.Error("Could not parse sequence", "err", err)
-		http.Error(w, "Could not parse body: "+err.Error(), http.StatusBadRequest)
+		http.Error(w, "Request has incorrect shape: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	ctx := r.Context()
 	q := db.New(h.dbPool)
 
-	// it is a little odd that this has to be per school bc there is not a single sql query for everything
-	//    overloading this endpoint with difficult requests from bad actors is far too easy
+	// TODO: fix this pontential attack
+	// it is a little odd that limiting has to be per school bc there is not a single sql query for everything
+	// overloading this endpoint with difficult requests from bad actors is far too easy
+	// perhaps implementing a max for schools * maxRequestsPerRequest would be better
 	var maxRequestsPerRequest uint32
 	if syncData.MaxRecordsPerRequest != nil {
 		maxRequestsPerRequest = min(LIMIT_MAX_RECORDS, uint32(*syncData.MaxRecordsPerRequest))
@@ -149,24 +154,22 @@ func (h *syncHandler) syncSchoolTerms(w http.ResponseWriter, r *http.Request) {
 		maxRequestsPerRequest = DEFAULT_MAX_RECORDS
 	}
 
-	syncChanges := make([]syncChange, 0)
+	// process the full request to ensure its validity before making any calls to the db
+	// this is import bc if rate limiting is done at a different layer based on bandwith
+	// the db could get slammed with requests while still only sending back the error
+	schoolToSequence := make(map[string]uint32)
+	schoolToTermSequences := make(map[string]map[string]uint32)
 	for schoolID, sequenceOrTermMap := range syncData.Schools {
-		var newSyncChanges []syncChange
 		switch schoolChoice := sequenceOrTermMap.(type) {
 		case float64: // this school last sequence
 			if schoolChoice < 0 {
 				http.Error(w, fmt.Sprintf("Invalid sequence number: %f", schoolChoice), http.StatusBadRequest)
 				return
 			}
-			newSyncChanges, err = getSchool(q, ctx, schoolID, uint32(schoolChoice), maxRequestsPerRequest)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			newLastestSync := newSyncChanges[len(newSyncChanges)-1].Sequence
-			syncData.Schools[schoolID] = newLastestSync
+			schoolToSequence[schoolID] = uint32(schoolChoice)
 		case map[string]any: // this is a term mapping
 			termMap := make(map[string]uint32)
+			termsExclusions, checkTermExclusion := syncData.TermExclusions[schoolID]
 			for term, seq := range schoolChoice {
 				seqFloat, ok := seq.(float64)
 				if !ok || seqFloat < 0 {
@@ -174,25 +177,75 @@ func (h *syncHandler) syncSchoolTerms(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				termMap[term] = uint32(seqFloat)
+
+				// synced terms cannot be exlcuded
+				if checkTermExclusion {
+					_, ok = termsExclusions[term]
+					if ok {
+						http.Error(w, fmt.Sprintf("Term collect `%s` requested sync but it is also excluded", term), http.StatusBadRequest)
+						return
+					}
+				}
 			}
 
-			newSyncChanges, err = getTerms(q, ctx, schoolID, termMap, maxRequestsPerRequest)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			if len(newSyncChanges) > 0 {
-				newLastestSync := newSyncChanges[len(newSyncChanges)-1].Sequence
-				for term, seq := range termMap {
-					termMap[term] = max(newLastestSync, seq)
-				}
-				syncData.Schools[schoolID] = termMap
-			}
+			schoolToTermSequences[schoolID] = termMap
+
 		default: // invalid type
 			http.Error(w, "Invalid body, schools must map to a sequence or term mapping", http.StatusBadRequest)
 			return
 		}
-		syncChanges = append(syncChanges, newSyncChanges...)
+	}
+
+	syncChanges := make([]syncChange, 0)
+	var mu sync.Mutex
+	syncGroup, syncCtx := errgroup.WithContext(ctx)
+
+	// sync requests for all terms of a school
+	for schoolID, sequence := range schoolToSequence {
+		syncGroup.Go(func() error {
+			newSyncChanges, err := getSchool(q, syncCtx, schoolID, uint32(sequence), maxRequestsPerRequest)
+			if err != nil {
+				return fmt.Errorf("Could not get school=`%s` sequence=`%d` %w", schoolID, sequence, err)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if len(newSyncChanges) > 0 {
+				newLastestSync := newSyncChanges[len(newSyncChanges)-1].Sequence
+				syncData.Schools[schoolID] = max(newLastestSync, uint32(sequence))
+			}
+			syncChanges = append(syncChanges, newSyncChanges...)
+			return nil
+		})
+	}
+
+	// sync requests for select terms of a school
+	for schoolID, termSequences := range schoolToTermSequences {
+		syncGroup.Go(func() error {
+			termExclusions, ok := syncData.TermExclusions[schoolID]
+			if !ok {
+				termExclusions = make(map[string]uint32)
+			}
+			newSyncChanges, err := getTerms(q, ctx, schoolID, termSequences, maxRequestsPerRequest, termExclusions)
+			if err != nil {
+				return err
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if len(newSyncChanges) > 0 {
+				newLastestSync := newSyncChanges[len(newSyncChanges)-1].Sequence
+				for term, seq := range termSequences {
+					termSequences[term] = max(newLastestSync, seq)
+				}
+				syncData.Schools[schoolID] = termSequences
+			}
+			syncChanges = append(syncChanges, newSyncChanges...)
+			return nil
+		})
+	}
+
+	if err := syncGroup.Wait(); err != nil {
+		h.logger.Error("Could not get term/school sync rows", "err", err)
+		http.Error(w, "Problem getting the sync changes", http.StatusInternalServerError)
 	}
 
 	result := syncTermsResult{
@@ -215,30 +268,50 @@ type termCollectionSequencePair struct {
 	Id       string `json:"id"`
 }
 
-func getTerms(q *db.Queries, ctx context.Context, schoolID string, runningtermToLastSequence map[string]uint32, maxRecords uint32) ([]syncChange, error) {
+func getTerms(
+	q *db.Queries,
+	ctx context.Context,
+	schoolID string,
+	runningtermToLastSequence map[string]uint32,
+	maxRecords uint32,
+	termExclusions map[string]uint32,
+) ([]syncChange, error) {
 	syncChanges := make([]syncChange, 0)
 
-	termExclusionCollectionIds := make([]string, len(runningtermToLastSequence))
-	termCollectionSequencePairs := make([]termCollectionSequencePair, len(runningtermToLastSequence))
-	i := 0
-	for collectionId, sequence := range runningtermToLastSequence {
-		termExclusionCollectionIds[i] = collectionId
-		termCollectionSequencePairs[i] = termCollectionSequencePair{
+	commonSequencePairs := make([]termCollectionSequencePair, 0)
+	termCollectionSequencePairs := make([]termCollectionSequencePair, 0)
+	for collectionID, sequence := range runningtermToLastSequence {
+		pair := termCollectionSequencePair{
 			Sequence: sequence,
-			Id:       collectionId,
+			Id:       collectionID,
 		}
-		i++
+		commonSequencePairs = append(commonSequencePairs, pair)
+		termCollectionSequencePairs = append(termCollectionSequencePairs, pair)
 	}
 
-	pairBytes, err := json.Marshal(termCollectionSequencePairs)
+	for collectionID, sequence := range termExclusions {
+		pair := termCollectionSequencePair{
+			Sequence: sequence,
+			Id:       collectionID,
+		}
+		commonSequencePairs = append(commonSequencePairs, pair)
+	}
+
+	termBytes, err := json.Marshal(termCollectionSequencePairs)
+	if err != nil {
+		return syncChanges, err
+	}
+
+	commonBytes, err := json.Marshal(commonSequencePairs)
 	if err != nil {
 		return syncChanges, err
 	}
 
 	syncTermResultRows, err := q.SyncTerms(ctx, db.SyncTermsParams{
-		SchoolID:                    schoolID,
-		MaxRecords:                  int32(maxRecords),
-		TermCollectionSequencePairs: pairBytes,
+		SchoolID:                          schoolID,
+		MaxRecords:                        int32(maxRecords),
+		TermCollectionSequencePairs:       termBytes,
+		CommonTermCollectionSequencePairs: commonBytes,
 	})
 
 	if err != nil {

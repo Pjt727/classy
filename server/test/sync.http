@@ -20,13 +20,33 @@ Content-Type: application/json
 Accept: application/json
 
 {
+  "exclude": {
+    "marist": {
+      "202540": 12000
+    }
+  },
   "max_records_per_request": 10000,
   "schools": {
     "marist": {
-      "202440": 0,
-      "202540": 12000
+      "202440": 0
     },
     "temple": 200
+  }
+}
+
+
+### 
+
+POST {{hostname}}/sync/schools HTTP/1.1
+Content-Type: application/json
+Accept: application/json
+
+{
+  "max_records_per_request": 10000,
+  "schools": {
+    "marist": {
+      "202440": 0
+    }
   }
 }
 

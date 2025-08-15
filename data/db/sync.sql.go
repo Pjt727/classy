@@ -222,14 +222,10 @@ WITH
         SELECT
             value ->> 'id' AS term_collection_id,
             (value ->> 'sequence')::INTEGER AS term_sequence
-        FROM jsonb_array_elements($2::jsonb)
+        FROM jsonb_array_elements($3::jsonb)
     ) AS checks ON (
         -- sections / meeting times that are directly in the term
         (pk_fields ? 'term_collection_id' AND pk_fields ->> 'term_collection_id' = checks.term_collection_id)
-        -- possible updated data on the school
-        OR table_name = 'schools'
-        -- possible updated data on the term collection
-        OR (table_name = 'term_collections' AND pk_fields ->> 'id' = checks.term_collection_id)
     )
     GROUP BY hc1.sequence, hc1.table_name, hc1.input_at, 
            hc1.composite_hash, hc1.school_id, hc1.pk_fields, 
@@ -262,7 +258,7 @@ WITH
                     (sync_action, relevant_fields)::sync_change
                     ORDER BY hc.sequence
            ) AS sync_changes
-    FROM (SELECT sequence, table_name, input_at, composite_hash, school_id, pk_fields, sync_action, relevant_fields FROM historic_data_to_sync hc ORDER BY sequence LIMIT $3) AS hc
+    FROM (SELECT sequence, table_name, input_at, composite_hash, school_id, pk_fields, sync_action, relevant_fields FROM historic_data_to_sync hc ORDER BY sequence LIMIT $4) AS hc
     GROUP BY hc.composite_hash, hc.table_name, hc.school_id
     )
 SELECT sequence::int, table_name, updated_input_at AS input_at, composite_hash, school_id, updated_pk_fields AS pk_fields,
@@ -275,9 +271,10 @@ ORDER BY sequence
 `
 
 type SyncTermsParams struct {
-	SchoolID                    string `json:"school_id"`
-	TermCollectionSequencePairs []byte `json:"term_collection_sequence_pairs"`
-	MaxRecords                  int32  `json:"max_records"`
+	SchoolID                          string `json:"school_id"`
+	CommonTermCollectionSequencePairs []byte `json:"common_term_collection_sequence_pairs"`
+	TermCollectionSequencePairs       []byte `json:"term_collection_sequence_pairs"`
+	MaxRecords                        int32  `json:"max_records"`
 }
 
 type SyncTermsRow struct {
@@ -295,7 +292,12 @@ type SyncTermsRow struct {
 // excludes the data that's already synced among given terms
 // including common data such as professor's that have already been synced form a different term
 func (q *Queries) SyncTerms(ctx context.Context, arg SyncTermsParams) ([]SyncTermsRow, error) {
-	rows, err := q.db.Query(ctx, syncTerms, arg.SchoolID, arg.TermCollectionSequencePairs, arg.MaxRecords)
+	rows, err := q.db.Query(ctx, syncTerms,
+		arg.SchoolID,
+		arg.CommonTermCollectionSequencePairs,
+		arg.TermCollectionSequencePairs,
+		arg.MaxRecords,
+	)
 	if err != nil {
 		return nil, err
 	}

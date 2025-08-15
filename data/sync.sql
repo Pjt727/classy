@@ -99,7 +99,7 @@ WITH
         SELECT
             value ->> 'id' AS term_collection_id,
             (value ->> 'sequence')::INTEGER AS term_sequence
-        FROM jsonb_array_elements(@term_collection_sequence_pairs::jsonb)
+        FROM jsonb_array_elements(@common_term_collection_sequence_pairs::jsonb)
     ) AS checks ON h.term_collection_id = checks.term_collection_id
     GROUP BY hc.sequence, hc.table_name, hc.input_at, 
            hc.composite_hash, hc.school_id, hc.pk_fields, 
@@ -122,10 +122,6 @@ WITH
     ) AS checks ON (
         -- sections / meeting times that are directly in the term
         (pk_fields ? 'term_collection_id' AND pk_fields ->> 'term_collection_id' = checks.term_collection_id)
-        -- possible updated data on the school
-        OR table_name = 'schools'
-        -- possible updated data on the term collection
-        OR (table_name = 'term_collections' AND pk_fields ->> 'id' = checks.term_collection_id)
     )
     GROUP BY hc1.sequence, hc1.table_name, hc1.input_at, 
            hc1.composite_hash, hc1.school_id, hc1.pk_fields, 
