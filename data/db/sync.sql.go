@@ -10,20 +10,23 @@ import (
 )
 
 const syncAll = `-- name: SyncAll :many
-WITH historic_subset AS (
+WITH historic_subset_plus_one AS (
     SELECT sequence, school_id, table_name, composite_hash, input_at, pk_fields, sync_action, relevant_fields, term_collection_history_id FROM historic_class_information
     WHERE sequence > $1
     ORDER BY sequence
-    LIMIT $2::int
+    LIMIT ($2::int) + 1
+    ),
+    historic_subset AS (
+        SELECT sequence, school_id, table_name, composite_hash, input_at, pk_fields, sync_action, relevant_fields, term_collection_history_id FROM historic_subset_plus_one LIMIT ($2::int)
     ),
     sync_diffs AS (
-    SELECT 
-           MAX(sequence) AS sequence, 
-           table_name,
-           MAX(input_at) AS updated_input_at,
-           composite_hash,
-           school_id,
-           ANY_VALUE(CASE
+        SELECT 
+        MAX(sequence) AS sequence, 
+        table_name,
+        MAX(input_at) AS updated_input_at,
+        composite_hash,
+        school_id,
+        ANY_VALUE(CASE
                     WHEN table_name = 'schools' THEN pk_fields::jsonb
                     ELSE jsonb_set(pk_fields::jsonb, '{school_id}', to_jsonb(school_id), true)
            END) AS updated_pk_fields,
@@ -32,13 +35,13 @@ WITH historic_subset AS (
                     ORDER BY sequence
            ) AS sync_changes
     FROM historic_subset
-    WHERE sequence > $1
     GROUP BY composite_hash, table_name, school_id
-)
+    )
 SELECT sequence::int, table_name, updated_input_at AS input_at, composite_hash, school_id, updated_pk_fields AS pk_fields,
     (sync_changes).sync_action::sync_kind AS sync_action,
     (sync_changes).relevant_fields AS relevant_fields,
-    COUNT(*) OVER() AS total_rows
+    ((SELECT COUNT(*) FROM historic_subset_plus_one) 
+        > (SELECT COUNT(*) FROM historic_subset)) AS has_more
 FROM sync_diffs
 WHERE (sync_changes).sync_action::sync_kind IS NOT NULL
 ORDER BY sequence
@@ -58,7 +61,7 @@ type SyncAllRow struct {
 	PkFields       interface{} `json:"pk_fields"`
 	SyncAction     SyncKind    `json:"sync_action"`
 	RelevantFields interface{} `json:"relevant_fields"`
-	TotalRows      int64       `json:"total_rows"`
+	HasMore        bool        `json:"has_more"`
 }
 
 func (q *Queries) SyncAll(ctx context.Context, arg SyncAllParams) ([]SyncAllRow, error) {
@@ -79,7 +82,7 @@ func (q *Queries) SyncAll(ctx context.Context, arg SyncAllParams) ([]SyncAllRow,
 			&i.PkFields,
 			&i.SyncAction,
 			&i.RelevantFields,
-			&i.TotalRows,
+			&i.HasMore,
 		); err != nil {
 			return nil, err
 		}

@@ -261,3 +261,17 @@ ORDER BY sequence
 
 
 select * from historic_class_information
+
+SELECT *, (COUNT(*) > @max_records::int) AS has_more FROM historic_class_information
+WHERE sequence > @last_sequence
+ORDER BY sequence
+LIMIT @max_records::int
+
+SELECT EXISTS (SELECT * FROM sections)::bool;
+
+SELECT
+    (SELECT COUNT(*) FROM sections) AS section_count,
+    (SELECT COUNT(*) FROM courses) AS course_count;
+
+SELECT
+    (SELECT COUNT(*) FROM courses) > (SELECT COUNT(*) FROM sections)

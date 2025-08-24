@@ -35,6 +35,7 @@ type syncHandler struct {
 type syncResult struct {
 	SyncData     []syncChange `json:"sync_data"`
 	LastSequence uint32       `json:"new_latest_sync"`
+	HasMore      bool         `json:"has_more"`
 }
 
 func (h *syncHandler) syncAll(w http.ResponseWriter, r *http.Request) {
@@ -98,13 +99,16 @@ func (h *syncHandler) syncAll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	newSyncSequence := uint32(sequence)
+	hasMore := false
 	if len(syncChangeRows) > 0 {
 		newSyncSequence = uint32(syncChangeRows[len(syncChangeRows)-1].Sequence)
+		hasMore = syncChangeRows[0].HasMore
 	}
 
 	result := syncResult{
 		SyncData:     syncChanges,
 		LastSequence: newSyncSequence,
+		HasMore:      hasMore,
 	}
 	resultJson, err := json.Marshal(result)
 	if err != nil {
