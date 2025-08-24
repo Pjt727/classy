@@ -95,11 +95,16 @@ func (q *Queries) SyncAll(ctx context.Context, arg SyncAllParams) ([]SyncAllRow,
 }
 
 const syncSchool = `-- name: SyncSchool :many
-WITH historic_subset AS (
+WITH historic_subset_plus_one AS (
     SELECT sequence, school_id, table_name, composite_hash, input_at, pk_fields, sync_action, relevant_fields, term_collection_history_id FROM historic_class_information
     WHERE sequence > $2
           AND school_id = $3
     ORDER BY sequence
+    LIMIT ($1::int) + 1
+    ),
+
+    historic_subset AS (
+    SELECT sequence, school_id, table_name, composite_hash, input_at, pk_fields, sync_action, relevant_fields, term_collection_history_id FROM historic_subset_plus_one
     LIMIT $1::int
     ),
     sync_diffs AS (
@@ -123,7 +128,8 @@ WITH historic_subset AS (
 SELECT sequence::int, table_name, updated_input_at AS input_at, composite_hash, school_id, updated_pk_fields AS pk_fields,
     (sync_changes).sync_action::sync_kind AS sync_action,
     (sync_changes).relevant_fields AS relevant_fields,
-    COUNT(*) OVER() AS total_rows
+    ((SELECT COUNT(*) FROM historic_subset_plus_one) 
+        > (SELECT COUNT(*) FROM historic_subset)) AS has_more
 FROM sync_diffs
 WHERE (sync_changes).sync_action::sync_kind IS NOT NULL
 ORDER BY sequence
@@ -145,7 +151,7 @@ type SyncSchoolRow struct {
 	PkFields       interface{} `json:"pk_fields"`
 	SyncAction     SyncKind    `json:"sync_action"`
 	RelevantFields interface{} `json:"relevant_fields"`
-	TotalRows      int64       `json:"total_rows"`
+	HasMore        bool        `json:"has_more"`
 }
 
 func (q *Queries) SyncSchool(ctx context.Context, arg SyncSchoolParams) ([]SyncSchoolRow, error) {
@@ -166,7 +172,7 @@ func (q *Queries) SyncSchool(ctx context.Context, arg SyncSchoolParams) ([]SyncS
 			&i.PkFields,
 			&i.SyncAction,
 			&i.RelevantFields,
-			&i.TotalRows,
+			&i.HasMore,
 		); err != nil {
 			return nil, err
 		}
@@ -193,7 +199,7 @@ WITH
     -- the aggregate is it ensure that this has not been synced by any of the term sequences
     school_historic_class_information AS (
     SELECT sequence, school_id, table_name, composite_hash, input_at, pk_fields, sync_action, relevant_fields, term_collection_history_id FROM historic_class_information hc
-    WHERE hc.school_id = $1
+    WHERE hc.school_id = $2
     ),
     included_commons AS (
     SELECT hc.sequence, hc.table_name, hc.input_at, 
@@ -206,7 +212,7 @@ WITH
         SELECT
             value ->> 'id' AS term_collection_id,
             (value ->> 'sequence')::INTEGER AS term_sequence
-        FROM jsonb_array_elements($2::jsonb)
+        FROM jsonb_array_elements($3::jsonb)
     ) AS checks ON h.term_collection_id = checks.term_collection_id
     GROUP BY hc.sequence, hc.table_name, hc.input_at, 
            hc.composite_hash, hc.school_id, hc.pk_fields, 
@@ -225,7 +231,7 @@ WITH
         SELECT
             value ->> 'id' AS term_collection_id,
             (value ->> 'sequence')::INTEGER AS term_sequence
-        FROM jsonb_array_elements($3::jsonb)
+        FROM jsonb_array_elements($4::jsonb)
     ) AS checks ON (
         -- sections / meeting times that are directly in the term
         (pk_fields ? 'term_collection_id' AND pk_fields ->> 'term_collection_id' = checks.term_collection_id)
@@ -261,23 +267,23 @@ WITH
                     (sync_action, relevant_fields)::sync_change
                     ORDER BY hc.sequence
            ) AS sync_changes
-    FROM (SELECT sequence, table_name, input_at, composite_hash, school_id, pk_fields, sync_action, relevant_fields FROM historic_data_to_sync hc ORDER BY sequence LIMIT $4) AS hc
+    FROM (SELECT sequence, table_name, input_at, composite_hash, school_id, pk_fields, sync_action, relevant_fields FROM historic_data_to_sync hc ORDER BY sequence LIMIT $1) AS hc
     GROUP BY hc.composite_hash, hc.table_name, hc.school_id
     )
 SELECT sequence::int, table_name, updated_input_at AS input_at, composite_hash, school_id, updated_pk_fields AS pk_fields,
     (sync_changes).sync_action::sync_kind AS sync_action,
     (sync_changes).relevant_fields AS relevant_fields,
-    COUNT(*) OVER() AS total_rows
+    (EXISTS (SELECT 1 FROM historic_data_to_sync OFFSET $1)) AS has_more
 FROM sync_diffs
 WHERE (sync_changes).sync_action::sync_kind IS NOT NULL
 ORDER BY sequence
 `
 
 type SyncTermsParams struct {
+	MaxRecords                        int32  `json:"max_records"`
 	SchoolID                          string `json:"school_id"`
 	CommonTermCollectionSequencePairs []byte `json:"common_term_collection_sequence_pairs"`
 	TermCollectionSequencePairs       []byte `json:"term_collection_sequence_pairs"`
-	MaxRecords                        int32  `json:"max_records"`
 }
 
 type SyncTermsRow struct {
@@ -289,17 +295,17 @@ type SyncTermsRow struct {
 	PkFields       interface{} `json:"pk_fields"`
 	SyncAction     SyncKind    `json:"sync_action"`
 	RelevantFields interface{} `json:"relevant_fields"`
-	TotalRows      int64       `json:"total_rows"`
+	HasMore        bool        `json:"has_more"`
 }
 
 // excludes the data that's already synced among given terms
 // including common data such as professor's that have already been synced form a different term
 func (q *Queries) SyncTerms(ctx context.Context, arg SyncTermsParams) ([]SyncTermsRow, error) {
 	rows, err := q.db.Query(ctx, syncTerms,
+		arg.MaxRecords,
 		arg.SchoolID,
 		arg.CommonTermCollectionSequencePairs,
 		arg.TermCollectionSequencePairs,
-		arg.MaxRecords,
 	)
 	if err != nil {
 		return nil, err
@@ -317,7 +323,7 @@ func (q *Queries) SyncTerms(ctx context.Context, arg SyncTermsParams) ([]SyncTer
 			&i.PkFields,
 			&i.SyncAction,
 			&i.RelevantFields,
-			&i.TotalRows,
+			&i.HasMore,
 		); err != nil {
 			return nil, err
 		}

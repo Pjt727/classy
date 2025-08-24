@@ -133,6 +133,7 @@ type selectSchoolEntry struct {
 type syncTermsResult struct {
 	NewSyncSequences map[string]any `json:"new_sync_term_sequences"`
 	SyncData         []syncChange   `json:"sync_data"`
+	AnyHasMore       bool           `json:"any_has_more"`
 }
 
 func (h *syncHandler) syncSchoolTerms(w http.ResponseWriter, r *http.Request) {
@@ -204,10 +205,12 @@ func (h *syncHandler) syncSchoolTerms(w http.ResponseWriter, r *http.Request) {
 	var mu sync.Mutex
 	syncGroup, syncCtx := errgroup.WithContext(ctx)
 
+	anyHasMore := false
+
 	// sync requests for all terms of a school
 	for schoolID, sequence := range schoolToSequence {
 		syncGroup.Go(func() error {
-			newSyncChanges, err := getSchool(q, syncCtx, schoolID, uint32(sequence), maxRequestsPerRequest)
+			newSyncChanges, hasMore, err := getSchool(q, syncCtx, schoolID, uint32(sequence), maxRequestsPerRequest)
 			if err != nil {
 				return fmt.Errorf("Could not get school=`%s` sequence=`%d` %w", schoolID, sequence, err)
 			}
@@ -217,6 +220,7 @@ func (h *syncHandler) syncSchoolTerms(w http.ResponseWriter, r *http.Request) {
 				newLastestSync := newSyncChanges[len(newSyncChanges)-1].Sequence
 				syncData.Schools[schoolID] = max(newLastestSync, uint32(sequence))
 			}
+			anyHasMore = anyHasMore || hasMore
 			syncChanges = append(syncChanges, newSyncChanges...)
 			return nil
 		})
@@ -229,7 +233,8 @@ func (h *syncHandler) syncSchoolTerms(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				termExclusions = make(map[string]uint32)
 			}
-			newSyncChanges, err := getTerms(q, ctx, schoolID, termSequences, maxRequestsPerRequest, termExclusions)
+			newSyncChanges, hasMore, err := getTerms(q, ctx, schoolID, termSequences, maxRequestsPerRequest, termExclusions)
+			h.logger.Info("term results", "hasMore", hasMore)
 			if err != nil {
 				return err
 			}
@@ -242,6 +247,7 @@ func (h *syncHandler) syncSchoolTerms(w http.ResponseWriter, r *http.Request) {
 				}
 				syncData.Schools[schoolID] = termSequences
 			}
+			anyHasMore = anyHasMore || hasMore
 			syncChanges = append(syncChanges, newSyncChanges...)
 			return nil
 		})
@@ -255,6 +261,7 @@ func (h *syncHandler) syncSchoolTerms(w http.ResponseWriter, r *http.Request) {
 	result := syncTermsResult{
 		NewSyncSequences: syncData.Schools,
 		SyncData:         syncChanges,
+		AnyHasMore:       anyHasMore,
 	}
 	resultJson, err := json.Marshal(result)
 	if err != nil {
@@ -279,8 +286,9 @@ func getTerms(
 	runningtermToLastSequence map[string]uint32,
 	maxRecords uint32,
 	termExclusions map[string]uint32,
-) ([]syncChange, error) {
+) ([]syncChange, bool, error) {
 	syncChanges := make([]syncChange, 0)
+	hasMore := false
 
 	commonSequencePairs := make([]termCollectionSequencePair, 0)
 	termCollectionSequencePairs := make([]termCollectionSequencePair, 0)
@@ -303,12 +311,12 @@ func getTerms(
 
 	termBytes, err := json.Marshal(termCollectionSequencePairs)
 	if err != nil {
-		return syncChanges, err
+		return syncChanges, hasMore, err
 	}
 
 	commonBytes, err := json.Marshal(commonSequencePairs)
 	if err != nil {
-		return syncChanges, err
+		return syncChanges, hasMore, err
 	}
 
 	syncTermResultRows, err := q.SyncTerms(ctx, db.SyncTermsParams{
@@ -319,7 +327,7 @@ func getTerms(
 	})
 
 	if err != nil {
-		return syncChanges, err
+		return syncChanges, hasMore, err
 	}
 
 	for _, r := range syncTermResultRows {
@@ -332,24 +340,28 @@ func getTerms(
 		})
 	}
 
-	return syncChanges, nil
+	if len(syncTermResultRows) > 0 {
+		hasMore = syncTermResultRows[0].HasMore
+	}
+
+	return syncChanges, hasMore, nil
 }
 
 // / does not update the last sequence
-func getSchool(q *db.Queries, ctx context.Context, schoolID string, lastSequence uint32, maxRecords uint32) ([]syncChange, error) {
+func getSchool(q *db.Queries, ctx context.Context, schoolID string, lastSequence uint32, maxRecords uint32) ([]syncChange, bool, error) {
 	syncChanges := make([]syncChange, 0)
 
-	syncSchoolResultRow, err := q.SyncSchool(ctx, db.SyncSchoolParams{
+	syncSchoolResultRows, err := q.SyncSchool(ctx, db.SyncSchoolParams{
 		LastSequence: int32(lastSequence),
 		SchoolID:     schoolID,
 		MaxRecords:   int32(maxRecords),
 	})
 
 	if err != nil {
-		return syncChanges, err
+		return syncChanges, false, err
 	}
 
-	for _, r := range syncSchoolResultRow {
+	for _, r := range syncSchoolResultRows {
 		syncChanges = append(syncChanges, syncChange{
 			Sequence:       uint32(r.Sequence),
 			TableName:      r.TableName,
@@ -359,5 +371,10 @@ func getSchool(q *db.Queries, ctx context.Context, schoolID string, lastSequence
 		})
 	}
 
-	return syncChanges, nil
+	hasMore := false
+	if len(syncSchoolResultRows) > 0 {
+		hasMore = syncSchoolResultRows[0].HasMore
+	}
+
+	return syncChanges, hasMore, nil
 }

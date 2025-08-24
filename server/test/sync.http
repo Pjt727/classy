@@ -25,12 +25,12 @@ Accept: application/json
       "202540": 12000
     }
   },
-  "max_records_per_request": 10000,
+  "max_records_per_request": 500,
   "schools": {
     "marist": {
       "202440": 0
     },
-    "temple": 200
+    "temple": 10000
   }
 }
 
@@ -60,6 +60,6 @@ Accept: application/json
 {
   "max_records_per_request": 10000,
   "schools": {
-    "marist": 0
+    "marist": 10000
   }
 }

@@ -37,11 +37,16 @@ ORDER BY sequence
 ;
 
 -- name: SyncSchool :many
-WITH historic_subset AS (
+WITH historic_subset_plus_one AS (
     SELECT * FROM historic_class_information
     WHERE sequence > @last_sequence
           AND school_id = @school_id
     ORDER BY sequence
+    LIMIT (@max_records::int) + 1
+    ),
+
+    historic_subset AS (
+    SELECT * FROM historic_subset_plus_one
     LIMIT @max_records::int
     ),
     sync_diffs AS (
@@ -65,7 +70,8 @@ WITH historic_subset AS (
 SELECT sequence::int, table_name, updated_input_at AS input_at, composite_hash, school_id, updated_pk_fields AS pk_fields,
     (sync_changes).sync_action::sync_kind AS sync_action,
     (sync_changes).relevant_fields AS relevant_fields,
-    COUNT(*) OVER() AS total_rows
+    ((SELECT COUNT(*) FROM historic_subset_plus_one) 
+        > (SELECT COUNT(*) FROM historic_subset)) AS has_more
 FROM sync_diffs
 WHERE (sync_changes).sync_action::sync_kind IS NOT NULL
 ORDER BY sequence
@@ -163,7 +169,7 @@ WITH
 SELECT sequence::int, table_name, updated_input_at AS input_at, composite_hash, school_id, updated_pk_fields AS pk_fields,
     (sync_changes).sync_action::sync_kind AS sync_action,
     (sync_changes).relevant_fields AS relevant_fields,
-    COUNT(*) OVER() AS total_rows
+    (EXISTS (SELECT 1 FROM historic_data_to_sync OFFSET @max_records)) AS has_more
 FROM sync_diffs
 WHERE (sync_changes).sync_action::sync_kind IS NOT NULL
 ORDER BY sequence
