@@ -63,3 +63,20 @@ Accept: application/json
     "marist": 10000
   }
 }
+
+
+### 
+
+POST {{hostname}}/sync/schools HTTP/1.1
+Content-Type: application/json
+Accept: application/json
+
+{
+  "max_records_per_request": 10000,
+  "schools": {
+    "marist": {
+      "202440": 6929,
+      "202540": 0
+    }
+  }
+}

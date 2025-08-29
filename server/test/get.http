@@ -1,0 +1,14 @@
+@hostname = localhost:3000
+
+# get all schools
+
+GET {{hostname}}/get HTTP/1.1
+
+
+### 
+
+@school = marist
+
+# get terms of school
+
+GET {{hostname}}/get/{{school}} HTTP/1.1
