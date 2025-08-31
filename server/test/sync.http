@@ -3,10 +3,13 @@
 GET {{hostname}}/sync/all HTTP/1.1
 
 
+###
+
+GET {{hostname}}/sync/all?lastSyncSequence=0&maxRecordsCount=10000&foldSyncData=false HTTP/1.1
+
 ### 
 
 GET {{hostname}}/sync/all?lastSyncSequence=6309&maxRecordsCount=10000 HTTP/1.1
-
 
 ### 
 

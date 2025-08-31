@@ -6,7 +6,8 @@
 ### 
 
 @courseReferenceNumber = 10002
-@hostname = ssb1-reg.banner.marist.edu
+# @hostname = ssb1-reg.banner.marist.edu
+@hostname prd-xereg.temple.edu
 @term = 202540
 
 # @name REQUEST_SEARCH_PAGE

@@ -50,7 +50,7 @@ SELECT courses.*
 FROM courses
 WHERE school_id = @school_id
       AND subject_code = @subject_code
-LIMIT @limitValue
+LIMIT @limitValue + 1
 OFFSET @offsetValue
 ;
 
@@ -58,7 +58,7 @@ OFFSET @offsetValue
 SELECT courses.*
 FROM courses
 WHERE school_id = @school_id
-LIMIT @limitValue
+LIMIT @limitValue + 1
 OFFSET @offsetValue
 ;
 
@@ -66,7 +66,7 @@ OFFSET @offsetValue
 SELECT term_collections.*
 FROM term_collections 
 WHERE school_id = @school_id
-LIMIT @limitValue
+LIMIT @limitValue + 1
 OFFSET @offsetValue
 ;
 
@@ -81,7 +81,7 @@ WHERE school_id = @school_id
 -- name: GetSchools :many
 SELECT schools.*
 FROM schools
-LIMIT @limitValue
+LIMIT @limitValue + 1
 OFFSET @offsetValue
 ;
 
@@ -117,6 +117,6 @@ WHERE sections.school_id = @school_id
       AND sections.term_collection_id = @term_collection_id
 ORDER BY sections."sequence", sections.subject_code, sections.course_number, 
     sections.school_id, sections.term_collection_id
-LIMIT @limitValue
+LIMIT @limitValue + 1
 OFFSET @offsetValue
 ;

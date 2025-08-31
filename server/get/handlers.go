@@ -2,13 +2,19 @@ package serverget
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strconv"
+
+	"log/slog"
 
 	"github.com/Pjt727/classy/data/db"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"log/slog"
 )
+
+// TODO: possible edit data layer so that what these return is not a direct copy of the
+// database objects or maybe this can be as intended
 
 type getHandler struct {
 	dbPool *pgxpool.Pool
@@ -51,17 +57,22 @@ func (h *getHandler) getCoursesForSubject(w http.ResponseWriter, r *http.Request
 
 	ctx := r.Context()
 	q := db.New(h.dbPool)
+	limit := ctx.Value(LimitKey).(int32)
+	offset := ctx.Value(OffsetKey).(int32)
 	courseRows, err := q.GetCoursesForSchoolAndSubject(ctx, db.GetCoursesForSchoolAndSubjectParams{
 		SchoolID:    chi.URLParam(r, "schoolID"),
 		SubjectCode: chi.URLParam(r, "subjectCode"),
-		Offsetvalue: ctx.Value(OffsetKey).(int32),
-		Limitvalue:  ctx.Value(LimitKey).(int32),
+		Offsetvalue: offset,
+		Limitvalue:  limit,
 	})
 	if err != nil {
 		h.logger.Error("Could not get school rows", "err", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
+
+	courseRows, didLimit := normalizeLimits(courseRows, limit)
+	addPaginationLinks(&w, r, offset, limit, didLimit)
 
 	courses, err := json.Marshal(courseRows)
 	if err != nil {
@@ -77,16 +88,20 @@ func (h *getHandler) getCourses(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	q := db.New(h.dbPool)
+	limit := ctx.Value(LimitKey).(int32)
+	offset := ctx.Value(OffsetKey).(int32)
 	courseRows, err := q.GetCoursesForSchool(ctx, db.GetCoursesForSchoolParams{
 		SchoolID:    chi.URLParam(r, "schoolID"),
-		Offsetvalue: ctx.Value(OffsetKey).(int32),
-		Limitvalue:  ctx.Value(LimitKey).(int32),
+		Offsetvalue: offset,
+		Limitvalue:  limit,
 	})
 	if err != nil {
 		h.logger.Error("Could not get school rows", "err", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
+	courseRows, didLimit := normalizeLimits(courseRows, limit)
+	addPaginationLinks(&w, r, offset, limit, didLimit)
 
 	courses, err := json.Marshal(courseRows)
 	if err != nil {
@@ -94,6 +109,7 @@ func (h *getHandler) getCourses(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(courses)
 }
@@ -102,12 +118,14 @@ func (h *getHandler) getSchoolTerms(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	q := db.New(h.dbPool)
+	limit := ctx.Value(LimitKey).(int32)
+	offset := ctx.Value(OffsetKey).(int32)
 	termCollectionsRows, err := q.GetTermCollectionsForSchool(
 		ctx,
 		db.GetTermCollectionsForSchoolParams{
 			SchoolID:    chi.URLParam(r, "schoolID"),
-			Offsetvalue: ctx.Value(OffsetKey).(int32),
-			Limitvalue:  ctx.Value(LimitKey).(int32),
+			Offsetvalue: offset,
+			Limitvalue:  limit,
 		},
 	)
 	if err != nil {
@@ -115,6 +133,10 @@ func (h *getHandler) getSchoolTerms(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
+
+	termCollectionsRows, didLimit := normalizeLimits(termCollectionsRows, limit)
+	fmt.Println(didLimit)
+	addPaginationLinks(&w, r, offset, limit, didLimit)
 
 	termCollections, err := json.Marshal(termCollectionsRows)
 	if err != nil {
@@ -129,9 +151,11 @@ func (h *getHandler) getSchoolTerms(w http.ResponseWriter, r *http.Request) {
 func (h *getHandler) getSchools(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := db.New(h.dbPool)
+	limit := ctx.Value(LimitKey).(int32)
+	offset := ctx.Value(OffsetKey).(int32)
 	schools, err := q.GetSchools(ctx, db.GetSchoolsParams{
-		Offsetvalue: ctx.Value(OffsetKey).(int32),
-		Limitvalue:  ctx.Value(LimitKey).(int32),
+		Offsetvalue: offset,
+		Limitvalue:  limit,
 	})
 	if err != nil {
 		h.logger.Error("Could not get school rows", "err", err)
@@ -139,14 +163,18 @@ func (h *getHandler) getSchools(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	classRowsJSON, err := json.Marshal(schools)
+	schools, didLimit := normalizeLimits(schools, limit)
+	addPaginationLinks(&w, r, offset, limit, didLimit)
+
+	schoolsJSON, err := json.Marshal(schools)
 	if err != nil {
 		h.logger.Error("Could not marshal school rows", "err", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
+
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(classRowsJSON)
+	w.Write(schoolsJSON)
 }
 
 func (h *getHandler) getTermHueristics(w http.ResponseWriter, r *http.Request) {
@@ -173,15 +201,18 @@ func (h *getHandler) getTermHueristics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(classRowsJSON)
 }
+
 func (h *getHandler) getClasses(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := db.New(h.dbPool)
+	limit := ctx.Value(LimitKey).(int32)
+	offset := ctx.Value(OffsetKey).(int32)
 	classRows, err := q.GetSchoolsClassesForTermOrderedBySection(ctx,
 		db.GetSchoolsClassesForTermOrderedBySectionParams{
 			SchoolID:         chi.URLParam(r, "schoolID"),
 			TermCollectionID: chi.URLParam(r, "termCollectionID"),
-			Offsetvalue:      ctx.Value(OffsetKey).(int32),
-			Limitvalue:       ctx.Value(LimitKey).(int32),
+			Offsetvalue:      offset,
+			Limitvalue:       limit,
 		},
 	)
 	if err != nil {
@@ -190,12 +221,16 @@ func (h *getHandler) getClasses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	classRows, didLimit := normalizeLimits(classRows, limit)
+	addPaginationLinks(&w, r, offset, limit, didLimit)
+
 	classRowsJSON, err := json.Marshal(classRows)
 	if err != nil {
 		h.logger.Error("Could not marshal class rows", "err", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(classRowsJSON)
 }
@@ -258,4 +293,39 @@ func (h *getHandler) verifyTermCollection(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// used for results that use database quert with limit + 1
+// determines if there were more results and changes the array if there were
+func normalizeLimits[T any](s []T, limit int32) ([]T, bool) {
+	if len(s) > int(limit) {
+		return s[:limit], true
+	}
+	return s, false
+}
+
+func addPaginationLinks(w *http.ResponseWriter, req *http.Request, currentOffset int32, limit int32, didLimit bool) {
+	linkHeader := ""
+	if currentOffset > 0 {
+		prevURL := req.URL
+		q := prevURL.Query()
+		q.Set("offset", strconv.Itoa(int(currentOffset-limit)))
+		prevURL.RawQuery = q.Encode()
+		linkHeader += fmt.Sprintf("<%s>; rel=\"prev\"", prevURL)
+		if didLimit {
+			// add separator between links
+			linkHeader += ","
+		}
+	}
+
+	if didLimit {
+		nextURL := req.URL
+		q := nextURL.Query()
+		q.Set("offset", strconv.Itoa(int(currentOffset+limit)))
+		nextURL.RawQuery = q.Encode()
+		linkHeader += fmt.Sprintf("<%s>; rel=\"next\"", nextURL)
+	}
+	fmt.Println("Link: ", linkHeader)
+
+	(*w).Header().Set("Link", linkHeader)
 }

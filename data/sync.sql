@@ -1,3 +1,14 @@
+-- name: SyncAllUnfolded :many
+-- unfolded syncs return at most limit + 1 count and return every sync change even if there
+-- are redundant changes
+SELECT sequence::int, table_name, input_at, composite_hash, school_id, pk_fields,
+    sync_action AS sync_action,
+    relevant_fields AS relevant_fields
+FROM historic_class_information
+WHERE sequence > @last_sequence
+ORDER BY sequence
+LIMIT (@max_records::int) + 1;
+
 -- name: SyncAll :many
 WITH historic_subset_plus_one AS (
     SELECT * FROM historic_class_information

@@ -67,6 +67,7 @@ func GetDefaultService() *banner {
 			RegularCollectionSectionSemaphore: 5,
 			MaxTermCount:                      100,
 			MaxSectionPageCount:               200,
+			RequestRetryCount:                 3,
 			rateLimiter:                       services.NewAdaptiveRateLimiter(rate.Every(25*time.Millisecond), 5, rate.Every(50*time.Millisecond)),
 		},
 	}
@@ -448,7 +449,6 @@ func (b *bannerSchool) stageAllClasses(
 		return fmt.Errorf("%w failed parsing class search probe %v", services.ErrIncorrectAssumption, err)
 	}
 	count := sectionCount.Count
-	logger.Info("starting collection", "sections", count)
 
 	var actualTotalSectionCount int32
 	var semaphore chan struct{}
@@ -479,6 +479,8 @@ func (b *bannerSchool) stageAllClasses(
 				slog.String("pageOffSet", strconv.Itoa(i*b.MaxSectionPageCount)),
 				slog.Int("pageMaxSize", b.MaxSectionPageCount),
 			)
+			workerLog.Info("doing work")
+
 			queryParams := url.Values{
 				"txt_term":    {termStr},
 				"pageOffset":  {strconv.Itoa(i * b.MaxSectionPageCount)},

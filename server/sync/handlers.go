@@ -67,17 +67,41 @@ func (h *syncHandler) syncAll(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// default is true
+	foldSyncData := r.URL.Query().Get("foldSyncData") != "false"
 	ctx := r.Context()
+	var err error
+	var result syncResult
+	if foldSyncData {
+		result, err = h.getSyncAllFolded(ctx, sequence, maxRecordsCount)
+	} else {
+		result, err = h.getSyncAllUnFolded(ctx, sequence, maxRecordsCount)
+	}
+
+	if err != nil {
+		h.logger.Error("Failed getting all sync row changes", "err", err)
+		http.Error(w, http.StatusText(500), 500)
+	}
+
+	resultJson, err := json.Marshal(result)
+	if err != nil {
+		h.logger.Error("Could not marshal school rows", "err", err)
+		http.Error(w, http.StatusText(500), 500)
+		return
+	}
+	w.Header().Set("Content-Encoding", "gzip")
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(resultJson)
+}
+
+func (h *syncHandler) getSyncAllFolded(ctx context.Context, lastSequence int, maxRecords int) (syncResult, error) {
 	q := db.New(h.dbPool)
-	errCh := make(chan error, 2)
 	syncChangeRows, err := q.SyncAll(ctx, db.SyncAllParams{
-		LastSequence: int32(sequence),
-		MaxRecords:   int32(min(maxRecordsCount, int(LIMIT_MAX_RECORDS))),
+		LastSequence: int32(lastSequence),
+		MaxRecords:   int32(min(maxRecords, int(LIMIT_MAX_RECORDS))),
 	})
 	if err != nil {
-		errCh <- err
-		h.logger.Error("Could not get lastest sync rows", "err", err)
-		return
+		return syncResult{}, err
 	}
 	syncChanges := make([]syncChange, len(syncChangeRows))
 	for i, syncChangeRow := range syncChangeRows {
@@ -91,34 +115,65 @@ func (h *syncHandler) syncAll(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if len(errCh) > 0 {
-		for err := range errCh {
-			h.logger.Error("Failed getting all sync row changes ", "err", err)
-		}
-		http.Error(w, http.StatusText(500), 500)
-	}
-
-	newSyncSequence := uint32(sequence)
+	newSyncSequence := uint32(lastSequence)
 	hasMore := false
+
 	if len(syncChangeRows) > 0 {
 		newSyncSequence = uint32(syncChangeRows[len(syncChangeRows)-1].Sequence)
 		hasMore = syncChangeRows[0].HasMore
 	}
 
-	result := syncResult{
+	return syncResult{
 		SyncData:     syncChanges,
 		LastSequence: newSyncSequence,
 		HasMore:      hasMore,
-	}
-	resultJson, err := json.Marshal(result)
+	}, nil
+}
+
+func (h *syncHandler) getSyncAllUnFolded(ctx context.Context, lastSequence int, maxRecords int) (syncResult, error) {
+	q := db.New(h.dbPool)
+	limit := int32(min(maxRecords, int(LIMIT_MAX_RECORDS)))
+	syncChangeRows, err := q.SyncAllUnfolded(ctx, db.SyncAllUnfoldedParams{
+		LastSequence: int32(lastSequence),
+		MaxRecords:   limit,
+	})
 	if err != nil {
-		h.logger.Error("Could not marshal school rows", "err", err)
-		http.Error(w, http.StatusText(500), 500)
-		return
+		return syncResult{}, err
 	}
-	w.Header().Set("Content-Encoding", "gzip")
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(resultJson)
+	syncChangeRows, hasMore := normalizeLimits(syncChangeRows, limit)
+	syncChanges := make([]syncChange, len(syncChangeRows))
+	for i, syncChangeRow := range syncChangeRows {
+		var pkFields map[string]any
+		err := json.Unmarshal(syncChangeRow.PkFields, &pkFields)
+		if err != nil {
+			return syncResult{}, err
+		}
+		var relevantFields map[string]any
+		err = json.Unmarshal(syncChangeRow.RelevantFields, &relevantFields)
+		if err != nil {
+			return syncResult{}, err
+		}
+
+		// relevant fields can be nil in the case of a deletion
+		syncChanges[i] = syncChange{
+			Sequence:       uint32(syncChangeRow.Sequence),
+			TableName:      syncChangeRow.TableName,
+			PkFields:       pkFields,
+			SyncAction:     string(syncChangeRow.SyncAction),
+			RelevantFields: relevantFields,
+		}
+	}
+
+	newSyncSequence := uint32(lastSequence)
+	if len(syncChangeRows) > 0 {
+		newSyncSequence = uint32(syncChangeRows[len(syncChangeRows)-1].Sequence)
+	}
+
+	return syncResult{
+		SyncData:     syncChanges,
+		LastSequence: newSyncSequence,
+		HasMore:      hasMore,
+	}, nil
 }
 
 type selectSchoolEntry struct {
@@ -210,7 +265,7 @@ func (h *syncHandler) syncSchoolTerms(w http.ResponseWriter, r *http.Request) {
 	// sync requests for all terms of a school
 	for schoolID, sequence := range schoolToSequence {
 		syncGroup.Go(func() error {
-			newSyncChanges, hasMore, err := getSchool(q, syncCtx, schoolID, uint32(sequence), maxRequestsPerRequest)
+			newSyncChanges, hasMore, err := syncSchoolBasedOffSchool(q, syncCtx, schoolID, uint32(sequence), maxRequestsPerRequest)
 			if err != nil {
 				return fmt.Errorf("Could not get school=`%s` sequence=`%d` %w", schoolID, sequence, err)
 			}
@@ -348,7 +403,7 @@ func getTerms(
 }
 
 // / does not update the last sequence
-func getSchool(q *db.Queries, ctx context.Context, schoolID string, lastSequence uint32, maxRecords uint32) ([]syncChange, bool, error) {
+func syncSchoolBasedOffSchool(q *db.Queries, ctx context.Context, schoolID string, lastSequence uint32, maxRecords uint32) ([]syncChange, bool, error) {
 	syncChanges := make([]syncChange, 0)
 
 	syncSchoolResultRows, err := q.SyncSchool(ctx, db.SyncSchoolParams{
@@ -377,4 +432,14 @@ func getSchool(q *db.Queries, ctx context.Context, schoolID string, lastSequence
 	}
 
 	return syncChanges, hasMore, nil
+}
+
+// TODO: maybe find a util place for this function or be fine with it in mulitple places
+// used for results that use database quert with limit + 1
+// determines if there were more results and changes the array if there were
+func normalizeLimits[T any](s []T, limit int32) ([]T, bool) {
+	if len(s) > int(limit) {
+		return s[:limit], true
+	}
+	return s, false
 }
