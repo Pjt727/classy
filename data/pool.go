@@ -24,7 +24,7 @@ func init() {
 	err := godotenv.Load(filepath.Join(projectpath.Root, ".env"))
 
 	if err != nil {
-		panic(fmt.Sprint("Error loading .env file: ", err))
+		slog.Warn(fmt.Sprint("Error loading .env file: ", err))
 	}
 }
 

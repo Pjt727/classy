@@ -10,6 +10,7 @@ import (
 )
 
 // overwrite database
+// cannot embed these bc it then would not work for tests
 func SetupDb() error {
 	testDb := os.Getenv("TEST_DB_CONN")
 	os.Setenv("DB_CONN", testDb)

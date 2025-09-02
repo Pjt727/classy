@@ -3,58 +3,60 @@ package components
 import "fmt"
 
 templ Base() {
-<html>
-
-<head>
-    <link rel="icon" href="/static/favicon.png" type="image/x-icon" />
-    <link rel="stylesheet" href="/static/milligram.css" />
-    <title>Manage</title>
-    <style>
+	<html>
+		<head>
+			<link rel="icon" href="/static/favicon.png" type="image/x-icon"/>
+			<link rel="stylesheet" href="/static/milligram.css"/>
+			<title>Manage</title>
+			<style>
     </style>
-</head>
-<div id={ notificationStack } class="container float-right"
-    style="position: fixed; top: 20px; right: 20px; width: 30%;"></div>
-
-<body class="container">
-    { children... }
-    <script src="/static/htmx.js"></script>
-    <script src="/static/htmx-ws.js"></script>
-</body>
-
-</html>
+		</head>
+		<div
+			id={ notificationStack }
+			class="container float-right"
+			style="position: fixed; top: 20px; right: 20px; width: 30%;"
+		></div>
+		<body class="container">
+			{ children... }
+			<script src="/static/htmx.js"></script>
+			<script src="/static/htmx-ws.js"></script>
+		</body>
+	</html>
 }
 
 type NotificationType string
 
 const (
-NotifyError NotificationType = "Error"
-NotifySuccess NotificationType = "Success"
-NotifyWarning NotificationType = "Warning"
-NotifyProgress NotificationType = "Progress"
+	NotifyError    NotificationType = "Error"
+	NotifySuccess  NotificationType = "Success"
+	NotifyWarning  NotificationType = "Warning"
+	NotifyProgress NotificationType = "Progress"
 )
 
 templ Notification(notificationType NotificationType, message string) {
-{{ var bgColor string }}
-switch notificationType {
-case NotifyError:
-{{ bgColor = "#dc3545" }}
-case NotifySuccess:
-{{ bgColor = "#28a745" }}
-case NotifyWarning:
-{{ bgColor = "#ffc107" }}
-case NotifyProgress:
-{{ bgColor = "#007bff" }}
-default:
-{{ bgColor = "#6c757d" }}
-}
-<div hx-swap-oob={ "beforeend:" + id(notificationStack) }>
-    <div style={ fmt.Sprintf("background-color: %s;",
-        bgColor), "margin-bottom: 5px; float: right; width 30%; color: white; padding: 10px; border-radius: 5px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.2); z-index: 1000;"
-        }>
-        <span style="margin: 0;">{ message }</span>
-        <button
-            style="position: relative; top: 0px; right: 0px; background: none; border: none; color: white; cursor: pointer; font-size: 16px;"
-            onclick="this.parentNode.style.display='none';">&times;</button>
-    </div>
-</div>
+	{{ var bgColor string }}
+	switch notificationType {
+		case NotifyError:
+			{{ bgColor = "#dc3545" }}
+		case NotifySuccess:
+			{{ bgColor = "#28a745" }}
+		case NotifyWarning:
+			{{ bgColor = "#ffc107" }}
+		case NotifyProgress:
+			{{ bgColor = "#007bff" }}
+		default:
+			{{ bgColor = "#6c757d" }}
+	}
+	<div hx-swap-oob={ "beforeend:" + id(notificationStack) }>
+		<div
+			style={ fmt.Sprintf("background-color: %s;",
+        bgColor), "margin-bottom: 5px; float: right; width 30%; color: white; padding: 10px; border-radius: 5px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.2); z-index: 9999;" }
+		>
+			<span style="margin: 0;">{ message }</span>
+			<button
+				style="position: relative; top: 0px; right: 0px; background: none; border: none; color: white; cursor: pointer; font-size: 16px;"
+				onclick="this.parentNode.style.display='none';"
+			>&times;</button>
+		</div>
+	</div>
 }

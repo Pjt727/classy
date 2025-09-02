@@ -17,4 +17,4 @@ GET {{hostname}}/get/{{school}}?limit=3 HTTP/1.1
 
 # get terms of school
 
-GET {{hostname}}/get/marist?limit=3&offset=3 HTTP/1.1
+GET {{hostname}}/get/marist?&offset=3 HTTP/1.1

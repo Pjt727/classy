@@ -121,9 +121,13 @@ var loggingOptions = &logginghelpers.Options{
 
 func getManageHandler(pool *pgxpool.Pool, testPool *pgxpool.Pool, logger *slog.Logger) *manageHandler {
 
+	testServices := make([]collection.Service, 0)
+
 	testingFileService, err := test_banner.GetFileTestingService()
 	if err != nil {
-		panic(err)
+		logger.Warn("testing file service not online", "err", err)
+	} else {
+		testServices = append(testServices, testingFileService)
 	}
 	frameLogger := logginghelpers.NewHandler(os.Stdout, &logginghelpers.Options{
 		AddSource: true,
@@ -132,7 +136,9 @@ func getManageHandler(pool *pgxpool.Pool, testPool *pgxpool.Pool, logger *slog.L
 	})
 	testingMockService, err := test_banner.GetMockTestingService(*slog.New(frameLogger), context.Background())
 	if err != nil {
-		panic(err)
+		logger.Warn("testing mock service not online", "err", err)
+	} else {
+		testServices = append(testServices, testingMockService)
 	}
 
 	baseLogger := slog.New(logginghelpers.NewMultiHandler(logginghelpers.NewHandler(os.Stdout, &logginghelpers.Options{
@@ -159,7 +165,7 @@ func getManageHandler(pool *pgxpool.Pool, testPool *pgxpool.Pool, logger *slog.L
 		panic(err)
 	}
 	testOrchestrator, err := collection.CreateOrchestrator(
-		[]collection.Service{testingFileService, testingMockService},
+		testServices,
 		slog.New(frameLogger),
 		testPool,
 	)

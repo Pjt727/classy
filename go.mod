@@ -14,7 +14,9 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/robert-nix/ansihtml v1.0.1
 	github.com/spf13/cobra v1.8.1
+	golang.org/x/crypto v0.37.0
 	golang.org/x/sync v0.13.0
+	golang.org/x/term v0.33.0
 	golang.org/x/time v0.10.0
 )
 
@@ -38,11 +40,9 @@ require (
 	github.com/natefinch/atomic v1.0.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
-	golang.org/x/crypto v0.37.0 // indirect
 	golang.org/x/mod v0.24.0 // indirect
 	golang.org/x/net v0.39.0 // indirect
 	golang.org/x/sys v0.34.0 // indirect
-	golang.org/x/term v0.33.0 // indirect
 	golang.org/x/text v0.24.0 // indirect
 	golang.org/x/tools v0.32.0 // indirect
 )
