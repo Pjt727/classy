@@ -47,6 +47,11 @@ CREATE TABLE term_collection_history (
     FOREIGN KEY (term_collection_id, school_id) REFERENCES term_collections(id, school_id)
 );
 
+-- ensure that there is only one active collection going on at once
+CREATE UNIQUE INDEX ensure_unqiue_active_collection
+ON term_collection_history (term_collection_id, school_id)
+WHERE status = 'Active';
+
 CREATE TABLE professors (
     id TEXT,
     school_id TEXT,

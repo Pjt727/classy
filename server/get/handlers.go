@@ -15,6 +15,7 @@ import (
 
 // TODO: possible edit data layer so that what these return is not a direct copy of the
 // database objects or maybe this can be as intended
+// maybe transition to versions of the api responses on first release
 
 type getHandler struct {
 	dbPool *pgxpool.Pool

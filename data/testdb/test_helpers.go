@@ -41,7 +41,7 @@ func ReloadDb() error {
 	if err != nil {
 		return err
 	}
-	m.Force(5)
+	m.Force(6)
 	err = m.Down()
 	if err != nil {
 		return err

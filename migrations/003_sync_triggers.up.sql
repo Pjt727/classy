@@ -93,7 +93,7 @@ BEGIN
     -- the main reason why this is worth doing is that schools which have many terms will accrue 
     --     a ton of courses + professors which are not needed when looking at a specific term
     -- add the dependencies
-    IF TG_TABLE_NAME = 'sections' THEN
+    IF TG_TABLE_NAME = 'sections' AND TG_OP != 'DELETE' THEN
         -- insert professor
         IF NEW.primary_professor_id IS NOT NULL THEN
             _professor_hash_text := md5('id' || '%"' || NEW.primary_professor_id || '"');

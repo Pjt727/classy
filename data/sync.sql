@@ -185,3 +185,12 @@ FROM sync_diffs
 WHERE (sync_changes).sync_action::sync_kind IS NOT NULL
 ORDER BY sequence
 ;
+
+-- name: GetNextJob :one
+-- Optionally provide a delay
+-- this message will be on the queue but unable to be consumed for 5 seconds
+SELECT * from pgmq.send(
+  queue_name => 'my_queue',
+  msg        => '{"foo": "bar2"}',
+  delay      => 5
+);

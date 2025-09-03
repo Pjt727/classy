@@ -237,6 +237,14 @@ UPDATE term_collection_history SET
 WHERE id = @term_collection_history_id
 ;
 
+-- name: GetActiveTermCollections :many
+SELECT sqlc.embed(term_collections)
+FROM term_collections tc
+INNER JOIN term_collection_history th ON 
+    tc.id = th.term_collection_id AND tc.school_id = th.school_id
+WHERE th.status = 'Active'
+;
+
 -- name: GetChangesFromMoveTermCollection :one
 SELECT
     t.id,

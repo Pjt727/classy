@@ -30,11 +30,8 @@ as defined in orchestration`,
 			logger.Error("Could not get database", "err", err)
 			return
 		}
-		orchestrator, err := collection.GetDefaultOrchestrator(dbPool)
-		if err != nil {
-			logger.Error("Could not get orchestrator", "err", err)
-			return
-		}
+		orchestrator := collection.GetDefaultOrchestrator(dbPool)
+
 		logger.Info("Starting update on schools")
 		orchestrator.UpsertAllSchools(ctx)
 		logger.Info("Finished school update")

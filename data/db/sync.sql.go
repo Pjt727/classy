@@ -11,6 +11,26 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getNextJob = `-- name: GetNextJob :one
+SELECT  from pgmq.send(
+  queue_name => 'my_queue',
+  msg        => '{"foo": "bar2"}',
+  delay      => 5
+)
+`
+
+type GetNextJobRow struct {
+}
+
+// Optionally provide a delay
+// this message will be on the queue but unable to be consumed for 5 seconds
+func (q *Queries) GetNextJob(ctx context.Context) (GetNextJobRow, error) {
+	row := q.db.QueryRow(ctx, getNextJob)
+	var i GetNextJobRow
+	err := row.Scan()
+	return i, err
+}
+
 const syncAll = `-- name: SyncAll :many
 WITH historic_subset_plus_one AS (
     SELECT sequence, school_id, table_name, composite_hash, input_at, pk_fields, sync_action, relevant_fields, term_collection_history_id FROM historic_class_information

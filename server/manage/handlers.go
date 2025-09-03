@@ -160,10 +160,8 @@ func getManageHandler(pool *pgxpool.Pool, testPool *pgxpool.Pool, logger *slog.L
 		baseLogger:            baseLogger,
 		testBaseLogger:        testBaseLogger,
 	}
-	defaultOrchestrator, err := collection.GetDefaultOrchestrator(pool)
-	if err != nil {
-		panic(err)
-	}
+	defaultOrchestrator := collection.GetDefaultOrchestrator(pool)
+
 	testOrchestrator, err := collection.CreateOrchestrator(
 		testServices,
 		slog.New(frameLogger),
@@ -355,7 +353,6 @@ func (h *manageHandler) newOrchestrator(w http.ResponseWriter, r *http.Request) 
 	err = components.NewOrchestrator().Render(r.Context(), w)
 	if err != nil {
 		h.baseLogger.ErrorContext(r.Context(), "Could not render template", "error", err)
-		notify(w, r, components.NotifyError, "Could not render new form orchestrator")
 		return
 	}
 }
@@ -387,8 +384,14 @@ func (h *manageHandler) orchestratorHome(w http.ResponseWriter, r *http.Request)
 
 	orchestrator := h.orchestrators[index]
 	orchestrator.data.O.GetSchoolsWithService()
-	err := components.OrchestratorDashboard(orchestrator.data, orchestrator.data.O.ListRunningCollections()).
-		Render(r.Context(), w)
+	termCollections, err := orchestrator.data.O.ListRunningCollections(ctx)
+	if err != nil {
+		h.baseLogger.ErrorContext(r.Context(), "Orchestrator term collections error", "error", err)
+		http.Error(w, http.StatusText(500), 500)
+		return
+	}
+
+	err = components.OrchestratorDashboard(orchestrator.data, termCollections).Render(r.Context(), w)
 
 	if err != nil {
 		h.baseLogger.ErrorContext(r.Context(), "Orchestrator dashboard error", "error", err)
@@ -515,19 +518,23 @@ func (h *manageHandler) collectTerm(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		err = orchestrator.data.O.UpdateAllSectionsOfSchoolWithService(
+		err = orchestrator.data.O.UpdateAllSectionsOfSchool(
 			ctx,
 			termCollection,
-			*oneOffLogger,
-			serviceName,
-			isFullCollection,
+			collection.DefualtUpdateSectionsConfig().
+				SetLogger(oneOffLogger).
+				SetServiceName(serviceName).
+				SetFullCollection(isFullCollection),
 		)
+
 		if err != nil {
+			h.baseLogger.ErrorContext(ctx, "Failed collection", "error", err)
 			webWriter.finish(ctx, components.JobError)
 			return
 		}
 		webWriter.finish(ctx, components.JobSuccess)
 	}()
+
 	notify(
 		w,
 		r,

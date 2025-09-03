@@ -261,3 +261,23 @@ ORDER BY sequence
 
 
 SELECT * FROM term_collection_history;
+
+
+select * from pg_available_extensions where name = 'pgmq';
+
+SELECT * FROM pgmq.read_with_poll(
+  queue_name       => 'collection_jobs',
+  vt               => 10,
+  qty              => 5,
+  max_poll_seconds => 2,
+  poll_interval_ms => 200
+);
+
+select * from pgmq.send('collection_jobs', '{"hello": "world"}', CURRENT_TIMESTAMP);
+
+SELECT *
+FROM information_schema.tables
+
+SELECT * FROM q_collection_jobs;
+
+select * from p-- name: CourseExists :onegmq.q_collection_jobs

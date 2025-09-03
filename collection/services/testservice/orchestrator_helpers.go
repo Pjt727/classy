@@ -83,7 +83,7 @@ func RunSchoolServiceTermClassUpdates(
 		return fmt.Errorf("Services term collections for %v is empty", school)
 	}
 	firstTermCollection := termCollections[0]
-	err = testOrchestrator.UpdateAllSectionsOfSchoolWithService(
+	err = testOrchestrator.UpdateAllSectionsOfSchool(
 		ctx,
 		db.TermCollection{
 			ID:              firstTermCollection.ID,
@@ -93,9 +93,9 @@ func RunSchoolServiceTermClassUpdates(
 			Season:          firstTermCollection.Term.Season,
 			StillCollecting: firstTermCollection.StillCollecting,
 		},
-		*logger,
-		service.GetName(),
-		true,
+		collection.DefualtUpdateSectionsConfig().
+			SetServiceName(service.GetName()).
+			SetFullCollection(true),
 	)
 	if err != nil {
 		return err

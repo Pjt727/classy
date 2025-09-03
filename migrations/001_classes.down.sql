@@ -6,6 +6,7 @@ DROP TABLE IF EXISTS meeting_times;
 DROP TABLE IF EXISTS sections;
 DROP TABLE IF EXISTS professors;
 DROP TABLE IF EXISTS courses;
+DROP INDEX IF EXISTS ensure_unqiue_active_collection;
 DROP TABLE IF EXISTS term_collection_history;
 DROP TABLE IF EXISTS term_collections;
 DROP TABLE IF EXISTS schools;

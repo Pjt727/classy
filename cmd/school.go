@@ -59,11 +59,7 @@ facualty members, and internal collection tables`,
 			logger.Error("Could not connect to db: ", "err", err)
 			return
 		}
-		orchestrator, err := collection.GetDefaultOrchestrator(dbPool)
-		if err != nil {
-			logger.Error("Could create o: orchestrator", "err", err)
-			return
-		}
+		orchestrator := collection.GetDefaultOrchestrator(dbPool)
 
 		if schoolName == "" {
 			school, ok := orchestrator.GetSchoolById(schoolId)
@@ -122,7 +118,7 @@ facualty members, and internal collection tables`,
 		}
 
 		logger.Info("Starting update for school", "schoolid", schoolId)
-		orchestrator.UpdateAllSectionsOfSchool(ctx, termCollection)
+		orchestrator.UpdateAllSectionsOfSchool(ctx, termCollection, collection.DefualtUpdateSectionsConfig())
 		logger.Info("Finished update for school", "schoolid", schoolId)
 	},
 }

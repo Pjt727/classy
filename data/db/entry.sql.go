@@ -68,6 +68,45 @@ func (q *Queries) FinishTermCollectionHistory(ctx context.Context, arg FinishTer
 	return err
 }
 
+const getActiveTermCollections = `-- name: GetActiveTermCollections :many
+SELECT 
+FROM term_collections tc
+INNER JOIN term_collection_history th ON 
+    tc.id = th.term_collection_id AND tc.school_id = th.school_id
+WHERE th.status = 'Active'
+`
+
+type GetActiveTermCollectionsRow struct {
+	TermCollection TermCollection `json:"term_collection"`
+}
+
+func (q *Queries) GetActiveTermCollections(ctx context.Context) ([]GetActiveTermCollectionsRow, error) {
+	rows, err := q.db.Query(ctx, getActiveTermCollections)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetActiveTermCollectionsRow
+	for rows.Next() {
+		var i GetActiveTermCollectionsRow
+		if err := rows.Scan(
+			&i.TermCollection.ID,
+			&i.TermCollection.SchoolID,
+			&i.TermCollection.Year,
+			&i.TermCollection.Season,
+			&i.TermCollection.Name,
+			&i.TermCollection.StillCollecting,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getChangesFromMoveTermCollection = `-- name: GetChangesFromMoveTermCollection :one
 SELECT
     t.id,
