@@ -13,6 +13,7 @@ import (
 
 	classentry "github.com/Pjt727/classy/data/class-entry"
 	"github.com/Pjt727/classy/data/db"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -361,7 +362,7 @@ type UpdateSectionsConfig struct {
 	serviceName      string
 	service          *Service
 	logger           *slog.Logger
-	callback         func(*db.Queries) error
+	callback         func(*db.Queries, error) error
 }
 
 func DefualtUpdateSectionsConfig() UpdateSectionsConfig {
@@ -412,7 +413,7 @@ func (u *UpdateSectionsConfig) normalize(termCollection db.TermCollection, o *Or
 	}
 
 	if u.callback == nil {
-		u.callback = func(_ *db.Queries) error { return nil }
+		u.callback = func(_ *db.Queries, _ error) error { return nil }
 	}
 
 	return nil
@@ -447,32 +448,63 @@ func (o *Orchestrator) UpdateAllSectionsOfSchool(
 		return fmt.Errorf("Could not start collection %w", err)
 	}
 	collectionStatus := db.TermCollectionStatusEnumFailure
+
+	// this function finishes the term collection
+	// this should happen regardless of whether anything fails (might not happen if the program crashes)
+	// this MUST happen if the term was successfully collected, therefore it should use the same transcation
+	// as the success path uses to move the data, in the error path it can use its own transacation
+	var finishTermCollectionTransacation *pgx.Tx
 	defer func() {
-		priviledgedQueryObject.FinishTermCollectionHistory(ctx, db.FinishTermCollectionHistoryParams{
-			NewFinishedStatus:       collectionStatus,
-			TermCollectionHistoryID: termCollectionHistoryID,
-		})
-		// now that the transacation is committed the historic data table should be populated by the AFTER
+		if finishTermCollectionTransacation == nil {
+			t, err := o.dbPool.Begin(ctx)
+			finishTermCollectionTransacation = &t
+			if err != nil {
+				updateLogger.Error("Could not get transcation to finish term collection", "error", err)
+				return
+			}
+		}
+		defer (*finishTermCollectionTransacation).Rollback(ctx)
+
+		query := db.New(*finishTermCollectionTransacation)
+
+		// now that the transaction is committed the historic data table should be populated by the AFTER
 		// triggers telling us what information was changed
 		// knowing the updated, inserted, deleted data numbers might be helpful to inform automatic scheduling
 		//    of collections and it is also nice to have for logging
-		changeInformation, err := priviledgedQueryObject.GetChangesFromMoveTermCollection(ctx, termCollectionHistoryID)
+		changeInformation, err := query.GetChangesFromMoveTermCollection(ctx, termCollectionHistoryID)
 		if err != nil {
 			updateLogger.Error("Could not query changed data", "error", err)
 			return
 		}
+
 		duration := time.Duration(changeInformation.ElapsedTime.Microseconds) * time.Microsecond
 		updateLogger.Info(
-			"Inserted, updated, deleted records in ",
+			"Inserted, updated, deleted records",
 			slog.Int64("inserted", changeInformation.InsertRecords),
 			slog.Int64("updated", changeInformation.UpdatedRecords),
 			slog.Int64("deleted", changeInformation.DeletedRecords),
 			slog.Duration("duration", duration),
 		)
-		err = cleanupStagingTables(ctx, priviledgedQueryObject, termCollectionHistoryID)
+
+		err = query.FinishTermCollectionHistory(ctx, db.FinishTermCollectionHistoryParams{
+			NewFinishedStatus:       collectionStatus,
+			TermCollectionHistoryID: termCollectionHistoryID,
+			InsertedRecordsCount:    int32(changeInformation.InsertRecords),
+			UpdatedRecordsCount:     int32(changeInformation.UpdatedRecords),
+			DeletedRecordsCount:     int32(changeInformation.DeletedRecords),
+		})
 		if err != nil {
 			updateLogger.Error(
-				"!!! Could not clean up tables for collection !!!",
+				"Could not finish term collection",
+				slog.Int64("termCollectionHistoryID", int64(termCollectionHistoryID)),
+				"error", err,
+			)
+			return
+		}
+		err = cleanupStagingTables(ctx, query, termCollectionHistoryID)
+		if err != nil {
+			updateLogger.Error(
+				"Could not clean up tables for collection",
 				slog.Int64("termCollectionHistoryID", int64(termCollectionHistoryID)),
 				"error", err,
 			)
@@ -514,7 +546,8 @@ func (o *Orchestrator) UpdateAllSectionsOfSchool(
 		updateLogger.Error("couldn't begin transaction", "error", err)
 		return err
 	}
-	defer tx.Rollback(ctx)
+	// this transcation should be rollback by the above defer (cannot rollback here bc defers are stacks)
+
 	// setting this variable so triggers are aware of the collection class information is coming from
 	// this did not work using sqlc for some reason
 	if _, err = tx.Exec(ctx, fmt.Sprintf("SET LOCAL app.term_collection_history_id = '%d';", termCollectionHistoryID)); err != nil {
@@ -529,7 +562,7 @@ func (o *Orchestrator) UpdateAllSectionsOfSchool(
 		return err
 	}
 
-	err = config.callback(q)
+	err = config.callback(q, nil)
 	if err != nil {
 		updateLogger.Error("Failed executing callback", "error", err)
 		return err

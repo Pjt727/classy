@@ -63,3 +63,23 @@ func (q *Queries) ConsumeScheduledCollections(ctx context.Context, arg ReadPolli
 	}
 	return items, nil
 }
+
+type DeleteFromQueueParams struct {
+	QueueName string `json:"queue_name"`
+	MessageID int32  `json:"msg_id"`
+}
+
+const deleteFromQueue = `
+SELECT * FROM pgmq.delete(
+			queue_name       => $1::string,
+			msg_id           => $2::int,
+)
+`
+
+func (q *Queries) DeleteFromQueue(ctx context.Context, arg DeleteFromQueueParams) error {
+	_, err := q.db.Exec(ctx, readPollingMessages,
+		arg.QueueName,
+		arg.MessageID,
+	)
+	return err
+}

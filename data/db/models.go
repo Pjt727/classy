@@ -325,11 +325,14 @@ type TermCollection struct {
 }
 
 type TermCollectionHistory struct {
-	ID               int32                    `json:"id"`
-	Status           TermCollectionStatusEnum `json:"status"`
-	TermCollectionID string                   `json:"term_collection_id"`
-	SchoolID         string                   `json:"school_id"`
-	StartTime        pgtype.Timestamptz       `json:"start_time"`
-	EndTime          pgtype.Timestamptz       `json:"end_time"`
-	IsFull           bool                     `json:"is_full"`
+	ID                   int32                    `json:"id"`
+	Status               TermCollectionStatusEnum `json:"status"`
+	TermCollectionID     string                   `json:"term_collection_id"`
+	SchoolID             string                   `json:"school_id"`
+	StartTime            pgtype.Timestamptz       `json:"start_time"`
+	IsFull               bool                     `json:"is_full"`
+	EndTime              pgtype.Timestamptz       `json:"end_time"`
+	DeletedRecordsCount  int32                    `json:"deleted_records_count"`
+	UpdatedRecordsCount  int32                    `json:"updated_records_count"`
+	InsertedRecordsCount int32                    `json:"inserted_records_count"`
 }

@@ -41,8 +41,12 @@ CREATE TABLE term_collection_history (
     term_collection_id TEXT NOT NULL,
     school_id TEXT NOT NULL,
     start_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    end_time TIMESTAMP WITH TIME ZONE,
     is_full BOOL NOT NULL,
+
+    end_time TIMESTAMP WITH TIME ZONE,
+    deleted_records_count INTEGER NOT NULL DEFAULT 0,
+    updated_records_count INTEGER NOT NULL DEFAULT 0,
+    inserted_records_count INTEGER NOT NULL DEFAULT 0,
 
     FOREIGN KEY (term_collection_id, school_id) REFERENCES term_collections(id, school_id)
 );

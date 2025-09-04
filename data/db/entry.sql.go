@@ -54,17 +54,29 @@ func (q *Queries) DeleteStagingSections(ctx context.Context, termCollectionHisto
 const finishTermCollectionHistory = `-- name: FinishTermCollectionHistory :exec
 UPDATE term_collection_history SET
     status = $1,
+    deleted_records_count = $2,
+    updated_records_count = $3,
+    inserted_records_count = $4,
     end_time = now()
-WHERE id = $2
+WHERE id = $5
 `
 
 type FinishTermCollectionHistoryParams struct {
 	NewFinishedStatus       TermCollectionStatusEnum `json:"new_finished_status"`
+	DeletedRecordsCount     int32                    `json:"deleted_records_count"`
+	UpdatedRecordsCount     int32                    `json:"updated_records_count"`
+	InsertedRecordsCount    int32                    `json:"inserted_records_count"`
 	TermCollectionHistoryID int32                    `json:"term_collection_history_id"`
 }
 
 func (q *Queries) FinishTermCollectionHistory(ctx context.Context, arg FinishTermCollectionHistoryParams) error {
-	_, err := q.db.Exec(ctx, finishTermCollectionHistory, arg.NewFinishedStatus, arg.TermCollectionHistoryID)
+	_, err := q.db.Exec(ctx, finishTermCollectionHistory,
+		arg.NewFinishedStatus,
+		arg.DeletedRecordsCount,
+		arg.UpdatedRecordsCount,
+		arg.InsertedRecordsCount,
+		arg.TermCollectionHistoryID,
+	)
 	return err
 }
 

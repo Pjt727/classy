@@ -233,6 +233,9 @@ RETURNING id;
 -- name: FinishTermCollectionHistory :exec
 UPDATE term_collection_history SET
     status = @new_finished_status,
+    deleted_records_count = @deleted_records_count,
+    updated_records_count = @updated_records_count,
+    inserted_records_count = @inserted_records_count,
     end_time = now()
 WHERE id = @term_collection_history_id
 ;
