@@ -38,7 +38,7 @@ type ReadPollingRow struct {
 }
 
 // https://github.com/pgmq/pgmq/blob/main/docs/api/sql/functions.md#read_with_poll
-func (q *Queries) ConsumeScheduledCollections(ctx context.Context, arg ReadPollingParams) ([]ReadPollingRow, error) {
+func (q *Queries) ReadPollingQueue(ctx context.Context, arg ReadPollingParams) ([]ReadPollingRow, error) {
 	rows, err := q.db.Query(ctx, readPollingMessages,
 		arg.QueueName,
 		arg.SecondsUntilRescheduled,
@@ -72,14 +72,37 @@ type DeleteFromQueueParams struct {
 const deleteFromQueue = `
 SELECT * FROM pgmq.delete(
 			queue_name       => $1::string,
-			msg_id           => $2::int,
+			msg_id           => $2::int
 )
 `
 
 func (q *Queries) DeleteFromQueue(ctx context.Context, arg DeleteFromQueueParams) error {
-	_, err := q.db.Exec(ctx, readPollingMessages,
+	_, err := q.db.Exec(ctx, deleteFromQueue,
 		arg.QueueName,
 		arg.MessageID,
+	)
+	return err
+}
+
+type AddToQueueParams struct {
+	QueueName             string `json:"queue_name"`
+	Message               []byte `json:"msg"`
+	SecondsUntilAvailable int    `json:"delay"`
+}
+
+const addToQueue = `
+SELECT * FROM pgmq.send(
+			queue_name       => $1::string,
+			msg              => $2::jsonb,
+			delay            => $2::int
+)
+`
+
+func (q *Queries) AddToQueue(ctx context.Context, arg AddToQueueParams) error {
+	_, err := q.db.Exec(ctx, addToQueue,
+		arg.QueueName,
+		arg.Message,
+		arg.SecondsUntilAvailable,
 	)
 	return err
 }

@@ -268,10 +268,23 @@ func (t *FileTestService) RunThroughOrchestrator() error {
 				StillCollecting: true,
 			}
 			for range termDirectory.filesPaths {
-				err = orch.UpdateAllSectionsOfSchool(context.Background(), dbTermCollection, collection.DefualtUpdateSectionsConfig())
+				results, err := orch.UpdateAllSectionsOfSchool(context.Background(), dbTermCollection, collection.DefualtUpdateSectionsConfig())
 				if err != nil {
 					return err
 				}
+				slog.Info(
+					"Collection results",
+					"termCollection",
+					dbTermCollection,
+					"updated",
+					results.Updated,
+					"inserted",
+					results.Inserted,
+					"deleted",
+					results.Deleted,
+					"duration",
+					results.Duration,
+				)
 			}
 		}
 	}

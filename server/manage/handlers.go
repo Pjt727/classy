@@ -518,7 +518,7 @@ func (h *manageHandler) collectTerm(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		err = orchestrator.data.O.UpdateAllSectionsOfSchool(
+		results, err := orchestrator.data.O.UpdateAllSectionsOfSchool(
 			ctx,
 			termCollection,
 			collection.DefualtUpdateSectionsConfig().
@@ -526,12 +526,20 @@ func (h *manageHandler) collectTerm(w http.ResponseWriter, r *http.Request) {
 				SetServiceName(serviceName).
 				SetFullCollection(isFullCollection),
 		)
-
 		if err != nil {
-			h.baseLogger.ErrorContext(ctx, "Failed collection", "error", err)
+			oneOffLogger.ErrorContext(ctx, "Failed collection", "error", err)
 			webWriter.finish(ctx, components.JobError)
 			return
 		}
+		oneOffLogger.Info(
+			"Collection results",
+			"inserted",
+			results.Inserted,
+			"deleted",
+			results.Deleted,
+			"duration",
+			results.Duration,
+		)
 		webWriter.finish(ctx, components.JobSuccess)
 	}()
 

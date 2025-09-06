@@ -22,7 +22,8 @@ WITH included_commons AS (
         -- related  
         OR (hc1.composite_hash, hc1.table_name, checks.term_collection_id) IN (SELECT * FROM included_commons)
     )
-)select sequence, not_synced from annotated_historic_info order by sequence
+)
+select sequence, not_synced from annotated_historic_info order by sequence
     ),
     historic_subset AS (
     -- SELECT DISTINCT a1.sequence, a1.table_name, a1.input_at, 
@@ -261,6 +262,7 @@ ORDER BY sequence
 
 
 SELECT * FROM term_collection_history;
+
 
 
 select * from pg_available_extensions where name = 'pgmq';
