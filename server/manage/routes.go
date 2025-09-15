@@ -31,6 +31,10 @@ func PopulateManagementRoutes(r *chi.Router, pool *pgxpool.Pool, testPool *pgxpo
 		r.Post("/", h.newOrchestrator)
 		r.Delete("/db", h.resetDatabase)
 
+		r.Route("/schedule", func(r chi.Router) {
+			r.Get("/", h.dashboardHome)
+		})
+
 		r.Route("/{orchestratorLabel}", func(r chi.Router) {
 			r.Use(h.validateOrchestrator)
 			r.Get("/", h.orchestratorHome)

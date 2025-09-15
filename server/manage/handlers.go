@@ -82,10 +82,16 @@ func (t *tokenStore) refreshTokens() {
 	}
 }
 
+var memoryTokenStore tokenStore = tokenStore{
+	tokenToUser:   map[string]*managementUser{},
+	tokenDuration: 0,
+	mu:            sync.RWMutex{},
+}
+
 type manageHandler struct {
 	DbPool     *pgxpool.Pool
 	TestDbPool *pgxpool.Pool
-	// not safe mutliple changes at the same time
+	// not for safe mutliple changes at the same time
 	orchestrators         map[int]*sessionOrchestrator
 	lastOrchestratorLabel int
 
@@ -257,6 +263,7 @@ func (h *manageHandler) login(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
 	}
+	memoryTokenStore.addToken(token, username)
 	http.SetCookie(w, cookie)
 	w.Header().Add("HX-Redirect", "/manage")
 }
@@ -268,6 +275,12 @@ func ensureLoggedIn(next http.Handler) http.Handler {
 		var err error
 		cookie, err = r.Cookie(UserCookieName)
 		if err != nil {
+			http.Redirect(w, r, "/manage/login", http.StatusSeeOther)
+			return
+		}
+
+		_, doesExist := memoryTokenStore.getToken(cookie.String())
+		if !doesExist {
 			http.Redirect(w, r, "/manage/login", http.StatusSeeOther)
 			return
 		}
@@ -535,12 +548,18 @@ func (h *manageHandler) collectTerm(w http.ResponseWriter, r *http.Request) {
 			"Collection results",
 			"inserted",
 			results.Inserted,
+			"updated",
+			results.Updated,
 			"deleted",
 			results.Deleted,
 			"duration",
 			results.Duration,
 		)
-		webWriter.finish(ctx, components.JobSuccess)
+
+		err = webWriter.finish(ctx, components.JobSuccess)
+		if err != nil {
+			slog.Info("error finsihing sending the finish message", "err", err)
+		}
 	}()
 
 	notify(

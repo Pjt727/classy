@@ -74,10 +74,7 @@ func (w *websocketLoggingWriter) Write(b []byte) (int, error) {
 		if c == nil || c.send == nil {
 			continue
 		}
-		select {
-		case c.send <- logNotification.Bytes():
-		default:
-		}
+		c.send <- logNotification.Bytes()
 	}
 
 	return bytesLen, nil
@@ -126,7 +123,7 @@ func (w *websocketLoggingWriter) finish(ctx context.Context, status components.J
 	err := components.JobFinished(w.orchestratorLabel, w.serviceName, w.termCollection, status).
 		Render(ctx, &buf)
 	if err != nil {
-		slog.Error("Could not render the finsihed oob", "err", err)
+		slog.Error("Could not render the finsihed oob for log", "err", err)
 		return err
 	}
 
@@ -134,10 +131,8 @@ func (w *websocketLoggingWriter) finish(ctx context.Context, status components.J
 		if c == nil || c.send == nil {
 			continue
 		}
-		select {
-		case c.send <- buf.Bytes():
-		default:
-		}
+
+		c.send <- buf.Bytes()
 	}
 	return nil
 }
@@ -151,13 +146,13 @@ type WebSocketConnection struct {
 
 func (h *manageHandler) loggingWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
-	ctx := r.Context()
+	requestContext := r.Context()
 	if err != nil {
 		slog.Info("Could not upgrade", "err", err)
 		return
 	}
 
-	label := ctx.Value(OrchestratorLabel).(int)
+	label := requestContext.Value(OrchestratorLabel).(int)
 
 	wsConn := &WebSocketConnection{
 		conn:              conn,
@@ -202,22 +197,14 @@ func (wsConn *WebSocketConnection) readPump() {
 
 func (wsConn *WebSocketConnection) writePump() {
 	defer wsConn.disconnect()
-	for {
-		select {
-		case message, ok := <-wsConn.send:
-			if !ok {
-				// The hub closed the channel.
-				wsConn.conn.WriteMessage(websocket.CloseMessage, []byte{})
-				return
-			}
-
-			err := wsConn.conn.WriteMessage(websocket.TextMessage, message)
-			if err != nil {
-				slog.Error("Channel error: ", "err", err)
-				return
-			}
+	for message := range wsConn.send {
+		err := wsConn.conn.WriteMessage(websocket.TextMessage, message)
+		if err != nil {
+			slog.Error("Channel error: ", "err", err)
+			return
 		}
 	}
+	wsConn.conn.WriteMessage(websocket.CloseMessage, []byte{})
 }
 
 func (wsConn *WebSocketConnection) disconnect() {

@@ -282,4 +282,26 @@ FROM information_schema.tables
 
 SELECT * FROM q_collection_jobs;
 
-select * from p-- name: CourseExists :onegmq.q_collection_jobs
+SELECT *
+FROM term_collections tc
+
+
+select * from term_collection_history;
+
+DELETE FROM term_collection_history;
+
+select * from historic_class_information
+
+DELETE FROM term_collection_history;
+
+
+SELECT
+    t.id,
+    SUM(CASE WHEN sync_action = 'insert' THEN 1 ELSE 0 END) AS insert_records,
+    SUM(CASE WHEN sync_action = 'update' THEN 1 ELSE 0 END) AS updated_records,
+    SUM(CASE WHEN sync_action = 'delete' THEN 1 ELSE 0 END) AS deleted_records,
+    (end_time - start_time)::INTERVAL AS elapsed_time
+FROM term_collection_history t 
+LEFT JOIN historic_class_information h ON t.id = h.term_collection_history_id
+GROUP BY (t.id, t.end_time, t.start_time)
+ORDER BY t.id

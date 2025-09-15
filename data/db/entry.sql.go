@@ -81,33 +81,29 @@ func (q *Queries) FinishTermCollectionHistory(ctx context.Context, arg FinishTer
 }
 
 const getActiveTermCollections = `-- name: GetActiveTermCollections :many
-SELECT 
+SELECT tc.id, tc.school_id, tc.year, tc.season, tc.name, tc.still_collecting
 FROM term_collections tc
 INNER JOIN term_collection_history th ON 
     tc.id = th.term_collection_id AND tc.school_id = th.school_id
 WHERE th.status = 'Active'
 `
 
-type GetActiveTermCollectionsRow struct {
-	TermCollection TermCollection `json:"term_collection"`
-}
-
-func (q *Queries) GetActiveTermCollections(ctx context.Context) ([]GetActiveTermCollectionsRow, error) {
+func (q *Queries) GetActiveTermCollections(ctx context.Context) ([]TermCollection, error) {
 	rows, err := q.db.Query(ctx, getActiveTermCollections)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetActiveTermCollectionsRow
+	var items []TermCollection
 	for rows.Next() {
-		var i GetActiveTermCollectionsRow
+		var i TermCollection
 		if err := rows.Scan(
-			&i.TermCollection.ID,
-			&i.TermCollection.SchoolID,
-			&i.TermCollection.Year,
-			&i.TermCollection.Season,
-			&i.TermCollection.Name,
-			&i.TermCollection.StillCollecting,
+			&i.ID,
+			&i.SchoolID,
+			&i.Year,
+			&i.Season,
+			&i.Name,
+			&i.StillCollecting,
 		); err != nil {
 			return nil, err
 		}
@@ -125,7 +121,8 @@ SELECT
     SUM(CASE WHEN sync_action = 'insert' THEN 1 ELSE 0 END) AS insert_records,
     SUM(CASE WHEN sync_action = 'update' THEN 1 ELSE 0 END) AS updated_records,
     SUM(CASE WHEN sync_action = 'delete' THEN 1 ELSE 0 END) AS deleted_records,
-    (end_time - start_time)::INTERVAL AS elapsed_time
+    -- uses the current time as an estimation in case the endtime has not been set yet
+    (COALESCE(end_time, NOW()) - start_time)::INTERVAL AS elapsed_time
 FROM term_collection_history t 
 LEFT JOIN historic_class_information h ON t.id = h.term_collection_history_id
 WHERE t.id = $1::INTEGER

@@ -253,7 +253,9 @@ func (o Orchestrator) UpsertSchoolTermsWithService(
 	school db.School,
 	serviceName string,
 ) error {
-	logger.Info("starting collection and db addition of collection terms")
+	logger = logger.With(slog.String("school", school.ID), slog.String("serviceName", serviceName))
+
+	logger.Debug("starting collection and db addition of collection terms")
 	service, ok := o.serviceEntries[serviceName]
 	if !ok {
 		return fmt.Errorf("The service `%s` was not found.", serviceName)
@@ -321,7 +323,7 @@ func (o Orchestrator) UpsertSchoolTermsWithService(
 	}
 
 	tx.Commit(ctx)
-	logger.Info("finished adding collection terms to db", slog.Int("terms", len(termCollections)))
+	logger.Debug("finished adding collection terms to db", slog.Int("terms", len(termCollections)))
 	return nil
 }
 
@@ -532,7 +534,7 @@ func (o *Orchestrator) UpdateAllSectionsOfSchool(
 	q = q.WithTx(tx)
 	err = moveStagedTables(ctx, q, termCollection, termCollectionHistoryID)
 	if err != nil {
-		return CollectionResult{}, fmt.Errorf("Failed movign staged classes %w", err)
+		return CollectionResult{}, fmt.Errorf("Failed moving staged classes %w", err)
 	}
 
 	// now that the transaction is committed the historic data table should be populated by the AFTER
@@ -544,7 +546,8 @@ func (o *Orchestrator) UpdateAllSectionsOfSchool(
 		updateLogger.Error("Could not query changed data", "error", err)
 		return CollectionResult{}, err
 	}
-	duration := time.Duration(changeInformation.ElapsedTime.Microseconds) * time.Microsecond
+	duration := time.Duration(changeInformation.ElapsedTime.Microseconds * time.Microsecond.Nanoseconds())
+	updateLogger.Info("duration", "micros", changeInformation.ElapsedTime.Microseconds)
 	collectionResult := CollectionResult{
 		Inserted:                uint(changeInformation.InsertRecords),
 		Updated:                 uint(changeInformation.UpdatedRecords),
@@ -552,11 +555,25 @@ func (o *Orchestrator) UpdateAllSectionsOfSchool(
 		Duration:                duration,
 		TermCollectionHistoryId: termCollectionHistoryID,
 	}
+	err = q.FinishTermCollectionHistory(ctx, db.FinishTermCollectionHistoryParams{
+		NewFinishedStatus:       db.TermCollectionStatusEnumSuccess,
+		TermCollectionHistoryID: termCollectionHistoryID,
+		InsertedRecordsCount:    int32(changeInformation.InsertRecords),
+		UpdatedRecordsCount:     int32(changeInformation.UpdatedRecords),
+		DeletedRecordsCount:     int32(changeInformation.DeletedRecords),
+	})
+	if err != nil {
+		return collectionResult, fmt.Errorf(
+			"Failed finishing term collection history id: `%d` move class data transcation %w",
+			termCollectionHistoryID,
+			err,
+		)
+	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
 		updateLogger.Error("Failed commiting move class data transacation", "error", err)
-		return CollectionResult{}, err
+		return CollectionResult{}, fmt.Errorf("Failed commiting move class data transcation %w", err)
 	}
 
 	return collectionResult, nil
@@ -565,17 +582,7 @@ func (o *Orchestrator) UpdateAllSectionsOfSchool(
 // these are all active collections not just ones for this orchestrator
 func (o *Orchestrator) ListRunningCollections(ctx context.Context) ([]db.TermCollection, error) {
 	q := db.New(o.dbPool)
-	rows, err := q.GetActiveTermCollections(ctx)
-	if err != nil {
-		return []db.TermCollection{}, err
-	}
-
-	termCollections := make([]db.TermCollection, len(rows))
-
-	for i, row := range rows {
-		termCollections[i] = row.TermCollection
-	}
-	return termCollections, nil
+	return q.GetActiveTermCollections(ctx)
 }
 
 func (o *Orchestrator) GetTerms(
