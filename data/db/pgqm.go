@@ -12,13 +12,15 @@ import (
 
 const readPollingMessages = `
 SELECT FROM pgmq.read_with_poll(
-			queue_name       => $1::string,
+			queue_name       => $1::text,
 			vt               => $2::int,
 			qty              => $3::int,
 			max_poll_seconds => $4::int,
 			poll_interval_ms => $5::int
 )
 `
+
+const viewMessages = `SELECT * FROM pgmq.q_collection_jobs LIMIT $1::int`
 
 type ReadPollingParams struct {
 	QueueName                   string `json:"queue_name"`
@@ -29,7 +31,7 @@ type ReadPollingParams struct {
 }
 
 // https://github.com/pgmq/pgmq/blob/main/docs/api/sql/types.md
-type ReadPollingRow struct {
+type QueueRow struct {
 	MessageID  int32            `json:"msg_id"`
 	ReadAmount string           `json:"read_ct"`
 	EnquededAt pgtype.Timestamp `json:"enqueued_at"`
@@ -38,7 +40,7 @@ type ReadPollingRow struct {
 }
 
 // https://github.com/pgmq/pgmq/blob/main/docs/api/sql/functions.md#read_with_poll
-func (q *Queries) ReadPollingQueue(ctx context.Context, arg ReadPollingParams) ([]ReadPollingRow, error) {
+func (q *Queries) ReadPollingQueue(ctx context.Context, arg ReadPollingParams) ([]QueueRow, error) {
 	rows, err := q.db.Query(ctx, readPollingMessages,
 		arg.QueueName,
 		arg.SecondsUntilRescheduled,
@@ -50,9 +52,32 @@ func (q *Queries) ReadPollingQueue(ctx context.Context, arg ReadPollingParams) (
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ReadPollingRow
+	var items []QueueRow
 	for rows.Next() {
-		var i ReadPollingRow
+		var i QueueRow
+		if err := rows.Scan(); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+// views shows all queue messages regardless of whether they are visible or not
+func (q *Queries) ViewQueue(ctx context.Context, limit int32) ([]QueueRow, error) {
+	rows, err := q.db.Query(ctx, viewMessages,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []QueueRow
+	for rows.Next() {
+		var i QueueRow
 		if err := rows.Scan(); err != nil {
 			return nil, err
 		}
@@ -71,7 +96,7 @@ type DeleteFromQueueParams struct {
 
 const deleteFromQueue = `
 SELECT * FROM pgmq.delete(
-			queue_name       => $1::string,
+			queue_name       => $1::text,
 			msg_id           => $2::int
 )
 `
@@ -92,7 +117,7 @@ type AddToQueueParams struct {
 
 const addToQueue = `
 SELECT * FROM pgmq.send(
-			queue_name       => $1::string,
+			queue_name       => $1::text,
 			msg              => $2::jsonb,
 			delay            => $2::int
 )

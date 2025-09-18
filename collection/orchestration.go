@@ -55,10 +55,10 @@ type Service interface {
 
 // object responsible for which service should be used for a collection if not explicity stated
 type SchoolsServiceManager struct {
-	services []*Service
+	services []Service
 }
 
-func NewServiceManager(services []*Service) (*SchoolsServiceManager, error) {
+func NewServiceManager(services []Service) (*SchoolsServiceManager, error) {
 	if len(services) <= 0 {
 		return nil, errors.New("Must have at least one service")
 	}
@@ -69,20 +69,20 @@ func NewServiceManager(services []*Service) (*SchoolsServiceManager, error) {
 }
 
 // eventually might be more sohpicated and ingest data about how collections went and whether the were sucessfull or not
-func (s *SchoolsServiceManager) GetService() *Service {
+func (s *SchoolsServiceManager) GetService() Service {
 	return s.services[0]
 }
 
-func (s *SchoolsServiceManager) GetServices() []*Service {
+func (s *SchoolsServiceManager) GetServices() []Service {
 	return s.services
 }
 
-func (s *SchoolsServiceManager) AddSerivce(service *Service) {
+func (s *SchoolsServiceManager) AddSerivce(service Service) {
 	s.services = append(s.services, service)
 }
 
 type Orchestrator struct {
-	serviceEntries map[string]*Service
+	serviceEntries map[string]Service
 	// it would not be good if the same term collection was being
 	//    collected by multiple workers at the same time
 	schoolIdToServiceManager map[string]*SchoolsServiceManager
@@ -101,9 +101,9 @@ func init() {
 func GetDefaultOrchestrator(pool *pgxpool.Pool) Orchestrator {
 	ctx := context.Background()
 
-	serviceEntries := make(map[string]*Service, 0)
+	serviceEntries := make(map[string]Service, 0)
 	for _, service := range DefaultEnabledServices {
-		serviceEntries[service.GetName()] = &service
+		serviceEntries[service.GetName()] = service
 	}
 
 	logger := slog.Default().With(slog.String("job", "orchestration"))
@@ -120,6 +120,21 @@ func GetDefaultOrchestrator(pool *pgxpool.Pool) Orchestrator {
 	return orchestrator
 }
 
+func (o *Orchestrator) GetServices() []string {
+	serviceNames := make([]string, len(o.serviceEntries))
+	i := 0
+	for name := range o.serviceEntries {
+		serviceNames[i] = name
+		i++
+	}
+	return serviceNames
+}
+
+func (o *Orchestrator) GetService(name string) (Service, bool) {
+	service, ok := o.serviceEntries[name]
+	return service, ok
+}
+
 func CreateOrchestrator(
 	services []Service,
 	logger *slog.Logger,
@@ -131,9 +146,9 @@ func CreateOrchestrator(
 	}
 	ctx := context.Background()
 
-	serviceEntries := make(map[string]*Service, 0)
+	serviceEntries := make(map[string]Service, 0)
 	for _, service := range services {
-		serviceEntries[service.GetName()] = &service
+		serviceEntries[service.GetName()] = service
 	}
 
 	orchestrator := Orchestrator{
@@ -149,15 +164,15 @@ func CreateOrchestrator(
 	return orchestrator, nil
 }
 
-func (o Orchestrator) initMappings(ctx context.Context) {
+func (o *Orchestrator) initMappings(ctx context.Context) {
 	for _, service := range o.serviceEntries {
-		serviceLogger := o.orchestrationLogger.With(slog.String("service", (*service).GetName()))
-		schools, err := (*service).ListValidSchools(*serviceLogger, ctx)
+		serviceLogger := o.orchestrationLogger.With(slog.String("service", service.GetName()))
+		schools, err := service.ListValidSchools(*serviceLogger, ctx)
 		if err != nil {
 			serviceLogger.Warn(
 				fmt.Sprintf(
 					"Skipping shool  to service mappings of `%s` because error: %s",
-					(*service).GetName(),
+					service.GetName(),
 					err,
 				),
 			)
@@ -169,7 +184,7 @@ func (o Orchestrator) initMappings(ctx context.Context) {
 			if ok {
 				serviceManager.AddSerivce(service)
 			} else {
-				serviceManager, err := NewServiceManager([]*Service{service})
+				serviceManager, err := NewServiceManager([]Service{service})
 				if err != nil {
 					serviceLogger.Warn("Skipping school to service mapping", "error", err)
 					continue
@@ -186,25 +201,25 @@ type SchoolWithService struct {
 	ServiceName string
 }
 
-func (o Orchestrator) GetSchoolsWithService() []SchoolWithService {
+func (o *Orchestrator) GetSchoolsWithService() []SchoolWithService {
 	schools := make([]SchoolWithService, 0)
 	for schoolId, serviceManager := range o.schoolIdToServiceManager {
 		for _, service := range serviceManager.GetServices() {
 			schools = append(schools, SchoolWithService{
 				School:      o.schoolIdToSchool[schoolId],
-				ServiceName: (*service).GetName(),
+				ServiceName: service.GetName(),
 			})
 		}
 	}
 	return schools
 }
 
-func (o Orchestrator) GetSchoolById(schoolId string) (db.School, bool) {
+func (o *Orchestrator) GetSchoolById(schoolId string) (db.School, bool) {
 	school, ok := o.schoolIdToSchool[schoolId]
 	return school, ok
 }
 
-func (o Orchestrator) UpsertAllSchools(ctx context.Context) error {
+func (o *Orchestrator) UpsertAllSchools(ctx context.Context) error {
 	tx, err := o.dbPool.Begin(ctx)
 	if err != nil {
 		o.orchestrationLogger.Error("Couldn't begin transaction", "error", err)
@@ -229,7 +244,7 @@ func (o Orchestrator) UpsertAllSchools(ctx context.Context) error {
 }
 
 // uses the "best" service for the job
-func (o Orchestrator) UpsertSchoolTerms(
+func (o *Orchestrator) UpsertSchoolTerms(
 	ctx context.Context,
 	logger *slog.Logger,
 	school db.School,
@@ -239,7 +254,7 @@ func (o Orchestrator) UpsertSchoolTerms(
 		return fmt.Errorf("Do not know how to scrape %s. No service was found.", school.ID)
 	}
 	service := serviceManager.GetService()
-	err := o.UpsertSchoolTermsWithService(ctx, logger, school, (*service).GetName())
+	err := o.UpsertSchoolTermsWithService(ctx, logger, school, service.GetName())
 	if err != nil {
 		return err
 	}
@@ -247,7 +262,7 @@ func (o Orchestrator) UpsertSchoolTerms(
 }
 
 // uses the specified service for the job
-func (o Orchestrator) UpsertSchoolTermsWithService(
+func (o *Orchestrator) UpsertSchoolTermsWithService(
 	ctx context.Context,
 	logger *slog.Logger,
 	school db.School,
@@ -266,7 +281,7 @@ func (o Orchestrator) UpsertSchoolTermsWithService(
 	}
 	defer tx.Rollback(ctx)
 	q := db.New(tx)
-	termCollections, err := (*service).GetTermCollections(*logger, ctx, school)
+	termCollections, err := service.GetTermCollections(*logger, ctx, school)
 	if err != nil {
 		return fmt.Errorf("Failed getting term collections %w", err)
 	}
@@ -338,7 +353,7 @@ func (o Orchestrator) UpsertAllTerms(ctx context.Context) error {
 			school := o.schoolIdToSchool[schoolID]
 			termLogger := o.orchestrationLogger.With(
 				slog.String("school_id", schoolID),
-				slog.String("service", (*s).GetName()),
+				slog.String("service", s.GetName()),
 			)
 			if err := o.UpsertSchoolTerms(ctx, termLogger, school); err != nil {
 				termLogger.Error("There was an error collecting terms", "error", err)
@@ -361,7 +376,7 @@ func (o Orchestrator) UpsertAllTerms(ctx context.Context) error {
 type UpdateSectionsConfig struct {
 	isFullCollection bool
 	serviceName      string
-	service          *Service
+	service          Service
 	logger           *slog.Logger
 }
 
@@ -405,7 +420,7 @@ func (u *UpdateSectionsConfig) normalize(termCollection db.TermCollection, o *Or
 		return fmt.Errorf("Could not find service manager for shool id %s", termCollection.SchoolID)
 	}
 	service := serviceManager.GetService()
-	u.serviceName = (*service).GetName()
+	u.serviceName = service.GetName()
 	u.service = service
 
 	if u.logger == nil {
@@ -507,7 +522,7 @@ func (o *Orchestrator) UpdateAllSectionsOfSchool(
 
 	// do the actual collection with the service
 	entryQ := classentry.NewEntryQuery(o.dbPool, termCollection.SchoolID, &termCollection.ID, &termCollectionHistoryID)
-	if err := (*config.service).StageAllClasses(
+	if err := (config.service).StageAllClasses(
 		*updateLogger,
 		ctx,
 		entryQ,
@@ -599,7 +614,7 @@ func (o *Orchestrator) GetTerms(
 	if !ok {
 		return []db.TermCollection{}, errors.New("School ID not found")
 	}
-	entryTermCollections, err := (*service).GetTermCollections(logger, ctx, school)
+	entryTermCollections, err := service.GetTermCollections(logger, ctx, school)
 
 	if err != nil {
 		return []db.TermCollection{}, err

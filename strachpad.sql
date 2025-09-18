@@ -305,3 +305,14 @@ FROM term_collection_history t
 LEFT JOIN historic_class_information h ON t.id = h.term_collection_history_id
 GROUP BY (t.id, t.end_time, t.start_time)
 ORDER BY t.id
+
+type QueueRow struct {
+	MessageID  int32            `json:"msg_id"`
+	ReadAmount string           `json:"read_ct"`
+	EnquededAt pgtype.Timestamp `json:"enqueued_at"`
+	VisibleAt  pgtype.Timestamp `json:"vt"`
+	Message    []byte           `json:"message"`
+}
+
+SELECT * FROM pgmq.q_collection_jobs
+

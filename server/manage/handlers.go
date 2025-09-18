@@ -2,6 +2,7 @@ package servermanage
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -294,6 +295,8 @@ func ensureLoggedIn(next http.Handler) http.Handler {
 func (h *manageHandler) dashboardHome(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
+	ctx := r.Context()
+
 	managementOrchs := make([]*components.ManagementOrchestrator, len(h.orchestrators))
 	i := 0
 	for _, o := range h.orchestrators {
@@ -301,71 +304,99 @@ func (h *manageHandler) dashboardHome(w http.ResponseWriter, r *http.Request) {
 		i++
 	}
 
-	err := components.Dashboard(managementOrchs).Render(r.Context(), w)
+	q := db.New(h.DbPool)
+	rows, err := q.ViewQueue(ctx, 15)
 
 	if err != nil {
-		h.baseLogger.ErrorContext(r.Context(), "Could not render dashboard home", "error", err)
+		h.baseLogger.ErrorContext(ctx, "Could not render dashboard home db err", "error", err)
+		http.Error(w, http.StatusText(500), 500)
+		return
+	}
+
+	queueMessages := make([]*components.QueueCollectionMessage, len(rows))
+	for i, row := range rows {
+		var message collection.CollectionMessage
+		err := json.Unmarshal(row.Message, &message)
+		if err != nil {
+			h.baseLogger.ErrorContext(ctx, "Could not render dashboard home message err", "error", err)
+			http.Error(w, http.StatusText(500), 500)
+			return
+		}
+
+		queueMessages[i] = &components.QueueCollectionMessage{
+			TermCollectionID: message.TermCollectionID,
+			SchoolID:         message.SchoolID,
+			Debug:            message.Debug,
+			ServiceName:      message.ServiceName,
+			IsFullCollection: message.IsFullCollection,
+		}
+	}
+
+	err = components.Dashboard(managementOrchs, []*components.QueueCollectionMessage{}).Render(ctx, w)
+
+	if err != nil {
+		h.baseLogger.ErrorContext(ctx, "Could not render dashboard home component err", "error", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
 
 }
 
-func (h *manageHandler) newOrchestrator(w http.ResponseWriter, r *http.Request) {
+func (h *manageHandler) scheduleCollectionForm(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	name := r.FormValue("name")
-	isTest := r.FormValue("isTest") == "true"
 
-	var newOrchestrator collection.Orchestrator
+	ctx := r.Context()
+
+	// just using the first orchestrator maybe change
+	o, ok := h.orchestrators[0]
+	if !ok {
+		h.baseLogger.ErrorContext(ctx, "Orch label 0 does not exist")
+		http.Error(w, http.StatusText(500), 500)
+		return
+	}
+
+	queryParams := r.URL.Query()
+	serviceName := queryParams.Get("serviceName")
+	schoolID := queryParams.Get("schoolId")
+	var schools []db.School
+	var termCollections []db.TermCollection
+	var service collection.Service
 	var err error
-	if isTest {
-		newOrchestrator, err = collection.CreateOrchestrator(
-			collection.DefaultEnabledServices,
-			nil,
-			h.TestDbPool,
-		)
-	} else {
-		newOrchestrator, err = collection.CreateOrchestrator(collection.DefaultEnabledServices, nil, h.DbPool)
+	if serviceName != "" {
+		service, ok = o.data.O.GetService(serviceName)
+		if ok {
+			schools, _ = service.ListValidSchools(*h.baseLogger, ctx)
+		}
 	}
 
-	managementOrchestrator := components.ManagementOrchestrator{
-		O:    &newOrchestrator,
-		Name: name,
+	if schoolID != "" && service != nil {
+		q := db.New(h.DbPool)
+		termCollections, err = q.GetTermCollectionsForSchool(ctx, db.GetTermCollectionsForSchoolParams{
+			SchoolID:    schoolID,
+			Offsetvalue: 0,
+			Limitvalue:  1_000,
+		})
+		if err != nil {
+			h.baseLogger.ErrorContext(ctx, "Could not render dashboard home component err", "error", err)
+			http.Error(w, http.StatusText(500), 500)
+			return
+		}
 	}
-	sessionOrchestrator := sessionOrchestrator{
-		data:        &managementOrchestrator,
-		connections: []*WebSocketConnection{},
-		mu:          sync.Mutex{},
-	}
-	h.orchestrators[h.lastOrchestratorLabel] = &sessionOrchestrator
-	h.lastOrchestratorLabel++
+
+	err = components.NewScheduledCollection(components.ScheduleCollectionFormInfo{
+		ServiceName:      serviceName,
+		ServiceNames:     o.data.O.GetServices(),
+		SchoolID:         schoolID,
+		Schools:          schools,
+		TermCollectionID: queryParams.Get("termCollectionId"),
+		TermCollections:  termCollections,
+		Debug:            queryParams.Get("debug") == "true",
+		IsFullCollection: queryParams.Get("isFullCollection") == "true",
+	}).Render(ctx, w)
 
 	if err != nil {
-		h.baseLogger.ErrorContext(r.Context(), "Error decoding post", "error", err)
-		notify(w, r, components.NotifyError, "Invlaid parameters")
-		return
-	}
-
-	managementOrchs := make([]*components.ManagementOrchestrator, len(h.orchestrators))
-	i := 0
-	for _, o := range h.orchestrators {
-		managementOrchs[i] = o.data
-		i++
-	}
-
-	err = components.ManageOrchestrators(managementOrchs).Render(r.Context(), w)
-
-	if err != nil {
-		h.baseLogger.ErrorContext(r.Context(), "Could not render template", "error", err)
-		notify(w, r, components.NotifyError, "Could not render orchestrator")
-		return
-	}
-
-	notify(w, r, components.NotifySuccess, fmt.Sprintf("Succesfully added `%s`", name))
-
-	err = components.NewOrchestrator().Render(r.Context(), w)
-	if err != nil {
-		h.baseLogger.ErrorContext(r.Context(), "Could not render template", "error", err)
+		h.baseLogger.ErrorContext(ctx, "Could not render dashboard home component err", "error", err)
+		http.Error(w, http.StatusText(500), 500)
 		return
 	}
 }
