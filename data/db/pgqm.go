@@ -20,7 +20,8 @@ SELECT FROM pgmq.read_with_poll(
 )
 `
 
-const viewMessages = `SELECT * FROM pgmq.q_collection_jobs LIMIT $1::int`
+const viewMessages = `SELECT msg_id, read_ct, enqueued_at, vt, message
+	FROM pgmq.q_collection_jobs LIMIT $1::int`
 
 type ReadPollingParams struct {
 	QueueName                   string `json:"queue_name"`
@@ -55,7 +56,13 @@ func (q *Queries) ReadPollingQueue(ctx context.Context, arg ReadPollingParams) (
 	var items []QueueRow
 	for rows.Next() {
 		var i QueueRow
-		if err := rows.Scan(); err != nil {
+		if err := rows.Scan(
+			&i.MessageID,
+			&i.ReadAmount,
+			&i.EnquededAt,
+			&i.VisibleAt,
+			&i.Message,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -68,9 +75,7 @@ func (q *Queries) ReadPollingQueue(ctx context.Context, arg ReadPollingParams) (
 
 // views shows all queue messages regardless of whether they are visible or not
 func (q *Queries) ViewQueue(ctx context.Context, limit int32) ([]QueueRow, error) {
-	rows, err := q.db.Query(ctx, viewMessages,
-		limit,
-	)
+	rows, err := q.db.Query(ctx, viewMessages, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +83,13 @@ func (q *Queries) ViewQueue(ctx context.Context, limit int32) ([]QueueRow, error
 	var items []QueueRow
 	for rows.Next() {
 		var i QueueRow
-		if err := rows.Scan(); err != nil {
+		if err := rows.Scan(
+			&i.MessageID,
+			&i.ReadAmount,
+			&i.EnquededAt,
+			&i.VisibleAt,
+			&i.Message,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

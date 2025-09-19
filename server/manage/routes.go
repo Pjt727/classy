@@ -31,7 +31,7 @@ func PopulateManagementRoutes(r *chi.Router, pool *pgxpool.Pool, testPool *pgxpo
 		r.Delete("/db", h.resetDatabase)
 
 		r.Route("/schedule", func(r chi.Router) {
-			r.Get("/", h.scheduleCollectionForm)
+			r.Get("/", h.getScheduleCollectionForm)
 		})
 
 		r.Route("/{orchestratorLabel}", func(r chi.Router) {

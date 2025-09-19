@@ -59,8 +59,10 @@ templ ManageOrchestrators(orchestrators []*ManagementOrchestrator) {
 	</table>
 }
 
+var schedulingTable = "schedulingCollections"
+
 templ ManageScheduling(schedulingMessages []*QueueCollectionMessage) {
-	<table>
+	<table id={ schedulingTable } hx-swap-oob="true">
 		<thead>
 			<tr>
 				<th>School ID</th>
@@ -85,18 +87,19 @@ templ ManageScheduling(schedulingMessages []*QueueCollectionMessage) {
 }
 
 type ScheduleCollectionFormInfo struct {
-	SchoolID         string
-	Schools          []db.School
-	TermCollections  []db.TermCollection
-	TermCollectionID string
-	ServiceNames     []string
-	ServiceName      string
-	Debug            bool
-	IsFullCollection bool
+	SchoolID            string
+	Schools             []db.School
+	TermCollections     []db.TermCollection
+	TermCollectionID    string
+	ServiceNames        []string
+	ServiceName         string
+	SecondsTillConsumed uint
+	Debug               bool
+	IsFullCollection    bool
 }
 
 templ NewScheduledCollection(inputValues ScheduleCollectionFormInfo) {
-	<form>
+	<form hx-post="/manage/schedule" hx-swap="none">
 		<label for="serviceName">Service Name:</label>
 		<select name="serviceName" hx-get="/manage/schedule" hx-target="closest form" hx-include="closest form" required>
 			<option value="">--Please choose an option--</option>
@@ -130,6 +133,15 @@ templ NewScheduledCollection(inputValues ScheduleCollectionFormInfo) {
 				</option>
 			}
 		</select>
+		<label for="secondsTillConsumed">Seconds Till Can be Consumed:</label>
+		<input
+			type="number"
+			name="secondsTillConsumed"
+			min="0"
+			step="86400"
+			value={ inputValues.SecondsTillConsumed }
+			required
+		/>
 		<label for="debug">Debug:</label>
 		<input type="checkbox" name="debug" if inputValues.Debug {
 	checked

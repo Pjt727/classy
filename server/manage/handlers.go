@@ -332,7 +332,7 @@ func (h *manageHandler) dashboardHome(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	err = components.Dashboard(managementOrchs, []*components.QueueCollectionMessage{}).Render(ctx, w)
+	err = components.Dashboard(managementOrchs, queueMessages).Render(ctx, w)
 
 	if err != nil {
 		h.baseLogger.ErrorContext(ctx, "Could not render dashboard home component err", "error", err)
@@ -342,7 +342,7 @@ func (h *manageHandler) dashboardHome(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (h *manageHandler) scheduleCollectionForm(w http.ResponseWriter, r *http.Request) {
+func (h *manageHandler) getScheduleCollectionForm(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 	ctx := r.Context()
@@ -382,17 +382,61 @@ func (h *manageHandler) scheduleCollectionForm(w http.ResponseWriter, r *http.Re
 			return
 		}
 	}
-
+	var secondsTillConsumed uint
+	secondsTillConsumed = 0
+	s, err := strconv.Atoi(queryParams.Get("secondsTillConsumed"))
+	if err == nil {
+		secondsTillConsumed = uint(s)
+	}
 	err = components.NewScheduledCollection(components.ScheduleCollectionFormInfo{
-		ServiceName:      serviceName,
-		ServiceNames:     o.data.O.GetServices(),
-		SchoolID:         schoolID,
-		Schools:          schools,
-		TermCollectionID: queryParams.Get("termCollectionId"),
-		TermCollections:  termCollections,
-		Debug:            queryParams.Get("debug") == "true",
-		IsFullCollection: queryParams.Get("isFullCollection") == "true",
+		ServiceName:         serviceName,
+		ServiceNames:        o.data.O.GetServices(),
+		SchoolID:            schoolID,
+		Schools:             schools,
+		TermCollections:     termCollections,
+		TermCollectionID:    queryParams.Get("termCollectionId"),
+		Debug:               queryParams.Get("debug") == "on",
+		IsFullCollection:    queryParams.Get("isFullCollection") == "on",
+		SecondsTillConsumed: secondsTillConsumed,
 	}).Render(ctx, w)
+
+	if err != nil {
+		h.baseLogger.ErrorContext(ctx, "Could not render dashboard home component err", "error", err)
+		http.Error(w, http.StatusText(500), 500)
+		return
+	}
+}
+
+func (h *manageHandler) scheduleCollectionForm(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	ctx := r.Context()
+
+	err := r.ParseForm()
+	if err != nil {
+		notify(w, r, components.NotifyError, "Could not parse form: "+err.Error())
+		return
+	}
+
+	var serviceName pgtype.Text
+	sName := r.PostForm.Get("serviceName")
+	if sName == "" {
+		serviceName.Valid = false
+	} else {
+		serviceName.Valid = true
+		serviceName.String = sName
+	}
+
+	message := collection.CollectionMessage{
+		TermCollectionID: r.PostForm.Get("termCollectionId"),
+		SchoolID:         r.PostForm.Get("schoolId"),
+		Debug:            r.PostForm.Get("debug") == "on",
+		ServiceName:      serviceName,
+		IsFullCollection: pgtype.Bool{
+			Bool:  r.PostForm.Get("isFullCollection") == "on",
+			Valid: true,
+		},
+	}
 
 	if err != nil {
 		h.baseLogger.ErrorContext(ctx, "Could not render dashboard home component err", "error", err)
