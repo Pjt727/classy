@@ -9,7 +9,6 @@ import (
 // sqlc does not have support for entensions so these queries have to be written manually
 // pgmq docs:
 // https://github.com/pgmq/pgmq/blob/main/docs/api/sql/functions.md
-
 const readPollingMessages = `
 SELECT FROM pgmq.read_with_poll(
 			queue_name       => $1::text,
@@ -21,7 +20,7 @@ SELECT FROM pgmq.read_with_poll(
 `
 
 const viewMessages = `SELECT msg_id, read_ct, enqueued_at, vt, message
-	FROM pgmq.q_collection_jobs LIMIT $1::int`
+	FROM pgmq.q_collection_jobs ORDER BY vt LIMIT $1::int`
 
 type ReadPollingParams struct {
 	QueueName                   string `json:"queue_name"`
@@ -130,7 +129,7 @@ const addToQueue = `
 SELECT * FROM pgmq.send(
 			queue_name       => $1::text,
 			msg              => $2::jsonb,
-			delay            => $2::int
+			delay            => $3::int
 )
 `
 

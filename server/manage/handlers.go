@@ -32,6 +32,8 @@ const (
 	UserCookie
 )
 
+const DEFAULT_SCHEDULING_LIMIT = 15
+
 // auth for management is in memory as the expected number of users authenticated
 // is tiny
 const UserCookieName = "user_token"
@@ -221,6 +223,33 @@ func notify(
 	}
 }
 
+func getJobCollections(ctx context.Context, q *db.Queries) ([]*components.QueueCollectionMessage, error) {
+	rows, err := q.ViewQueue(ctx, DEFAULT_SCHEDULING_LIMIT)
+	queueMessages := make([]*components.QueueCollectionMessage, len(rows))
+	if err != nil {
+		return queueMessages, err
+	}
+	for i, row := range rows {
+		var message collection.CollectionMessage
+		err := json.Unmarshal(row.Message, &message)
+		if err != nil {
+			return queueMessages, err
+		}
+
+		queueMessages[i] = &components.QueueCollectionMessage{
+			JobCollectionID:  row.MessageID,
+			TermCollectionID: message.TermCollectionID,
+			SchoolID:         message.SchoolID,
+			Debug:            message.Debug,
+			ServiceName:      message.ServiceName,
+			IsFullCollection: message.IsFullCollection,
+			TimeActive:       row.VisibleAt,
+		}
+	}
+
+	return queueMessages, nil
+}
+
 func (h *manageHandler) loginView(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	err := components.Login().Render(r.Context(), w)
@@ -305,31 +334,12 @@ func (h *manageHandler) dashboardHome(w http.ResponseWriter, r *http.Request) {
 	}
 
 	q := db.New(h.DbPool)
-	rows, err := q.ViewQueue(ctx, 15)
+	queueMessages, err := getJobCollections(ctx, q)
 
 	if err != nil {
-		h.baseLogger.ErrorContext(ctx, "Could not render dashboard home db err", "error", err)
+		h.baseLogger.ErrorContext(ctx, "Could not get collection job queue", "error", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
-	}
-
-	queueMessages := make([]*components.QueueCollectionMessage, len(rows))
-	for i, row := range rows {
-		var message collection.CollectionMessage
-		err := json.Unmarshal(row.Message, &message)
-		if err != nil {
-			h.baseLogger.ErrorContext(ctx, "Could not render dashboard home message err", "error", err)
-			http.Error(w, http.StatusText(500), 500)
-			return
-		}
-
-		queueMessages[i] = &components.QueueCollectionMessage{
-			TermCollectionID: message.TermCollectionID,
-			SchoolID:         message.SchoolID,
-			Debug:            message.Debug,
-			ServiceName:      message.ServiceName,
-			IsFullCollection: message.IsFullCollection,
-		}
 	}
 
 	err = components.Dashboard(managementOrchs, queueMessages).Render(ctx, w)
@@ -438,11 +448,94 @@ func (h *manageHandler) scheduleCollectionForm(w http.ResponseWriter, r *http.Re
 		},
 	}
 
+	q := db.New(h.DbPool)
+	messageBytes, err := json.Marshal(message)
 	if err != nil {
-		h.baseLogger.ErrorContext(ctx, "Could not render dashboard home component err", "error", err)
+		notify(w, r, components.NotifyError, "Could not marshall message bytes: "+err.Error())
+		return
+	}
+
+	secondTillAvailable, err := strconv.Atoi(r.PostForm.Get("secondsTillConsumed"))
+	if err != nil || secondTillAvailable < 0 {
+		notify(w, r, components.NotifyError, "Invalid seconds till consumed"+err.Error())
+		return
+	}
+
+	err = q.AddToQueue(ctx, db.AddToQueueParams{
+		QueueName:             collection.SECTIONS_OF_TERM_COLLECTIONS,
+		Message:               messageBytes,
+		SecondsUntilAvailable: secondTillAvailable,
+	})
+
+	if err != nil {
+		h.baseLogger.ErrorContext(ctx, "Could not add collection message", "error", err)
 		http.Error(w, http.StatusText(500), 500)
 		return
 	}
+
+	queueMessages, err := getJobCollections(ctx, q)
+
+	if err != nil {
+		h.baseLogger.ErrorContext(ctx, "Could not get collection job queue", "error", err)
+		http.Error(w, http.StatusText(500), 500)
+		return
+	}
+
+	err = components.ManageScheduling(queueMessages).Render(ctx, w)
+	if err != nil {
+		notify(w, r, components.NotifyError, "Could not render scheduling component"+err.Error())
+		return
+	}
+
+	notify(w, r, components.NotifySuccess, fmt.Sprintf("Scheduling collection for %s %s ", message.SchoolID, message.TermCollectionID))
+}
+
+func (h *manageHandler) deleteCollectionJob(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	ctx := r.Context()
+
+	err := r.ParseForm()
+	if err != nil {
+		notify(w, r, components.NotifyError, "Could not parse form: "+err.Error())
+		return
+	}
+
+	collectionJobIdStr := r.Form.Get("collectionJobId")
+	collectionJobId, err := strconv.Atoi(collectionJobIdStr)
+
+	if err != nil {
+		notify(w, r, components.NotifyError, "Collection job Id is not an integer: "+err.Error())
+		return
+	}
+
+	q := db.New(h.DbPool)
+	err = q.DeleteFromQueue(ctx, db.DeleteFromQueueParams{
+		QueueName: collection.SECTIONS_OF_TERM_COLLECTIONS,
+		MessageID: int32(collectionJobId),
+	})
+
+	if err != nil {
+		h.baseLogger.ErrorContext(ctx, "Could not cancel collection message", "error", err)
+		http.Error(w, http.StatusText(500), 500)
+		return
+	}
+
+	queueMessages, err := getJobCollections(ctx, q)
+
+	if err != nil {
+		h.baseLogger.ErrorContext(ctx, "Could not get collection job queue", "error", err)
+		http.Error(w, http.StatusText(500), 500)
+		return
+	}
+
+	err = components.ManageScheduling(queueMessages).Render(ctx, w)
+	if err != nil {
+		notify(w, r, components.NotifyError, "Could not render scheduling component"+err.Error())
+		return
+	}
+
+	notify(w, r, components.NotifySuccess, fmt.Sprintf("Canceled colection job: %s", collectionJobIdStr))
 }
 
 func (h *manageHandler) validateOrchestrator(next http.Handler) http.Handler {

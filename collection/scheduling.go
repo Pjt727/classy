@@ -148,6 +148,7 @@ func (s *Scheduler) executeCollection(ctx context.Context, collectionJobId int32
 
 // deletes the job from the queue and reschedules a new one only if needed
 // return whether the job was rescheduled
+// TODO: ensure there are not active term collections requests
 func (s *Scheduler) rescheduleTermCollectionJob(
 	ctx context.Context,
 	collectionJobId int32,

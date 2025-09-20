@@ -22,11 +22,13 @@ var orchTable = "managementOrchestrators"
 var notificationStack = "notifications"
 
 type QueueCollectionMessage struct {
-	TermCollectionID string      `json:"term_collection_id"`
-	SchoolID         string      `json:"school_id"`
-	Debug            bool        `json:"debug"`
-	ServiceName      pgtype.Text `json:"service"`
-	IsFullCollection pgtype.Bool `json:"is_full_collection"`
+	JobCollectionID  int32
+	TermCollectionID string
+	SchoolID         string
+	Debug            bool
+	ServiceName      pgtype.Text
+	IsFullCollection pgtype.Bool
+	TimeActive       pgtype.Timestamp
 }
 
 templ Dashboard(orchestrators []*ManagementOrchestrator, schedulingMessages []*QueueCollectionMessage) {
@@ -70,6 +72,7 @@ templ ManageScheduling(schedulingMessages []*QueueCollectionMessage) {
 				<th>Service Name</th>
 				<th>Debug</th>
 				<th>Full Collection</th>
+				<th>Visible At</th>
 			</tr>
 		</thead>
 		<tbody>
@@ -80,6 +83,17 @@ templ ManageScheduling(schedulingMessages []*QueueCollectionMessage) {
 					<td>{ message.ServiceName.String }</td>
 					<td>{ message.Debug }</td>
 					<td>{ message.IsFullCollection.Bool }</td>
+					<td>{ message.TimeActive.Time.String() }</td>
+					<td>
+						<button
+							hx-delete="/manage/schedule"
+							hx-vals={ fmt.Sprintf(`"collectionJobId": "%d" `,
+                    message.JobCollectionID) }
+							hx-swap="none"
+						>
+							Cancel
+						</button>
+					</td>
 				</tr>
 			}
 		</tbody>
@@ -101,7 +115,14 @@ type ScheduleCollectionFormInfo struct {
 templ NewScheduledCollection(inputValues ScheduleCollectionFormInfo) {
 	<form hx-post="/manage/schedule" hx-swap="none">
 		<label for="serviceName">Service Name:</label>
-		<select name="serviceName" hx-get="/manage/schedule" hx-target="closest form" hx-include="closest form" required>
+		<select
+			name="serviceName"
+			hx-get="/manage/schedule"
+			hx-target="closest form"
+			hx-swap="outerHTML"
+			hx-include="closest form"
+			required
+		>
 			<option value="">--Please choose an option--</option>
 			for _, serviceName := range inputValues.ServiceNames {
 				<option value={ serviceName } if inputValues.ServiceName==serviceName {
@@ -112,7 +133,14 @@ templ NewScheduledCollection(inputValues ScheduleCollectionFormInfo) {
 			}
 		</select>
 		<label for="school_id">School:</label>
-		<select name="schoolId" hx-get="/manage/schedule" hx-target="closest form" hx-include="closest form" required>
+		<select
+			name="schoolId"
+			hx-get="/manage/schedule"
+			hx-target="closest form"
+			hx-swap="outerHTML"
+			hx-include="closest form"
+			required
+		>
 			<option value="">--Please choose an option--</option>
 			for _, school := range inputValues.Schools {
 				<option value={ school.ID } if inputValues.SchoolID==school.ID {
