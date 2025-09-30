@@ -10,6 +10,7 @@ import (
 
 	"log/slog"
 
+	"github.com/Pjt727/classy/collection"
 	"github.com/Pjt727/classy/collection/projectpath"
 	"github.com/Pjt727/classy/data"
 	logginghelpers "github.com/Pjt727/classy/data/logging-helpers"
@@ -66,6 +67,19 @@ func Serve() {
 	port := 3000
 	slog.Info("Running server on", "port", port)
 	http.ListenAndServe(fmt.Sprintf(":%d", port), r)
+
+	// continously look for collections to collect
+	scheduler := collection.NewScheduler(dbPool)
+	go func() {
+		for {
+			// the poll function takes care of waiting to not overwhelm the db
+			_, err := scheduler.PollForCollections(context.Background())
+			if err != nil {
+				baseLogger.Error("Scheduled collection error", "error", err)
+			}
+		}
+	}()
+
 }
 
 // https://github.com/go-chi/chi/blob/master/_examples/fileserver/main.go

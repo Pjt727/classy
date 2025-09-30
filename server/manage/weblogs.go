@@ -74,6 +74,7 @@ func (w *websocketLoggingWriter) Write(b []byte) (int, error) {
 		if c == nil || c.send == nil {
 			continue
 		}
+		// TODO: still sometimes panics it seems
 		c.send <- logNotification.Bytes()
 	}
 
