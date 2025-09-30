@@ -314,7 +314,8 @@ type QueueRow struct {
 	Message    []byte           `json:"message"`
 }
 
-DELETE FROM pgmq.q_collection_jobs
+DELETE FROM pgmq.q_collection_jobs;
 
 
 
+select * from management_users;

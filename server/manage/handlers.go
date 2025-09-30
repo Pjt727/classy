@@ -33,6 +33,7 @@ const (
 )
 
 const DEFAULT_SCHEDULING_LIMIT = 15
+const DEFAULT_TOKEN_EXPIRY = 5 * time.Minute
 
 // auth for management is in memory as the expected number of users authenticated
 // is tiny
@@ -87,7 +88,7 @@ func (t *tokenStore) refreshTokens() {
 
 var memoryTokenStore tokenStore = tokenStore{
 	tokenToUser:   map[string]*managementUser{},
-	tokenDuration: 0,
+	tokenDuration: DEFAULT_TOKEN_EXPIRY,
 	mu:            sync.RWMutex{},
 }
 
@@ -304,18 +305,21 @@ func ensureLoggedIn(next http.Handler) http.Handler {
 		var cookie *http.Cookie
 		var err error
 		cookie, err = r.Cookie(UserCookieName)
+		slog.Info("user's cookie", "cookie", cookie.Value)
 		if err != nil {
 			http.Redirect(w, r, "/manage/login", http.StatusSeeOther)
 			return
 		}
 
-		_, doesExist := memoryTokenStore.getToken(cookie.String())
+		_, doesExist := memoryTokenStore.getToken(cookie.Value)
+		slog.Info("exists", "doesExist", doesExist)
+		slog.Info("map", "map", memoryTokenStore.tokenToUser)
 		if !doesExist {
 			http.Redirect(w, r, "/manage/login", http.StatusSeeOther)
 			return
 		}
 
-		ctx = context.WithValue(ctx, UserCookie, cookie.String())
+		ctx = context.WithValue(ctx, UserCookie, cookie.Value)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
