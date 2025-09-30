@@ -1,4 +1,5 @@
-classydata.dev
+classydata.dev {
+    reverse_proxy :8080
+}
 
-reverse_proxy :8080
 
