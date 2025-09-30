@@ -13,7 +13,7 @@ services:
     networks:
       - app_network
   db:
-    image: ghcr.io/pgmq/pg17-pgmq:v1.5.1
+    image: ghcr.io/pgmq/pg18-pgmq:v1.7.0
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
