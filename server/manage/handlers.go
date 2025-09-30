@@ -305,15 +305,12 @@ func ensureLoggedIn(next http.Handler) http.Handler {
 		var cookie *http.Cookie
 		var err error
 		cookie, err = r.Cookie(UserCookieName)
-		slog.Info("user's cookie", "cookie", cookie.Value)
 		if err != nil {
 			http.Redirect(w, r, "/manage/login", http.StatusSeeOther)
 			return
 		}
 
 		_, doesExist := memoryTokenStore.getToken(cookie.Value)
-		slog.Info("exists", "doesExist", doesExist)
-		slog.Info("map", "map", memoryTokenStore.tokenToUser)
 		if !doesExist {
 			http.Redirect(w, r, "/manage/login", http.StatusSeeOther)
 			return
