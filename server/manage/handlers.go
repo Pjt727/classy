@@ -45,7 +45,7 @@ type managementUser struct {
 }
 
 type tokenStore struct {
-	tokenToUser   map[string]*managementUser
+	tokenToUser   map[string]managementUser
 	tokenDuration time.Duration
 	mu            sync.RWMutex
 }
@@ -57,7 +57,7 @@ func (t *tokenStore) getToken(token string) (managementUser, bool) {
 	user, ok := t.tokenToUser[token]
 	if ok {
 		user.expireTime = time.Now().Add(t.tokenDuration)
-		return *user, ok
+		return user, ok
 	} else {
 		return managementUser{}, ok
 	}
@@ -67,7 +67,7 @@ func (t *tokenStore) getToken(token string) (managementUser, bool) {
 func (t *tokenStore) addToken(token string, username string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.tokenToUser[token] = &managementUser{
+	t.tokenToUser[token] = managementUser{
 		username:   username,
 		expireTime: time.Now().Add(t.tokenDuration),
 	}
@@ -87,7 +87,7 @@ func (t *tokenStore) refreshTokens() {
 }
 
 var memoryTokenStore tokenStore = tokenStore{
-	tokenToUser:   map[string]*managementUser{},
+	tokenToUser:   map[string]managementUser{},
 	tokenDuration: DEFAULT_TOKEN_EXPIRY,
 	mu:            sync.RWMutex{},
 }
@@ -302,9 +302,8 @@ func (h *manageHandler) login(w http.ResponseWriter, r *http.Request) {
 func ensureLoggedIn(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		var cookie *http.Cookie
 		var err error
-		cookie, err = r.Cookie(UserCookieName)
+		cookie, err := r.Cookie(UserCookieName)
 		if err != nil {
 			http.Redirect(w, r, "/manage/login", http.StatusSeeOther)
 			return

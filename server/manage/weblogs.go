@@ -74,7 +74,7 @@ func (w *websocketLoggingWriter) Write(b []byte) (int, error) {
 		if c == nil || c.send == nil {
 			continue
 		}
-		// TODO: still sometimes panics it seems
+		// TODO: investigate if this will stil error
 		c.send <- logNotification.Bytes()
 	}
 
@@ -212,12 +212,12 @@ func (wsConn *WebSocketConnection) disconnect() {
 	orch := wsConn.h.orchestrators[wsConn.orchestratorLabel]
 	orch.mu.Lock()
 	defer orch.mu.Unlock()
-	wsConn.conn.Close()
-	close(wsConn.send)
 	for i, c := range orch.connections {
 		if c == wsConn {
 			orch.connections = slices.Delete(orch.connections, i, i+1)
 			break
 		}
 	}
+	wsConn.conn.Close()
+	close(wsConn.send)
 }
